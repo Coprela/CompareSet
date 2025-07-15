@@ -8,9 +8,9 @@ and removals.
 
 1. Clone this repository.
 2. (Optional) Create and activate a virtual environment.
-3. Install the Python dependencies:
+3. Install the Python dependencies listed in `requirements.txt`:
    ```bash
-   pip install Pillow PyMuPDF
+   pip install -r requirements.txt
    ```
 4. Run the application:
    ```bash
