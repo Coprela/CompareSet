@@ -4,15 +4,15 @@ from typing import List, Tuple, Dict
 
 def _extract_bboxes(pdf_path: str) -> List[List[Tuple[float, float, float, float]]]:
     """Return list of bboxes per page from drawing objects."""
-    doc = fitz.open(pdf_path)
     pages = []
-    for page in doc:
-        bboxes = []
-        for drawing in page.get_drawings():
-            r = drawing.get("rect")
-            if r:
-                bboxes.append((r.x0, r.y0, r.x1, r.y1))
-        pages.append(bboxes)
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            bboxes = []
+            for drawing in page.get_drawings():
+                r = drawing.get("rect")
+                if r:
+                    bboxes.append((r.x0, r.y0, r.x1, r.y1))
+            pages.append(bboxes)
     return pages
 
 
