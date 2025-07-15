@@ -31,7 +31,29 @@ and removals.
 2. Click **Selecionar revisão antiga** and choose the old PDF.
 3. Click **Selecionar nova revisão** and choose the new PDF.
 4. Press **Comparar Revisões** and select where to save the output PDF.
-5. The generated file will contain two pages highlighting removals in red and
-   additions in green.
+5. The generated file will contain two pages highlighting removals and additions.
+6. (Optional) Use **Cor de Adição**, **Cor de Remoção** and the **Opacidade**
+   slider to customize highlight colors.
 
 The icons used by the GUI are located in the `Imagem` folder.
+
+## PDF highlighting function
+
+The helper function `gerar_pdf_com_destaques` can also be used programmatically.
+It accepts optional `color_add`, `color_remove` and `opacity` parameters to
+customize the highlight colors:
+
+```python
+from pdf_marker import gerar_pdf_com_destaques
+
+gerar_pdf_com_destaques(
+    "old.pdf",
+    "new.pdf",
+    removidos,
+    adicionados,
+    "out.pdf",
+    color_add=(0, 0.8, 0),
+    color_remove=(1, 0, 0),
+    opacity=0.4,
+)
+```
