@@ -1,11 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+import os
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
 a = Analysis(
-    ['frontend.py'],
-    pathex=[],
+    ['app.py'],
+    pathex=[BASE_DIR],
     binaries=[],
-    datas=[('Imagem\\logo.png', 'Imagem'), ('Imagem\\Icon janela.ico', 'Imagem')],
+    datas=[(os.path.join('Imagem', 'logo.png'), 'Imagem'),
+           (os.path.join('Imagem', 'Icon janela.ico'), 'Imagem')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +40,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:\\Users\\doliveira12\\source\\repos\\CR - Comparador de Revisões\\Imagem\\Icon arquivo.ico'],
+    icon=[os.path.join('Imagem', 'Icon arquivo.ico')],
 )
