@@ -16,6 +16,8 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+import os
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -35,5 +37,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:\\Users\\doliveira12\\source\\repos\\CR - Comparador de Revisões\\Imagem\\Icon arquivo.ico'],
+    icon=[os.path.join('Imagem', 'Icon arquivo.ico')],
 )
