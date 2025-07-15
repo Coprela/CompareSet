@@ -3,10 +3,17 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 import threading
 import os
-import json
 from PIL import Image, ImageTk
-from dll_loader import carregar_dll, chamar_comparador
 from pdf_marker import gerar_pdf_com_destaques
+from comparador import comparar_pdfs
+
+
+def arquivo_em_uso(caminho: str) -> bool:
+    try:
+        with open(caminho, "rb+"):
+            return False
+    except Exception:
+        return True
 
 class CompareSetApp:
     def __init__(self, master):
@@ -141,8 +148,16 @@ class CompareSetApp:
             messagebox.showerror("Erro", "Selecione ambos os PDFs para comparação.")
             return
 
+        if arquivo_em_uso(self.pdf_antigo_path) or arquivo_em_uso(self.pdf_novo_path):
+            messagebox.showwarning("Arquivo em uso", "O PDF está aberto em outro programa. Feche antes de continuar.")
+            return
+
         output_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF Files", "*.pdf")], title="Salvar PDF de comparação")
         if not output_pdf:
+            return
+
+        if output_pdf in (self.pdf_antigo_path, self.pdf_novo_path):
+            messagebox.showerror("Erro", "Escolha um nome de arquivo diferente do PDF de entrada.")
             return
 
         self.output_pdf = output_pdf
@@ -155,14 +170,14 @@ class CompareSetApp:
 
     def executar_comparacao(self):
         try:
-            dll = carregar_dll()
-            status = chamar_comparador(dll, self.pdf_antigo_path, self.pdf_novo_path, "log.json")
-            if status == 0:
-                with open("log.json", "r", encoding="utf-8") as f:
-                    dados = json.load(f)
-                    gerar_pdf_com_destaques(self.pdf_antigo_path, self.pdf_novo_path, dados, self.output_pdf)
-            else:
-                messagebox.showerror("Erro", "Erro ao executar a comparação via DLL.")
+            dados = comparar_pdfs(self.pdf_antigo_path, self.pdf_novo_path)
+            gerar_pdf_com_destaques(
+                self.pdf_antigo_path,
+                self.pdf_novo_path,
+                dados["removidos"],
+                dados["adicionados"],
+                self.output_pdf,
+            )
         except Exception as e:
             messagebox.showerror("Erro", f"Erro durante a comparação:\n{e}")
 

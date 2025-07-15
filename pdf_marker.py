@@ -4,28 +4,34 @@ COLOR_REMOVE = (1, 0, 0)  # vermelho
 COLOR_ADD = (0, 1, 0)     # verde
 FILL_OPACITY = 0.2
 
-def gerar_pdf_com_destaques(pdf_old, pdf_new, json_data, output_pdf):
+
+def gerar_pdf_com_destaques(pdf_old: str, pdf_new: str,
+                             removidos: list, adicionados: list,
+                             output_pdf: str) -> None:
+    """Create a PDF highlighting removed and added regions."""
     doc_old = fitz.open(pdf_old)
     doc_new = fitz.open(pdf_new)
     final = fitz.open()
 
-    # === Página 1: PDF antigo com destaques vermelhos (removidos) ===
+    # Página 1 - antigo com remoções
     for i, page in enumerate(doc_old):
-        nova_pagina = final.new_page(width=page.rect.width, height=page.rect.height)
-        nova_pagina.show_pdf_page(page.rect, doc_old, i)
-        for item in json_data.get("alteracoes_texto", []):
+        new_page = final.new_page(width=page.rect.width, height=page.rect.height)
+        new_page.show_pdf_page(page.rect, doc_old, i)
+        for item in removidos:
             if item["pagina"] == i:
                 r = fitz.Rect(item["bbox"])
-                nova_pagina.draw_rect(r, fill=COLOR_REMOVE, width=0, fill_opacity=FILL_OPACITY)
+                new_page.draw_rect(r, fill=COLOR_REMOVE, width=0,
+                                   fill_opacity=FILL_OPACITY)
 
-    # === Página 2: PDF novo com destaques verdes (adicionados) ===
+    # Página 2 - novo com adições
     for i, page in enumerate(doc_new):
-        nova_pagina = final.new_page(width=page.rect.width, height=page.rect.height)
-        nova_pagina.show_pdf_page(page.rect, doc_new, i)
-        for item in json_data.get("alteracoes_texto", []):
+        new_page = final.new_page(width=page.rect.width, height=page.rect.height)
+        new_page.show_pdf_page(page.rect, doc_new, i)
+        for item in adicionados:
             if item["pagina"] == i:
                 r = fitz.Rect(item["bbox"])
-                nova_pagina.draw_rect(r, fill=COLOR_ADD, width=0, fill_opacity=FILL_OPACITY)
+                new_page.draw_rect(r, fill=COLOR_ADD, width=0,
+                                   fill_opacity=FILL_OPACITY)
 
     final.save(output_pdf)
     print(f"PDF final com destaques salvo em: {output_pdf}")
