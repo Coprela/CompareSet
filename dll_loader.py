@@ -3,7 +3,7 @@ import ctypes
 from ctypes import c_char_p
 
 def carregar_dll():
-    dll_path = os.path.abspath("CompareSet.Engine.dll")
+    dll_path = os.path.join(os.path.dirname(__file__), "CompareSet.Engine.dll")
     if not os.path.exists(dll_path):
         raise FileNotFoundError(f"Não encontrei a DLL em: {dll_path}")
 
