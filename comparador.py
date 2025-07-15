@@ -1,24 +1,41 @@
 import fitz
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 
-def _extract_bboxes(pdf_path: str) -> List[List[Tuple[float, float, float, float, str]]]:
-    """Return list of bboxes per page from drawings and text blocks."""
-    doc = fitz.open(pdf_path)
-    pages = []
-    for page in doc:
+def _extract_bboxes(doc: fitz.Document,
+                    transforms: Optional[List[Tuple[float, float, float, float]]] = None
+                    ) -> List[List[Tuple[float, float, float, float, str]]]:
+    """Return list of bboxes per page from drawings and text blocks.
+
+    Parameters
+    ----------
+    doc: fitz.Document
+        Opened document whose pages will be processed.
+    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y), optional
+        Transformations applied to each page's coordinates.
+    """
+    pages: List[List[Tuple[float, float, float, float, str]]] = []
+    for i, page in enumerate(doc):
+        if transforms and i < len(transforms):
+            sx, sy, tx, ty = transforms[i]
+        else:
+            sx = sy = 1.0
+            tx = ty = 0.0
         bboxes = []
         # Bounding boxes from drawing objects (no associated text)
         for drawing in page.get_drawings():
             r = drawing.get("rect")
             if r:
-                bboxes.append((r.x0, r.y0, r.x1, r.y1, ""))
+                bboxes.append((r.x0 * sx + tx, r.y0 * sy + ty,
+                               r.x1 * sx + tx, r.y1 * sy + ty, ""))
 
         # Bounding boxes from text blocks
         for block in page.get_text("blocks"):
             if len(block) >= 5:
                 x0, y0, x1, y1, text = block[:5]
-                bboxes.append((float(x0), float(y0), float(x1), float(y1), str(text).strip()))
+                bboxes.append((float(x0) * sx + tx, float(y0) * sy + ty,
+                               float(x1) * sx + tx, float(y1) * sy + ty,
+                               str(text).strip()))
 
         pages.append(bboxes)
     return pages
@@ -71,9 +88,35 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
 
 
 def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
-    """Compare two PDFs and return removed and added bounding boxes."""
-    old_pages = _extract_bboxes(old_pdf)
-    new_pages = _extract_bboxes(new_pdf)
+    """Compare two PDFs and return removed and added bounding boxes.
+
+    The function takes page dimensions into account. When pages have
+    different sizes they are scaled and translated so that comparisons
+    happen in a shared coordinate space based on the old PDF pages.
+    """
+    doc_old = fitz.open(old_pdf)
+    doc_new = fitz.open(new_pdf)
+
+    # compute transforms mapping new pages onto old pages
+    transforms_new = []
+    for i in range(len(doc_new)):
+        if i < len(doc_old):
+            rect_old = doc_old[i].rect
+        else:
+            rect_old = doc_new[i].rect
+        rect_new = doc_new[i].rect
+        if rect_old.width != rect_new.width or rect_old.height != rect_new.height:
+            sx = rect_old.width / rect_new.width
+            sy = rect_old.height / rect_new.height
+            s = min(sx, sy)
+            tx = (rect_old.width - rect_new.width * s) / 2.0
+            ty = (rect_old.height - rect_new.height * s) / 2.0
+            transforms_new.append((s, s, tx, ty))
+        else:
+            transforms_new.append((1.0, 1.0, 0.0, 0.0))
+
+    old_pages = _extract_bboxes(doc_old)
+    new_pages = _extract_bboxes(doc_new, transforms_new)
     max_pages = max(len(old_pages), len(new_pages))
 
     removidos = []
