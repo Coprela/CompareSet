@@ -20,13 +20,14 @@ class CompareSetApp:
         self.pdf_novo_path = ""
         self.output_pdf = ""
 
-        icon_path = r"C:\\Users\\doliveira12\\source\\repos\\CR - Comparador de Revisões\\Imagem\\Icon janela.ico"
+        resources_dir = os.path.join(os.path.dirname(__file__), "Imagem")
+        icon_path = os.path.join(resources_dir, "Icon janela.ico")
         try:
             master.iconbitmap(icon_path)
         except Exception as e:
             print(f"Erro ao carregar ícone: {e}")
 
-        logo_path = r"C:\\Users\\doliveira12\\source\\repos\\CR - Comparador de Revisões\\Imagem\\logo.png"
+        logo_path = os.path.join(resources_dir, "logo.png")
         try:
             logo = Image.open(logo_path)
             logo = logo.resize((200, 40), Image.LANCZOS)
