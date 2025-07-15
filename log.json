@@ -1,0 +1,18 @@
+{
+    "alteracoes_texto": [
+        {
+            "adicionado": "VALOR NOVO",
+            "bbox": [
+                100.0,
+                200.0,
+                160.0,
+                220.0
+            ],
+            "pagina": 0,
+            "removido": "VALOR ANTIGO"
+        }
+    ],
+    "entrada_new": "C:/Users/doliveira12/OneDrive - Digicorner/Documents/3Dconnexion/BM 152.54922.06R2.pdf",
+    "entrada_old": "C:/Users/doliveira12/OneDrive - Digicorner/Documents/3Dconnexion/BM 152.54922.06.pdf",
+    "status": "ok"
+}
