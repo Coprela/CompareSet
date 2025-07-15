@@ -2,23 +2,52 @@ import fitz
 from typing import List, Tuple, Dict
 
 
-def _extract_bboxes(pdf_path: str) -> List[List[Tuple[float, float, float, float, str]]]:
-    """Return list of bboxes per page from drawings and text blocks."""
+def _rotate_bbox(bbox: Tuple[float, float, float, float], w: float, h: float, rotation: int) -> Tuple[float, float, float, float]:
+    """Rotate bounding box by multiples of 90 degrees clockwise."""
+    x0, y0, x1, y1 = bbox
+    rotation = rotation % 360
+    if rotation == 90:
+        return y0, w - x1, y1, w - x0
+    if rotation == 180:
+        return w - x1, h - y1, w - x0, h - y0
+    if rotation == 270:
+        return h - y1, x0, h - y0, x1
+    return x0, y0, x1, y1
+
+
+def _extract_bboxes(pdf_path: str, rotation: int = 0) -> List[List[Tuple[float, float, float, float, str]]]:
+    """Return list of normalized bboxes per page from drawings and text blocks.
+
+    Parameters
+    ----------
+    pdf_path: str
+        File to load.
+    rotation: int
+        Optional clockwise rotation (multiples of 90 deg) to apply when
+        extracting boxes.
+    """
     doc = fitz.open(pdf_path)
     pages = []
     for page in doc:
         bboxes = []
+        page_w, page_h = page.rect.width, page.rect.height
+        norm_w, norm_h = (page_h, page_w) if rotation % 180 == 90 else (page_w, page_h)
+
+        def _norm(rect: Tuple[float, float, float, float]) -> Tuple[float, float, float, float]:
+            rx0, ry0, rx1, ry1 = _rotate_bbox(rect, page_w, page_h, rotation)
+            return rx0 / norm_w, ry0 / norm_h, rx1 / norm_w, ry1 / norm_h
+
         # Bounding boxes from drawing objects (no associated text)
         for drawing in page.get_drawings():
             r = drawing.get("rect")
             if r:
-                bboxes.append((r.x0, r.y0, r.x1, r.y1, ""))
+                bboxes.append((*_norm((r.x0, r.y0, r.x1, r.y1)), ""))
 
         # Bounding boxes from text blocks
         for block in page.get_text("blocks"):
             if len(block) >= 5:
                 x0, y0, x1, y1, text = block[:5]
-                bboxes.append((float(x0), float(y0), float(x1), float(y1), str(text).strip()))
+                bboxes.append((*_norm((float(x0), float(y0), float(x1), float(y1))), str(text).strip()))
 
         pages.append(bboxes)
     return pages
@@ -44,7 +73,11 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
                   new_boxes: List[Tuple[float, float, float, float, str]],
                   thr: float) -> Tuple[List[Tuple[float, float, float, float]],
                                        List[Tuple[float, float, float, float]]]:
-    """Compare two lists of boxes returning removed and added ones."""
+    """Compare two lists of boxes returning removed and added ones.
+
+    The coordinates are assumed to be normalized relative to page size, so the
+    IoU comparison is independent of the original page dimensions.
+    """
     matched_new = set()
     removed = []
     added = []
@@ -70,10 +103,22 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
-def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
-    """Compare two PDFs and return removed and added bounding boxes."""
-    old_pages = _extract_bboxes(old_pdf)
-    new_pages = _extract_bboxes(new_pdf)
+def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9,
+                  old_rotation: int = 0, new_rotation: int = 0) -> Dict[str, List[Dict]]:
+    """Compare two PDFs and return removed and added bounding boxes.
+
+    Parameters
+    ----------
+    old_pdf, new_pdf: str
+        Paths to the PDF files being compared.
+    thr: float
+        IoU threshold for considering boxes equal.
+    old_rotation, new_rotation: int
+        Optional clockwise rotation (multiples of 90 deg) to apply to
+        ``old_pdf`` and ``new_pdf`` respectively before comparison.
+    """
+    old_pages = _extract_bboxes(old_pdf, old_rotation)
+    new_pages = _extract_bboxes(new_pdf, new_rotation)
     max_pages = max(len(old_pages), len(new_pages))
 
     removidos = []

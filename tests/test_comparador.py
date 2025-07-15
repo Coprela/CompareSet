@@ -22,3 +22,9 @@ def test_comparar_pdfs_bounding_boxes():
         assert len(bbox) == 4
         for value in bbox:
             assert isinstance(value, float)
+
+
+def test_compare_different_page_sizes():
+    result = comparar_pdfs(os.path.join("PDFs for test", "test_A4.pdf"),
+                           os.path.join("PDFs for test", "test_A3.pdf"))
+    assert result == {"removidos": [], "adicionados": []}
