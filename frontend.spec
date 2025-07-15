@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['frontend.py'],
+    ['app.py'],
     pathex=[],
     binaries=[],
     datas=[('Imagem\\logo.png', 'Imagem'), ('Imagem\\Icon janela.ico', 'Imagem')],
