@@ -2,16 +2,24 @@ import fitz
 from typing import List, Tuple, Dict
 
 
-def _extract_bboxes(pdf_path: str) -> List[List[Tuple[float, float, float, float]]]:
-    """Return list of bboxes per page from drawing objects."""
+def _extract_bboxes(pdf_path: str) -> List[List[Tuple[float, float, float, float, str]]]:
+    """Return list of bboxes per page from drawings and text blocks."""
     doc = fitz.open(pdf_path)
     pages = []
     for page in doc:
         bboxes = []
+        # Bounding boxes from drawing objects (no associated text)
         for drawing in page.get_drawings():
             r = drawing.get("rect")
             if r:
-                bboxes.append((r.x0, r.y0, r.x1, r.y1))
+                bboxes.append((r.x0, r.y0, r.x1, r.y1, ""))
+
+        # Bounding boxes from text blocks
+        for block in page.get_text("blocks"):
+            if len(block) >= 5:
+                x0, y0, x1, y1, text = block[:5]
+                bboxes.append((float(x0), float(y0), float(x1), float(y1), str(text).strip()))
+
         pages.append(bboxes)
     return pages
 
@@ -32,25 +40,33 @@ def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, flo
     return inter / union if union else 0.0
 
 
-def _compare_page(old_boxes: List[Tuple[float, float, float, float]],
-                  new_boxes: List[Tuple[float, float, float, float]],
+def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
+                  new_boxes: List[Tuple[float, float, float, float, str]],
                   thr: float) -> Tuple[List[Tuple[float, float, float, float]],
                                        List[Tuple[float, float, float, float]]]:
+    """Compare two lists of boxes returning removed and added ones."""
     matched_new = set()
     removed = []
+    added = []
+
     for ob in old_boxes:
         found = False
         for i, nb in enumerate(new_boxes):
             if i in matched_new:
                 continue
-            if _iou(ob, nb) >= thr:
+            if _iou(ob[:4], nb[:4]) >= thr:
                 matched_new.add(i)
                 found = True
+                if ob[4].strip() != nb[4].strip():
+                    # Geometry matches but text differs
+                    removed.append(ob[:4])
+                    added.append(nb[:4])
                 break
         if not found:
-            removed.append(ob)
+            removed.append(ob[:4])
 
-    added = [nb for i, nb in enumerate(new_boxes) if i not in matched_new]
+    # Any new boxes not matched are considered additions
+    added.extend(nb[:4] for i, nb in enumerate(new_boxes) if i not in matched_new)
     return removed, added
 
 
