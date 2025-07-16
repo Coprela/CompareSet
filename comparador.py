@@ -1,8 +1,5 @@
 import fitz
-import os
 from typing import List, Tuple, Dict, Optional
-
-import tempfile
 
 
 def _extract_bboxes(doc: fitz.Document,
