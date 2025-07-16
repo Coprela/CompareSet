@@ -35,3 +35,15 @@ and removals.
    additions in green.
 
 The icons used by the GUI are located in the `Imagem` folder.
+
+## Command line
+
+A simple command line interface is available as `cli.py`. Run it with the paths
+of the old revision, the new revision and the desired output file:
+
+```bash
+python -m cli old.pdf new.pdf comparison.pdf
+```
+
+The resulting PDF will contain the two versions with removed regions
+highlighted in red and additions in green.
