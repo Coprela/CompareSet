@@ -18,6 +18,18 @@ and removals.
    ```
    A Windows build is also available in `dist/CompareSet.exe`.
 
+## Building an executable
+
+To create a standalone executable from the project, install
+[PyInstaller](https://www.pyinstaller.org/) and run the packaging script:
+
+```bash
+pip install pyinstaller
+python package.py
+```
+
+The resulting binary will be placed in the `dist` directory.
+
 ## Dependencies
 
 - Python 3.8 or later
