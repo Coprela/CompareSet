@@ -25,6 +25,11 @@ and removals.
 - [PyMuPDF](https://pypi.org/project/PyMuPDF/) for PDF operations
 - Tkinter (bundled with Python) for the GUI
 
+## Supported page formats
+
+CompareSet works with PDF pages sized according to the ISO A series. Pages
+from **A0** down to **A4** are handled during comparison.
+
 ## Using the GUI
 
 1. Launch the program using `python app.py`.
