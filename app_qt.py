@@ -64,6 +64,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "license_title": "License",
                 "improvement_tooltip": "Suggest improvement",
                 "help_tooltip": "Coming soon",
+                "language": "Language:",
             },
             "pt": {
                 "old_placeholder": "Revis\u00e3o antiga",
@@ -88,6 +89,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "license_title": "Licen\u00e7a",
                 "improvement_tooltip": "Sugerir melhoria",
                 "help_tooltip": "Em breve",
+                "language": "Idioma:",
             },
         }
         self._setup_ui()
@@ -110,6 +112,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_license.setText(t["license"])
         self.btn_improve.setToolTip(t["improvement_tooltip"])
         self.btn_help.setToolTip(t["help_tooltip"])
+        if hasattr(self, "lbl_language"):
+            self.lbl_language.setText(t.get("language", "Language:"))
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -127,9 +131,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_help.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogHelpButton))
         top.addWidget(self.btn_help)
 
+        self.lbl_language = QtWidgets.QLabel("Language:")
+        top.addWidget(self.lbl_language)
+
         self.combo_lang = QtWidgets.QComboBox()
-        self.combo_lang.addItem("English", "en")
-        self.combo_lang.addItem("Portugu\u00eas", "pt")
+        self.combo_lang.addItem("EN", "en")
+        self.combo_lang.addItem("PTBR", "pt")
         self.combo_lang.setCurrentIndex(0)
         self.combo_lang.currentIndexChanged.connect(lambda: self.set_language(self.combo_lang.currentData()))
         top.addWidget(self.combo_lang)
