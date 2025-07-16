@@ -72,6 +72,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_in_use": "The PDF is open in another program.",
                 "starting": "Starting...",
                 "pdf_saved": "PDF saved to: {}",
+                "open_pdf_title": "Open PDF",
+                "open_pdf_prompt": "Open generated PDF?",
                 "license_missing": "License file not found.",
                 "license_title": "License",
                 "improvement_tooltip": "Suggest improvement",
@@ -97,6 +99,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_in_use": "O PDF est\u00e1 aberto em outro programa.",
                 "starting": "Iniciando...",
                 "pdf_saved": "PDF salvo em: {}",
+                "open_pdf_title": "Abrir PDF",
+                "open_pdf_prompt": "Abrir o PDF gerado?",
                 "license_missing": "Arquivo de licen\u00e7a n\u00e3o encontrado.",
                 "license_title": "Licen\u00e7a",
                 "improvement_tooltip": "Sugerir melhoria",
@@ -277,7 +281,18 @@ class CompareSetQt(QtWidgets.QWidget):
         self.progress.hide()
         self.label_status.clear()
         if status == "success":
-            QtWidgets.QMessageBox.information(self, self.tr("success"), self.tr("pdf_saved").format(info))
+            QtWidgets.QMessageBox.information(
+                self, self.tr("success"), self.tr("pdf_saved").format(info)
+            )
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                self.tr("open_pdf_title"),
+                self.tr("open_pdf_prompt"),
+            )
+            if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+                QtGui.QDesktopServices.openUrl(
+                    QtCore.QUrl.fromLocalFile(info)
+                )
         else:
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
 
