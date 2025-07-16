@@ -23,6 +23,21 @@ class CompareSetApp:
         master.resizable(False, False)
         self.centralizar_janela(master, 500, 350)
 
+        # Pequenas melhorias visuais usando ttk
+        self.style = ttk.Style(master)
+        try:
+            self.style.theme_use("clam")
+        except Exception:
+            pass
+        self.style.configure(
+            "Purple.Horizontal.TProgressbar",
+            troughcolor="white",
+            bordercolor="white",
+            background="#471F6F",
+            lightcolor="#471F6F",
+            darkcolor="#471F6F",
+        )
+
         self.pdf_antigo_path = ""
         self.pdf_novo_path = ""
         self.output_pdf = ""
@@ -116,10 +131,22 @@ class CompareSetApp:
         )
         self.button_comparar.pack(pady=10)
 
-        self.progress_bar = ttk.Progressbar(self.outer_frame, orient="horizontal", mode="determinate", length=400)
+        self.progress_bar = ttk.Progressbar(
+            self.outer_frame,
+            orient="horizontal",
+            mode="determinate",
+            length=400,
+            style="Purple.Horizontal.TProgressbar",
+        )
         self.progress_bar['maximum'] = 100
         self.progress_bar['value'] = 0
         self.progress_value = 0
+        self.label_progress = tk.Label(
+            self.outer_frame,
+            text="",
+            bg="white",
+            font=self.shared_font,
+        )
 
         self.label_credit = tk.Label(self.outer_frame, text="Desenvolvido por DOT-FUE", bg="white", font=("Arial", 8, "italic"), fg="gray")
         self.label_credit.pack(side="bottom", pady=(5, 5))
@@ -195,7 +222,9 @@ class CompareSetApp:
         self.output_pdf = output_pdf
 
         self.progress_bar['value'] = 0
-        self.progress_bar.pack(pady=10)
+        self.label_progress.config(text="Iniciando...")
+        self.label_progress.pack()
+        self.progress_bar.pack(pady=5)
 
         self.compare_thread = threading.Thread(target=self.executar_comparacao)
         self.compare_thread.start()
@@ -223,13 +252,16 @@ class CompareSetApp:
     def update_progress(self):
         if self.compare_thread.is_alive():
             self.progress_bar['value'] = self.progress_value
+            self.label_progress.config(text=f"Progresso: {int(self.progress_value)}%")
             self.master.after(100, self.update_progress)
         else:
             self.progress_bar['value'] = 100
+            self.label_progress.config(text="Concluído")
             self.master.after(500, self.finalizar_comparacao)
 
     def finalizar_comparacao(self):
         self.progress_bar.pack_forget()
+        self.label_progress.pack_forget()
         self.button_comparar.config(state=tk.NORMAL)
         messagebox.showinfo("Sucesso", f"PDF de comparação gerado com sucesso:\n{self.output_pdf}")
 
