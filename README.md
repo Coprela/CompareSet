@@ -49,8 +49,8 @@ from **A0** down to **A4** are handled during comparison.
 3. Click **Selecionar nova revisão** and choose the new PDF.
 4. Press **Comparar Revisões** and select where to save the output PDF.
 5. The generated file will contain two pages highlighting removals and additions.
-6. (Optional) Use **Cor de Adição**, **Cor de Remoção** and the **Opacidade**
-   slider to customize highlight colors.
+6. (Optional) Use **Cor de Adição** and **Cor de Remoção** to customize
+   highlight colors. The opacity is fixed at 0.3.
 
 The icons used by the GUI are located in the `Imagem` folder.
 
@@ -71,6 +71,6 @@ gerar_pdf_com_destaques(
     "out.pdf",
     color_add=(0, 0.8, 0),
     color_remove=(1, 0, 0),
-    opacity=0.4,
+    opacity=0.3,
 )
 ```
