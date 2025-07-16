@@ -119,12 +119,12 @@ class CompareSetQt(QtWidgets.QWidget):
         top.addStretch()
 
         self.btn_improve = QtWidgets.QToolButton()
-        self.btn_improve.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogApplyButton))
+        self.btn_improve.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_ArrowUp))
         self.btn_improve.clicked.connect(self.open_improvement_link)
         top.addWidget(self.btn_improve)
 
         self.btn_help = QtWidgets.QToolButton()
-        self.btn_help.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogHelpButton))
+        self.btn_help.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MessageBoxQuestion))
         top.addWidget(self.btn_help)
 
         self.combo_lang = QtWidgets.QComboBox()
