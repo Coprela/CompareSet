@@ -57,11 +57,30 @@ def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, flo
     return inter / union if union else 0.0
 
 
+def _boxes_close(a: Tuple[float, float, float, float],
+                 b: Tuple[float, float, float, float],
+                 tol: float) -> bool:
+    """Return True if all coordinates differ less than *tol* points."""
+    return all(abs(a[i] - b[i]) <= tol for i in range(4))
+
+
 def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
                   new_boxes: List[Tuple[float, float, float, float, str]],
-                  thr: float) -> Tuple[List[Tuple[float, float, float, float]],
-                                       List[Tuple[float, float, float, float]]]:
-    """Compare two lists of boxes returning removed and added ones."""
+                  thr: float,
+                  same_text_iou: float = 0.98,
+                  trans_tol: float = 0.0) -> Tuple[List[Tuple[float, float, float, float]],
+                                                   List[Tuple[float, float, float, float]]]:
+    """Compare two lists of boxes returning removed and added ones.
+
+    Parameters
+    ----------
+    thr: float
+        IoU threshold for considering two boxes the same.
+    same_text_iou: float
+        Minimum IoU for boxes with identical text to be treated as unchanged.
+    trans_tol: float
+        Maximum coordinate difference to ignore when texts are identical.
+    """
     matched_new = set()
     removed = []
     added = []
@@ -71,10 +90,21 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
         for i, nb in enumerate(new_boxes):
             if i in matched_new:
                 continue
-            if _iou(ob[:4], nb[:4]) >= thr:
+            iou_val = _iou(ob[:4], nb[:4])
+            same_text = ob[4].strip() == nb[4].strip()
+            if same_text:
+                if trans_tol > 0 and _boxes_close(ob[:4], nb[:4], trans_tol):
+                    matched_new.add(i)
+                    found = True
+                    break
+                if iou_val >= same_text_iou:
+                    matched_new.add(i)
+                    found = True
+                    break
+            if iou_val >= thr:
                 matched_new.add(i)
                 found = True
-                if ob[4].strip() != nb[4].strip():
+                if not same_text:
                     # Geometry matches but text differs
                     removed.append(ob[:4])
                     added.append(nb[:4])
@@ -87,12 +117,25 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
-def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
-    """Compare two PDFs and return removed and added bounding boxes.
+def comparar_pdfs(old_pdf: str,
+                  new_pdf: str,
+                  thr: float = 0.9,
+                  same_text_iou: float = 0.98,
+                  trans_tol: float = 0.5) -> Dict[str, List[Dict]]:
+"""Compare two PDFs and return removed and added bounding boxes.
 
     The function takes page dimensions into account. When pages have
     different sizes they are scaled and translated so that comparisons
     happen in a shared coordinate space based on the old PDF pages.
+
+    Parameters
+    ----------
+    thr: float
+        IoU threshold for matching boxes regardless of text.
+    same_text_iou: float
+        Minimum IoU for boxes with identical text to be considered equal.
+    trans_tol: float
+        Maximum coordinate difference allowed for boxes with identical text.
     """
     doc_old = fitz.open(old_pdf)
     doc_new = fitz.open(new_pdf)
@@ -124,7 +167,9 @@ def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, Lis
     for page_num in range(max_pages):
         old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
         new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
-        rem, add = _compare_page(old_boxes, new_boxes, thr)
+        rem, add = _compare_page(old_boxes, new_boxes, thr,
+                                same_text_iou=same_text_iou,
+                                trans_tol=trans_tol)
         removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
         adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
 
