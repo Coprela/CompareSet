@@ -45,7 +45,9 @@ class CompareSetApp:
         resources_dir = os.path.join(os.path.dirname(__file__), "Imagem")
         icon_path = os.path.join(resources_dir, "Icon janela.ico")
         try:
-            master.iconbitmap(icon_path)
+            icon_img = Image.open(icon_path)
+            self.icon_photo = ImageTk.PhotoImage(icon_img)
+            master.iconphoto(True, self.icon_photo)
         except Exception as e:
             print(f"Erro ao carregar ícone: {e}")
 
@@ -61,9 +63,7 @@ class CompareSetApp:
         self.outer_frame = tk.Frame(
             master,
             bg="white",
-            highlightbackground="black",
-            highlightcolor="black",
-            highlightthickness=2
+            highlightthickness=0
         )
         self.outer_frame.pack(expand=True, fill="both")
 
