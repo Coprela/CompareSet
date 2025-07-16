@@ -128,6 +128,8 @@ def comparar_pdfs(old_pdf: str,
     doc_old = _load_pdf_without_signatures(old_pdf)
     doc_new = _load_pdf_without_signatures(new_pdf)
 
+    tolerance_pt = 72 / 25.4  # roughly one millimetre
+
     # compute transforms mapping new pages onto old pages
     transforms_new = []
     for i in range(len(doc_new)):
@@ -136,7 +138,12 @@ def comparar_pdfs(old_pdf: str,
         else:
             rect_old = doc_new[i].rect
         rect_new = doc_new[i].rect
-        if rect_old.width != rect_new.width or rect_old.height != rect_new.height:
+        width_diff = abs(rect_old.width - rect_new.width)
+        height_diff = abs(rect_old.height - rect_new.height)
+        if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
+            # pages are effectively the same size
+            transforms_new.append((1.0, 1.0, 0.0, 0.0))
+        elif rect_old.width != rect_new.width or rect_old.height != rect_new.height:
             sx = rect_old.width / rect_new.width
             sy = rect_old.height / rect_new.height
             s = min(sx, sy)
