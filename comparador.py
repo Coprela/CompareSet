@@ -32,13 +32,19 @@ def _extract_bboxes(doc: fitz.Document,
                 bboxes.append((r.x0 * sx + tx, r.y0 * sy + ty,
                                r.x1 * sx + tx, r.y1 * sy + ty, ""))
 
-        # Bounding boxes from text blocks
-        for block in page.get_text("blocks"):
-            if len(block) >= 5:
-                x0, y0, x1, y1, text = block[:5]
-                bboxes.append((float(x0) * sx + tx, float(y0) * sy + ty,
-                               float(x1) * sx + tx, float(y1) * sy + ty,
-                               str(text).strip()))
+        # Bounding boxes from individual words instead of full text blocks
+        for word in page.get_text("words"):
+            if len(word) >= 5:
+                x0, y0, x1, y1, text = word[:5]
+                bboxes.append(
+                    (
+                        float(x0) * sx + tx,
+                        float(y0) * sy + ty,
+                        float(x1) * sx + tx,
+                        float(y1) * sy + ty,
+                        str(text).strip(),
+                    )
+                )
 
         pages.append(bboxes)
     return pages
