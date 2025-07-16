@@ -1,4 +1,5 @@
 import fitz  # PyMuPDF
+from typing import Callable, Optional
 
 COLOR_REMOVE_DEFAULT = (1, 0, 0)  # vermelho
 COLOR_ADD_DEFAULT = (0, 0.8, 0)   # verde mais evidente
@@ -14,6 +15,7 @@ def gerar_pdf_com_destaques(
     color_add: tuple = COLOR_ADD_DEFAULT,
     color_remove: tuple = COLOR_REMOVE_DEFAULT,
     opacity: float = OPACITY_DEFAULT,
+    progress_callback: Optional[Callable[[float], None]] = None,
 ) -> None:
     """Create a PDF highlighting removed and added regions.
 
@@ -33,6 +35,8 @@ def gerar_pdf_com_destaques(
     doc_old = fitz.open(pdf_old)
     doc_new = fitz.open(pdf_new)
     final = fitz.open()
+    total_steps = len(doc_old) + len(doc_new)
+    done = 0
 
     # Página 1 - antigo com remoções
     for i, page in enumerate(doc_old):
@@ -43,6 +47,9 @@ def gerar_pdf_com_destaques(
                 r = fitz.Rect(item["bbox"])
                 new_page.draw_rect(r, fill=color_remove, width=0,
                                    fill_opacity=opacity)
+        done += 1
+        if progress_callback:
+            progress_callback((done / total_steps) * 100)
 
     # Página 2 - novo com adições
     for i, page in enumerate(doc_new):
@@ -53,6 +60,11 @@ def gerar_pdf_com_destaques(
                 r = fitz.Rect(item["bbox"])
                 new_page.draw_rect(r, fill=color_add, width=0,
                                    fill_opacity=opacity)
+        done += 1
+        if progress_callback:
+            progress_callback((done / total_steps) * 100)
 
     final.save(output_pdf)
+    if progress_callback:
+        progress_callback(100.0)
     print(f"PDF final com destaques salvo em: {output_pdf}")

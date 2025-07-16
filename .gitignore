@@ -1,0 +1,22 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Build output
+build/
+dist/
+*.dll
+*.exp
+*.lib
+*.pdb
+
+# Visual Studio
+*.suo
+*.user
+*.VC.db
+
+# PyInstaller
+*.spec
+
+# Misc
+.DS_Store

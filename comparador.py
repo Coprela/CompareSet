@@ -1,5 +1,8 @@
 import fitz
+import os
 from typing import List, Tuple, Dict, Optional
+
+import tempfile
 
 
 def _extract_bboxes(doc: fitz.Document,
@@ -57,6 +60,27 @@ def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, flo
     return inter / union if union else 0.0
 
 
+def _load_pdf_without_signatures(path: str) -> fitz.Document:
+    """Open a PDF removing digital signatures if present."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        signed = b"/ByteRange" in data or b"/Type /Sig" in data
+    except Exception:
+        signed = False
+
+    doc = fitz.open(path)
+    if not signed:
+        return doc
+
+    cleaned = fitz.open()
+    for i, page in enumerate(doc):
+        new_page = cleaned.new_page(width=page.rect.width, height=page.rect.height)
+        new_page.show_pdf_page(new_page.rect, doc, i)
+    doc.close()
+    return cleaned
+
+
 def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
                   new_boxes: List[Tuple[float, float, float, float, str]],
                   thr: float) -> Tuple[List[Tuple[float, float, float, float]],
@@ -87,15 +111,24 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
-def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
+from typing import Callable
+
+
+def comparar_pdfs(old_pdf: str,
+                   new_pdf: str,
+                   thr: float = 0.9,
+                   progress_callback: Optional[Callable[[float], None]] = None
+                   ) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
     The function takes page dimensions into account. When pages have
     different sizes they are scaled and translated so that comparisons
     happen in a shared coordinate space based on the old PDF pages.
     """
-    doc_old = fitz.open(old_pdf)
-    doc_new = fitz.open(new_pdf)
+    doc_old = _load_pdf_without_signatures(old_pdf)
+    doc_new = _load_pdf_without_signatures(new_pdf)
+
+    tolerance_pt = 72 / 25.4  # roughly one millimetre
 
     # compute transforms mapping new pages onto old pages
     transforms_new = []
@@ -105,7 +138,12 @@ def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, Lis
         else:
             rect_old = doc_new[i].rect
         rect_new = doc_new[i].rect
-        if rect_old.width != rect_new.width or rect_old.height != rect_new.height:
+        width_diff = abs(rect_old.width - rect_new.width)
+        height_diff = abs(rect_old.height - rect_new.height)
+        if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
+            # pages are effectively the same size
+            transforms_new.append((1.0, 1.0, 0.0, 0.0))
+        elif rect_old.width != rect_new.width or rect_old.height != rect_new.height:
             sx = rect_old.width / rect_new.width
             sy = rect_old.height / rect_new.height
             s = min(sx, sy)
@@ -127,5 +165,8 @@ def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, Lis
         rem, add = _compare_page(old_boxes, new_boxes, thr)
         removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
         adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
+        if progress_callback:
+            progress = ((page_num + 1) / max_pages) * 100
+            progress_callback(progress)
 
     return {"removidos": removidos, "adicionados": adicionados}

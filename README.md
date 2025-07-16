@@ -41,6 +41,8 @@ The resulting binary will be placed in the `dist` directory.
 
 CompareSet works with PDF pages sized according to the ISO A series. Pages
 from **A0** down to **A4** are handled during comparison.
+Pages whose dimensions differ by less than **1 mm** are treated as equal
+size so no scaling is applied.
 
 ## Using the GUI
 
@@ -48,9 +50,13 @@ from **A0** down to **A4** are handled during comparison.
 2. Click **Selecionar revisão antiga** and choose the old PDF.
 3. Click **Selecionar nova revisão** and choose the new PDF.
 4. Press **Comparar Revisões** and select where to save the output PDF.
-5. The generated file will contain two pages highlighting removals and additions.
-6. (Optional) Use **Cor de Adição** and **Cor de Remoção** to customize
-   highlight colors. The opacity is fixed at 0.3.
+5. Any digital signatures present in the chosen PDFs are stripped before
+   comparison so that signed documents can be processed normally.
+6. The generated file will contain two pages highlighting removals and
+   additions.
+7. (Optional) Use **Cor de Adição**, **Cor de Remoção** and the **Opacidade**
+   slider to customize highlight colors.
+main
 
 The icons used by the GUI are located in the `Imagem` folder.
 
@@ -74,3 +80,11 @@ gerar_pdf_com_destaques(
     opacity=0.3,
 )
 ```
+
+## Legacy C++ engine
+
+Previous releases shipped with `CompareSet.Engine.dll`, a compiled C++ library
+used for PDF comparison. The current codebase implements this logic purely in
+Python, so the DLL is not required. Should you still depend on the legacy
+engine, build it separately and place the resulting DLL next to the Python
+scripts.

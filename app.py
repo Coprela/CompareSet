@@ -144,6 +144,7 @@ class CompareSetApp:
         self.progress_bar = ttk.Progressbar(self.outer_frame, orient="horizontal", mode="determinate", length=400)
         self.progress_bar['maximum'] = 100
         self.progress_bar['value'] = 0
+        self.progress_value = 0
 
         self.label_credit = tk.Label(self.outer_frame, text="Desenvolvido por DOT-FUE", bg="white", font=("Arial", 8, "italic"), fg="gray")
         self.label_credit.pack(side="bottom", pady=(5, 5))
@@ -187,6 +188,10 @@ class CompareSetApp:
             self.color_remove = tuple(v/255 for v in cor)
             self.button_cor_remove.configure(bg=self.rgb_to_hex(self.color_remove))
 
+    def set_progress(self, value: float):
+        """Store progress value for the UI thread to consume."""
+        self.progress_value = value
+
     def iniciar_comparacao(self):
         if not self.pdf_antigo_path or not self.pdf_novo_path:
             messagebox.showerror("Erro", "Selecione ambos os PDFs para comparação.")
@@ -205,16 +210,23 @@ class CompareSetApp:
             return
 
         self.output_pdf = output_pdf
+
+        main
         self.progress_bar['value'] = 0
         self.progress_bar.pack(pady=10)
 
         self.compare_thread = threading.Thread(target=self.executar_comparacao)
         self.compare_thread.start()
+        self.button_comparar.config(state=tk.DISABLED)
         self.master.after(100, self.update_progress)
 
     def executar_comparacao(self):
         try:
-            dados = comparar_pdfs(self.pdf_antigo_path, self.pdf_novo_path)
+            dados = comparar_pdfs(
+                self.pdf_antigo_path,
+                self.pdf_novo_path,
+                progress_callback=lambda p: self.set_progress(p / 2)
+            )
             gerar_pdf_com_destaques(
                 self.pdf_antigo_path,
                 self.pdf_novo_path,
@@ -224,14 +236,14 @@ class CompareSetApp:
                 color_add=self.color_add,
                 color_remove=self.color_remove,
                 opacity=self.opacity,
+                progress_callback=lambda p: self.set_progress(50 + p / 2),
             )
         except Exception as e:
             messagebox.showerror("Erro", f"Erro durante a comparação:\n{e}")
 
     def update_progress(self):
         if self.compare_thread.is_alive():
-            if self.progress_bar['value'] < 95:
-                self.progress_bar['value'] += 1
+            self.progress_bar['value'] = self.progress_value
             self.master.after(100, self.update_progress)
         else:
             self.progress_bar['value'] = 100
@@ -239,6 +251,7 @@ class CompareSetApp:
 
     def finalizar_comparacao(self):
         self.progress_bar.pack_forget()
+        self.button_comparar.config(state=tk.NORMAL)
         messagebox.showinfo("Sucesso", f"PDF de comparação gerado com sucesso:\n{self.output_pdf}")
 
 if __name__ == "__main__":
