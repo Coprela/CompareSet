@@ -152,11 +152,34 @@ class CompareSetApp:
         self.label_version = tk.Label(self.outer_frame, text="Versão 2025.0.1 [Beta]", bg="white", font=("Arial", 8), fg="gray")
         self.label_version.place(relx=1.0, rely=1.0, anchor="se", x=-5, y=-5)
 
+        self.button_license = tk.Button(
+            self.outer_frame,
+            text="Licença",
+            command=self.mostrar_licenca,
+            bg="white",
+            fg="blue",
+            font=("Arial", 8, "underline"),
+            relief="flat",
+            borderwidth=0,
+            cursor="hand2"
+        )
+        self.button_license.place(relx=0.0, rely=1.0, anchor="sw", x=5, y=-5)
+
     def centralizar_janela(self, janela, largura, altura):
         janela.update_idletasks()
         x = (janela.winfo_screenwidth() // 2) - (largura // 2)
         y = (janela.winfo_screenheight() // 2) - (altura // 2)
         janela.geometry(f"{largura}x{altura}+{x}+{y}")
+
+    def mostrar_licenca(self):
+        """Exibe o texto da licença em uma janela de aviso."""
+        license_path = os.path.join(os.path.dirname(__file__), "LICENSE")
+        try:
+            with open(license_path, "r", encoding="utf-8") as f:
+                texto = f.read()
+        except Exception:
+            texto = "Arquivo de licença n\u00e3o encontrado."
+        messagebox.showinfo("Licen\u00e7a", texto)
 
     def selecionar_pdf_antigo(self):
         path = filedialog.askopenfilename(filetypes=[("PDF Files", "*.pdf")])
