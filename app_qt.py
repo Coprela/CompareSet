@@ -120,6 +120,20 @@ class CompareSetQt(QtWidgets.QWidget):
 
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
+
+        logo_path = os.path.join(os.path.dirname(__file__), "Imagem", "logo.png")
+        if os.path.exists(logo_path):
+            pix = QtGui.QPixmap(logo_path).scaledToWidth(200)
+            lbl_logo = QtWidgets.QLabel()
+            lbl_logo.setPixmap(pix)
+            top.addWidget(lbl_logo)
+
+            lbl_name = QtWidgets.QLabel("CompareSet")
+            font = lbl_name.font()
+            font.setBold(True)
+            lbl_name.setFont(font)
+            top.addWidget(lbl_name)
+
         top.addStretch()
 
         self.btn_improve = QtWidgets.QToolButton()
@@ -137,14 +151,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.combo_lang.setCurrentIndex(0)
         self.combo_lang.currentIndexChanged.connect(lambda: self.set_language(self.combo_lang.currentData()))
         top.addWidget(self.combo_lang)
-
-        logo_path = os.path.join(os.path.dirname(__file__), "Imagem", "logo.png")
-        if os.path.exists(logo_path):
-            pix = QtGui.QPixmap(logo_path).scaledToWidth(200)
-            lbl_logo = QtWidgets.QLabel()
-            lbl_logo.setPixmap(pix)
-            lbl_logo.setAlignment(QtCore.Qt.AlignCenter)
-            layout.addWidget(lbl_logo)
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
