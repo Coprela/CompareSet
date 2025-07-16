@@ -56,9 +56,8 @@ size so no scaling is applied.
    comparison so that signed documents can be processed normally.
 6. The generated file will contain two pages highlighting removals and
    additions.
-7. (Optional) Use **Cor de Adição** and **Cor de Remoção** to choose the
-   highlight colors. Opacity is fixed at **0.3**.
-main
+7. The progress bar indicates processing status so you know if the program
+   is still working or if something went wrong.
 
 The icons used by the GUI are located in the `Imagem` folder.
 

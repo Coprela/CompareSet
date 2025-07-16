@@ -10,5 +10,6 @@ PyInstaller.__main__.run([
     '--windowed',
     f"--add-data=Imagem{os.sep}logo.png{sep}Imagem",
     f"--add-data=Imagem{os.sep}Icon janela.ico{sep}Imagem",
+    f"--add-data=LICENSE{sep}.",
     f"--icon=Imagem{os.sep}Icon arquivo.ico",
 ])
