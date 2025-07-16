@@ -87,3 +87,9 @@ used for PDF comparison. The current codebase implements this logic purely in
 Python, so the DLL is not required. Should you still depend on the legacy
 engine, build it separately and place the resulting DLL next to the Python
 scripts.
+
+## License
+
+This project is distributed under the terms of the MIT License. The
+GUI includes a **Licen\u00e7a** button that opens a dialog displaying the
+full license text.
