@@ -141,48 +141,50 @@ def comparar_pdfs(old_pdf: str,
     different sizes they are scaled and translated so that comparisons
     happen in a shared coordinate space based on the old PDF pages.
     """
-    doc_old = _load_pdf_without_signatures(old_pdf)
-    doc_new = _load_pdf_without_signatures(new_pdf)
+    with _load_pdf_without_signatures(old_pdf) as doc_old, \
+            _load_pdf_without_signatures(new_pdf) as doc_new:
 
-    tolerance_pt = 72 / 25.4  # roughly one millimetre
+        tolerance_pt = 72 / 25.4  # roughly one millimetre
 
-    # compute transforms mapping new pages onto old pages
-    transforms_new = []
-    for i in range(len(doc_new)):
-        if i < len(doc_old):
-            rect_old = doc_old[i].rect
-        else:
-            rect_old = doc_new[i].rect
-        rect_new = doc_new[i].rect
-        width_diff = abs(rect_old.width - rect_new.width)
-        height_diff = abs(rect_old.height - rect_new.height)
-        if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
-            # pages are effectively the same size
-            transforms_new.append((1.0, 1.0, 0.0, 0.0))
-        elif rect_old.width != rect_new.width or rect_old.height != rect_new.height:
-            sx = rect_old.width / rect_new.width
-            sy = rect_old.height / rect_new.height
-            s = min(sx, sy)
-            tx = (rect_old.width - rect_new.width * s) / 2.0
-            ty = (rect_old.height - rect_new.height * s) / 2.0
-            transforms_new.append((s, s, tx, ty))
-        else:
-            transforms_new.append((1.0, 1.0, 0.0, 0.0))
+        # compute transforms mapping new pages onto old pages
+        transforms_new = []
+        for i in range(len(doc_new)):
+            if i < len(doc_old):
+                rect_old = doc_old[i].rect
+            else:
+                rect_old = doc_new[i].rect
+            rect_new = doc_new[i].rect
+            width_diff = abs(rect_old.width - rect_new.width)
+            height_diff = abs(rect_old.height - rect_new.height)
+            if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
+                # pages are effectively the same size
+                transforms_new.append((1.0, 1.0, 0.0, 0.0))
+            elif rect_old.width != rect_new.width or rect_old.height != rect_new.height:
+                sx = rect_old.width / rect_new.width
+                sy = rect_old.height / rect_new.height
+                s = min(sx, sy)
+                tx = (rect_old.width - rect_new.width * s) / 2.0
+                ty = (rect_old.height - rect_new.height * s) / 2.0
+                transforms_new.append((s, s, tx, ty))
+            else:
+                transforms_new.append((1.0, 1.0, 0.0, 0.0))
 
-    old_pages = _extract_bboxes(doc_old)
-    new_pages = _extract_bboxes(doc_new, transforms_new)
-    max_pages = max(len(old_pages), len(new_pages))
+        old_pages = _extract_bboxes(doc_old)
+        new_pages = _extract_bboxes(doc_new, transforms_new)
+        max_pages = max(len(old_pages), len(new_pages))
 
-    removidos = []
-    adicionados = []
-    for page_num in range(max_pages):
-        old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
-        new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
-        rem, add = _compare_page(old_boxes, new_boxes, thr)
-        removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
-        adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
-        if progress_callback:
-            progress = ((page_num + 1) / max_pages) * 100
-            progress_callback(progress)
+        removidos = []
+        adicionados = []
+        for page_num in range(max_pages):
+            old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
+            new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
+            rem, add = _compare_page(old_boxes, new_boxes, thr)
+            removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
+            adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
+            if progress_callback:
+                progress = ((page_num + 1) / max_pages) * 100
+                progress_callback(progress)
 
-    return {"removidos": removidos, "adicionados": adicionados}
+        result = {"removidos": removidos, "adicionados": adicionados}
+
+    return result
