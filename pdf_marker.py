@@ -3,7 +3,7 @@ from typing import Callable, Optional
 
 COLOR_REMOVE_DEFAULT = (1, 0, 0)  # vermelho
 COLOR_ADD_DEFAULT = (0, 0.8, 0)   # verde mais evidente
-OPACITY_DEFAULT = 0.4
+OPACITY_DEFAULT = 0.3
 
 
 def gerar_pdf_com_destaques(

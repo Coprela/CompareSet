@@ -56,6 +56,7 @@ size so no scaling is applied.
    additions.
 7. (Optional) Use **Cor de Adição**, **Cor de Remoção** and the **Opacidade**
    slider to customize highlight colors.
+main
 
 The icons used by the GUI are located in the `Imagem` folder.
 
@@ -76,7 +77,7 @@ gerar_pdf_com_destaques(
     "out.pdf",
     color_add=(0, 0.8, 0),
     color_remove=(1, 0, 0),
-    opacity=0.4,
+    opacity=0.3,
 )
 ```
 
