@@ -111,7 +111,14 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
-def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
+from typing import Callable
+
+
+def comparar_pdfs(old_pdf: str,
+                   new_pdf: str,
+                   thr: float = 0.9,
+                   progress_callback: Optional[Callable[[float], None]] = None
+                   ) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
     The function takes page dimensions into account. When pages have
@@ -151,5 +158,8 @@ def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, Lis
         rem, add = _compare_page(old_boxes, new_boxes, thr)
         removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
         adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
+        if progress_callback:
+            progress = ((page_num + 1) / max_pages) * 100
+            progress_callback(progress)
 
     return {"removidos": removidos, "adicionados": adicionados}
