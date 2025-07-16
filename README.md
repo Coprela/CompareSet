@@ -31,7 +31,11 @@ pip install pyinstaller
 python package.py
 ```
 
-The resulting binary will be placed in the `dist` directory.
+The resulting binary will be placed in the `dist` directory.  If the
+environment variables `SIGNTOOL`, `SIGN_CERT` and `SIGN_PASS` are
+defined, the script also attempts to sign the generated executable using
+Microsoft's `signtool`.  Set `SIGN_TIMESTAMP` to override the timestamp
+URL (defaults to the DigiCert service).
 
 ## Dependencies
 
