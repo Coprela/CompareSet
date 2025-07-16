@@ -28,6 +28,16 @@ def _extract_bboxes(doc: fitz.Document,
         # Bounding boxes from drawing objects (no associated text)
         for drawing in page.get_drawings():
             r = drawing.get("rect")
+            if not r:
+                xs = []
+                ys = []
+                for item in drawing.get("items", []):
+                    for point in item[1:]:
+                        if isinstance(point, (list, tuple)) and len(point) >= 2:
+                            xs.append(point[0])
+                            ys.append(point[1])
+                if xs and ys:
+                    r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
             if r:
                 bboxes.append((r.x0 * sx + tx, r.y0 * sy + ty,
                                r.x1 * sx + tx, r.y1 * sy + ty, ""))
