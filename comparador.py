@@ -2,9 +2,10 @@ import fitz
 from typing import List, Tuple, Dict, Optional
 
 
-def _extract_bboxes(doc: fitz.Document,
-                    transforms: Optional[List[Tuple[float, float, float, float]]] = None
-                    ) -> List[List[Tuple[float, float, float, float, str]]]:
+def _extract_bboxes(
+    doc: fitz.Document,
+    transforms: Optional[List[Tuple[float, float, float, float]]] = None,
+) -> List[List[Tuple[float, float, float, float, str]]]:
     """Return list of bboxes per page from drawings and text blocks.
 
     Parameters
@@ -26,22 +27,62 @@ def _extract_bboxes(doc: fitz.Document,
         for drawing in page.get_drawings():
             r = drawing.get("rect")
             if r:
-                bboxes.append((r.x0 * sx + tx, r.y0 * sy + ty,
-                               r.x1 * sx + tx, r.y1 * sy + ty, ""))
+                bboxes.append(
+                    (r.x0 * sx + tx, r.y0 * sy + ty, r.x1 * sx + tx, r.y1 * sy + ty, "")
+                )
+
+            # Some drawings do not expose a bounding rectangle when they are
+            # simple strokes like line segments.  Examine the drawing items and
+            # add boxes for straight lines explicitly.
+            items = drawing.get("items", [])
+            path = []
+            for item in items:
+                op = item[0]
+                if op == "m":
+                    path = [item[1]]
+                elif op == "l":
+                    path.append(item[1])
+                elif op in ("h",):
+                    # close path by repeating the first point if available
+                    if path:
+                        path.append(path[0])
+                elif op in ("S", "s"):
+                    # stroke current path - compute boxes for each segment
+                    for (x0, y0), (x1, y1) in zip(path, path[1:]):
+                        x_min, x_max = sorted([x0, x1])
+                        y_min, y_max = sorted([y0, y1])
+                        bboxes.append(
+                            (
+                                x_min * sx + tx,
+                                y_min * sy + ty,
+                                x_max * sx + tx,
+                                y_max * sy + ty,
+                                "",
+                            )
+                        )
+                    path = []
 
         # Bounding boxes from text blocks
         for block in page.get_text("blocks"):
             if len(block) >= 5:
                 x0, y0, x1, y1, text = block[:5]
-                bboxes.append((float(x0) * sx + tx, float(y0) * sy + ty,
-                               float(x1) * sx + tx, float(y1) * sy + ty,
-                               str(text).strip()))
+                bboxes.append(
+                    (
+                        float(x0) * sx + tx,
+                        float(y0) * sy + ty,
+                        float(x1) * sx + tx,
+                        float(y1) * sy + ty,
+                        str(text).strip(),
+                    )
+                )
 
         pages.append(bboxes)
     return pages
 
 
-def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> float:
+def _iou(
+    a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]
+) -> float:
     x1 = max(a[0], b[0])
     y1 = max(a[1], b[1])
     x2 = min(a[2], b[2])
@@ -57,10 +98,13 @@ def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, flo
     return inter / union if union else 0.0
 
 
-def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
-                  new_boxes: List[Tuple[float, float, float, float, str]],
-                  thr: float) -> Tuple[List[Tuple[float, float, float, float]],
-                                       List[Tuple[float, float, float, float]]]:
+def _compare_page(
+    old_boxes: List[Tuple[float, float, float, float, str]],
+    new_boxes: List[Tuple[float, float, float, float, str]],
+    thr: float,
+) -> Tuple[
+    List[Tuple[float, float, float, float]], List[Tuple[float, float, float, float]]
+]:
     """Compare two lists of boxes returning removed and added ones."""
     matched_new = set()
     removed = []
@@ -87,7 +131,9 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
-def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
+def comparar_pdfs(
+    old_pdf: str, new_pdf: str, thr: float = 0.9
+) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
     The function takes page dimensions into account. When pages have

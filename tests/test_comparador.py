@@ -7,8 +7,9 @@ from comparador import comparar_pdfs
 
 
 def test_comparar_pdfs_bounding_boxes():
-    result = comparar_pdfs(os.path.join("PDFs for test", "R0.pdf"),
-                           os.path.join("PDFs for test", "R1.pdf"))
+    result = comparar_pdfs(
+        os.path.join("PDFs for test", "R0.pdf"), os.path.join("PDFs for test", "R1.pdf")
+    )
 
     assert isinstance(result, dict)
     assert "removidos" in result
@@ -22,3 +23,12 @@ def test_comparar_pdfs_bounding_boxes():
         assert len(bbox) == 4
         for value in bbox:
             assert isinstance(value, float)
+
+
+def test_line_change_detection():
+    old_pdf = os.path.join("tests", "data", "line_old.pdf")
+    new_pdf = os.path.join("tests", "data", "line_new.pdf")
+    result = comparar_pdfs(old_pdf, new_pdf)
+
+    assert isinstance(result, dict)
+    assert result["removidos"] or result["adicionados"]
