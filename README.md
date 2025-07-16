@@ -15,11 +15,14 @@ tolerance is applied so that minor shifts do not count as changes.
    ```bash
    pip install -r requirements.txt
    ```
-4. Run the application:
+4. Run the Qt application (requires `PySide6` which is included in the
+   requirements file or can be installed with `pip install PySide6`):
    ```bash
-   python app.py
+   python app_qt.py
    ```
-   A Windows build is also available in `dist/CompareSet.exe`.
+   This interface provides improvement/help icons and a language
+   switcher. The original `app.py` Tkinter interface is kept for legacy
+   use. A Windows build is also available in `dist/CompareSet.exe`.
 
 ## Building an executable
 
@@ -54,7 +57,7 @@ size so no scaling is applied.
 
 ## Using the GUI
 
-1. Launch the program using `python app.py`.
+1. Launch the program using `python app_qt.py`.
 2. Click **Selecionar revisão antiga** and choose the old PDF.
 3. Click **Selecionar nova revisão** and choose the new PDF.
 4. Press **Comparar Revisões** and select where to save the output PDF.
@@ -69,12 +72,13 @@ The icons used by the GUI are located in the `Imagem` folder.
 
 ### Qt interface
 
-An alternative interface built with Qt is available in `app_qt.py`.  To run it,
-install the `PySide6` dependency and execute:
+The Qt version includes improvement/help icons and a language switcher.
+Ensure `PySide6` is installed (e.g. `pip install PySide6`) and run:
 
 ```bash
 python app_qt.py
 ```
+The classic `app.py` Tkinter interface remains available for legacy users.
 
 ## PDF highlighting function
 
