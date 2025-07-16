@@ -41,6 +41,8 @@ The resulting binary will be placed in the `dist` directory.
 
 CompareSet works with PDF pages sized according to the ISO A series. Pages
 from **A0** down to **A4** are handled during comparison.
+Pages whose dimensions differ by less than **1 mm** are treated as equal
+size so no scaling is applied.
 
 ## Using the GUI
 
