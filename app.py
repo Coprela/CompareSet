@@ -28,7 +28,7 @@ class CompareSetApp:
         self.output_pdf = ""
         self.color_add = (0, 0.8, 0)
         self.color_remove = (1, 0, 0)
-        self.opacity = 0.4
+        self.opacity = 0.3
 
         resources_dir = os.path.join(os.path.dirname(__file__), "Imagem")
         icon_path = os.path.join(resources_dir, "Icon janela.ico")
@@ -129,17 +129,6 @@ class CompareSetApp:
         )
         self.button_cor_remove.grid(row=0, column=1, padx=5)
 
-        self.opacity_scale = tk.Scale(
-            self.frame_opcoes,
-            from_=0.1,
-            to=1.0,
-            resolution=0.05,
-            orient="horizontal",
-            label="Opacidade",
-            length=150,
-        )
-        self.opacity_scale.set(self.opacity)
-        self.opacity_scale.grid(row=0, column=2, padx=5)
 
         self.button_comparar = tk.Button(
             self.outer_frame,
@@ -216,7 +205,6 @@ class CompareSetApp:
             return
 
         self.output_pdf = output_pdf
-        self.opacity = self.opacity_scale.get()
         self.progress_bar['value'] = 0
         self.progress_bar.pack(pady=10)
 
