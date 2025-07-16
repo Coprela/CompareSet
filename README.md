@@ -79,3 +79,11 @@ gerar_pdf_com_destaques(
     opacity=0.4,
 )
 ```
+
+## Legacy C++ engine
+
+Previous releases shipped with `CompareSet.Engine.dll`, a compiled C++ library
+used for PDF comparison. The current codebase implements this logic purely in
+Python, so the DLL is not required. Should you still depend on the legacy
+engine, build it separately and place the resulting DLL next to the Python
+scripts.
