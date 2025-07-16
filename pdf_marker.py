@@ -36,39 +36,41 @@ def gerar_pdf_com_destaques(
     total_steps = len(doc_old) + len(doc_new)
     done = 0
 
-    # Página 1 - antigo com remoções
-    for i, page in enumerate(doc_old):
-        new_page = final.new_page(width=page.rect.width, height=page.rect.height)
-        new_page.show_pdf_page(page.rect, doc_old, i)
-        for item in removidos:
-            if item["pagina"] == i:
-                r = fitz.Rect(item["bbox"])
-                new_page.draw_rect(
-                    r,
-                    fill=color_remove,
-                    width=0,
-                    fill_opacity=OPACITY_DEFAULT,
-                )
-        done += 1
-        if progress_callback:
-            progress_callback((done / total_steps) * 100)
+    max_pages = max(len(doc_old), len(doc_new))
+    for i in range(max_pages):
+        if i < len(doc_old):
+            page = doc_old[i]
+            new_page = final.new_page(width=page.rect.width, height=page.rect.height)
+            new_page.show_pdf_page(page.rect, doc_old, i)
+            for item in removidos:
+                if item["pagina"] == i:
+                    r = fitz.Rect(item["bbox"])
+                    new_page.draw_rect(
+                        r,
+                        fill=color_remove,
+                        width=0,
+                        fill_opacity=OPACITY_DEFAULT,
+                    )
+            done += 1
+            if progress_callback:
+                progress_callback((done / total_steps) * 100)
 
-    # Página 2 - novo com adições
-    for i, page in enumerate(doc_new):
-        new_page = final.new_page(width=page.rect.width, height=page.rect.height)
-        new_page.show_pdf_page(page.rect, doc_new, i)
-        for item in adicionados:
-            if item["pagina"] == i:
-                r = fitz.Rect(item["bbox"])
-                new_page.draw_rect(
-                    r,
-                    fill=color_add,
-                    width=0,
-                    fill_opacity=OPACITY_DEFAULT,
-                )
-        done += 1
-        if progress_callback:
-            progress_callback((done / total_steps) * 100)
+        if i < len(doc_new):
+            page = doc_new[i]
+            new_page = final.new_page(width=page.rect.width, height=page.rect.height)
+            new_page.show_pdf_page(page.rect, doc_new, i)
+            for item in adicionados:
+                if item["pagina"] == i:
+                    r = fitz.Rect(item["bbox"])
+                    new_page.draw_rect(
+                        r,
+                        fill=color_add,
+                        width=0,
+                        fill_opacity=OPACITY_DEFAULT,
+                    )
+            done += 1
+            if progress_callback:
+                progress_callback((done / total_steps) * 100)
 
     final.save(output_pdf)
     if progress_callback:

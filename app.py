@@ -221,6 +221,7 @@ class CompareSetApp:
 
         self.output_pdf = output_pdf
 
+        self.progress_value = 0
         self.progress_bar['value'] = 0
         self.label_progress.config(text="Iniciando...")
         self.label_progress.pack()
@@ -271,6 +272,15 @@ class CompareSetApp:
         self.label_progress.pack_forget()
         self.button_comparar.config(state=tk.NORMAL)
         messagebox.showinfo("Sucesso", f"PDF de comparação gerado com sucesso:\n{self.output_pdf}")
+        if messagebox.askyesno("Abrir arquivo", "Deseja abrir o PDF gerado?"):
+            try:
+                os.startfile(self.output_pdf)
+            except AttributeError:
+                import subprocess, sys
+                if sys.platform == "darwin":
+                    subprocess.call(["open", self.output_pdf])
+                else:
+                    subprocess.call(["xdg-open", self.output_pdf])
 
 if __name__ == "__main__":
     root = tk.Tk()
