@@ -64,6 +64,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "license_title": "License",
                 "improvement_tooltip": "Suggest improvement",
                 "help_tooltip": "Coming soon",
+                "open_prompt": "Open the generated PDF?",
+                "language": "Language",
             },
             "pt": {
                 "old_placeholder": "Revis\u00e3o antiga",
@@ -88,6 +90,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "license_title": "Licen\u00e7a",
                 "improvement_tooltip": "Sugerir melhoria",
                 "help_tooltip": "Em breve",
+                "open_prompt": "Deseja abrir o PDF gerado?",
+                "language": "Idioma",
             },
         }
         self._setup_ui()
@@ -110,6 +114,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_license.setText(t["license"])
         self.btn_improve.setToolTip(t["improvement_tooltip"])
         self.btn_help.setToolTip(t["help_tooltip"])
+        self.lbl_language.setText(t["language"])
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -126,6 +131,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_help = QtWidgets.QToolButton()
         self.btn_help.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogHelpButton))
         top.addWidget(self.btn_help)
+
+        self.lbl_language = QtWidgets.QLabel()
+        top.addWidget(self.lbl_language)
 
         self.combo_lang = QtWidgets.QComboBox()
         self.combo_lang.addItem("English", "en")
@@ -236,6 +244,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.progress.hide()
         if status == "success":
             QtWidgets.QMessageBox.information(self, self.tr("success"), self.tr("pdf_saved").format(info))
+            if QtWidgets.QMessageBox.question(self, self.tr("open_prompt"), self.tr("open_prompt")) == QtWidgets.QMessageBox.Yes:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(info))
         else:
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
 
