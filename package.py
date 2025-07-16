@@ -4,8 +4,9 @@ import PyInstaller.__main__
 
 sep = ';' if os.name == 'nt' else ':'
 
+# Build the executable starting from the Qt interface entry script.
 PyInstaller.__main__.run([
-    'app.py',
+    'app_qt.py',
     '--name=CompareSet',
     '--onefile',
     '--windowed',
