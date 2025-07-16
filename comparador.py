@@ -1,5 +1,8 @@
 import fitz
+import os
 from typing import List, Tuple, Dict, Optional
+
+import tempfile
 
 
 def _extract_bboxes(doc: fitz.Document,
@@ -57,6 +60,27 @@ def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, flo
     return inter / union if union else 0.0
 
 
+def _load_pdf_without_signatures(path: str) -> fitz.Document:
+    """Open a PDF removing digital signatures if present."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        signed = b"/ByteRange" in data or b"/Type /Sig" in data
+    except Exception:
+        signed = False
+
+    doc = fitz.open(path)
+    if not signed:
+        return doc
+
+    cleaned = fitz.open()
+    for i, page in enumerate(doc):
+        new_page = cleaned.new_page(width=page.rect.width, height=page.rect.height)
+        new_page.show_pdf_page(new_page.rect, doc, i)
+    doc.close()
+    return cleaned
+
+
 def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
                   new_boxes: List[Tuple[float, float, float, float, str]],
                   thr: float) -> Tuple[List[Tuple[float, float, float, float]],
@@ -94,8 +118,8 @@ def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, Lis
     different sizes they are scaled and translated so that comparisons
     happen in a shared coordinate space based on the old PDF pages.
     """
-    doc_old = fitz.open(old_pdf)
-    doc_new = fitz.open(new_pdf)
+    doc_old = _load_pdf_without_signatures(old_pdf)
+    doc_new = _load_pdf_without_signatures(new_pdf)
 
     # compute transforms mapping new pages onto old pages
     transforms_new = []

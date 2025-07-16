@@ -48,8 +48,11 @@ from **A0** down to **A4** are handled during comparison.
 2. Click **Selecionar revisão antiga** and choose the old PDF.
 3. Click **Selecionar nova revisão** and choose the new PDF.
 4. Press **Comparar Revisões** and select where to save the output PDF.
-5. The generated file will contain two pages highlighting removals and additions.
-6. (Optional) Use **Cor de Adição**, **Cor de Remoção** and the **Opacidade**
+5. Any digital signatures present in the chosen PDFs are stripped before
+   comparison so that signed documents can be processed normally.
+6. The generated file will contain two pages highlighting removals and
+   additions.
+7. (Optional) Use **Cor de Adição**, **Cor de Remoção** and the **Opacidade**
    slider to customize highlight colors.
 
 The icons used by the GUI are located in the `Imagem` folder.
