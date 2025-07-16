@@ -39,6 +39,10 @@ class CompareSetQt(QtWidgets.QWidget):
         super().__init__()
         self.setWindowTitle("CompareSet")
         self.resize(500, 300)
+        icon_path = os.path.join(
+            os.path.dirname(__file__), "Imagem", "Icon janela.ico"
+        )
+        self.setWindowIcon(QtGui.QIcon(icon_path))
         self.lang = "en"
         self.translations = {
             "en": {
