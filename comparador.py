@@ -1,5 +1,16 @@
 import fitz
+import string
 from typing import List, Tuple, Dict
+
+
+def normalize_text(text: str) -> str:
+    """Return normalized text.
+
+    Leading and trailing whitespace is removed, text is lowercased and
+    punctuation characters are stripped.
+    """
+    text = text.strip().lower()
+    return text.translate(str.maketrans("", "", string.punctuation))
 
 
 def _extract_bboxes(pdf_path: str) -> List[List[Tuple[float, float, float, float, str]]]:
@@ -57,7 +68,7 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
             if _iou(ob[:4], nb[:4]) >= thr:
                 matched_new.add(i)
                 found = True
-                if ob[4].strip() != nb[4].strip():
+                if normalize_text(ob[4]) != normalize_text(nb[4]):
                     # Geometry matches but text differs
                     removed.append(ob[:4])
                     added.append(nb[:4])
@@ -71,7 +82,19 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
 
 
 def comparar_pdfs(old_pdf: str, new_pdf: str, thr: float = 0.9) -> Dict[str, List[Dict]]:
-    """Compare two PDFs and return removed and added bounding boxes."""
+    """Compare two PDFs and return removed and added bounding boxes.
+
+    Parameters
+    ----------
+    old_pdf : str
+        Path to the older revision.
+    new_pdf : str
+        Path to the newer revision.
+    thr : float, optional
+        Intersection over Union (IoU) threshold used to match boxes. The
+        default of ``0.9`` works well for most documents but can be adjusted
+        if needed.
+    """
     old_pages = _extract_bboxes(old_pdf)
     new_pages = _extract_bboxes(new_pdf)
     max_pages = max(len(old_pages), len(new_pages))

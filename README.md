@@ -35,3 +35,15 @@ and removals.
    additions in green.
 
 The icons used by the GUI are located in the `Imagem` folder.
+
+## Programmatic API
+
+Bounding boxes can also be compared programmatically via
+`comparador.comparar_pdfs`.  The function accepts an optional `thr`
+parameter defining the IoU threshold used when matching boxes.  A lower
+threshold is more permissive, while the default of `0.9` is generally
+sufficient.
+
+Text is normalised during comparison by removing surrounding whitespace,
+lowercasing and stripping punctuation so that small formatting changes do
+not register as differences.
