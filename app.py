@@ -148,7 +148,7 @@ class CompareSetApp:
             font=self.shared_font,
         )
 
-        self.label_credit = tk.Label(self.outer_frame, text="Desenvolvido por DOT-FUE", bg="white", font=("Arial", 8, "italic"), fg="gray")
+        self.label_credit = tk.Label(self.outer_frame, text="Desenvolvido por DDT-FUE", bg="white", font=("Arial", 8, "italic"), fg="gray")
         self.label_credit.pack(side="bottom", pady=(5, 5))
 
         self.label_version = tk.Label(self.outer_frame, text="Versão 2025.0.1 [Beta]", bg="white", font=("Arial", 8), fg="gray")
