@@ -42,7 +42,8 @@ URL (defaults to the DigiCert service).
 - Python 3.8 or later
 - [Pillow](https://pypi.org/project/Pillow/) for image handling
 - [PyMuPDF](https://pypi.org/project/PyMuPDF/) for PDF operations
-- Tkinter (bundled with Python) for the GUI
+- Tkinter (bundled with Python) for the classic GUI
+- [PySide6](https://pypi.org/project/PySide6/) for the Qt interface
 
 ## Supported page formats
 
@@ -65,6 +66,15 @@ size so no scaling is applied.
    is still working or if something went wrong.
 
 The icons used by the GUI are located in the `Imagem` folder.
+
+### Qt interface
+
+An alternative interface built with Qt is available in `app_qt.py`.  To run it,
+install the `PySide6` dependency and execute:
+
+```bash
+python app_qt.py
+```
 
 ## PDF highlighting function
 
