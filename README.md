@@ -57,22 +57,23 @@ size so no scaling is applied.
 
 ## Using the GUI
 
-1. Launch the program using `python app_qt.py`.
-2. Click **Selecionar revisão antiga** and choose the old PDF.
-3. Click **Selecionar nova revisão** and choose the new PDF.
-4. Press **Comparar Revisões** and select where to save the output PDF.
+1. Launch the program using `python app_qt.py`. The window shows a custom icon from `Imagem/Icon janela.ico`.
+2. Click **Selecionar revisão antiga** (red button) and choose the old PDF.
+3. Click **Selecionar nova revisão** (green button) and choose the new PDF.
+4. Press the purple **Comparar Revisões** button and select where to save the output PDF.
 5. Any digital signatures present in the chosen PDFs are stripped before
    comparison so that signed documents can be processed normally.
 6. The generated file will contain two pages highlighting removals and
    additions.
 7. The progress bar indicates processing status so you know if the program
    is still working or if something went wrong.
+8. After the PDF is created you are asked if you want to open it with your default viewer.
 
 The icons used by the GUI are located in the `Imagem` folder.
 
 ### Qt interface
 
-The Qt version includes improvement/help icons and a language switcher.
+The Qt version includes improvement and help icons aligned to the top-right of the window. A drop-down next to them lets you switch between **EN** and **PTBR**.
 Ensure `PySide6` is installed (e.g. `pip install PySide6`) and run:
 
 ```bash
