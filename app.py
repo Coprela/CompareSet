@@ -222,6 +222,7 @@ class CompareSetApp:
 
         self.compare_thread = threading.Thread(target=self.executar_comparacao)
         self.compare_thread.start()
+        self.button_comparar.config(state=tk.DISABLED)
         self.master.after(100, self.update_progress)
 
     def executar_comparacao(self):
@@ -251,6 +252,7 @@ class CompareSetApp:
 
     def finalizar_comparacao(self):
         self.progress_bar.pack_forget()
+        self.button_comparar.config(state=tk.NORMAL)
         messagebox.showinfo("Sucesso", f"PDF de comparação gerado com sucesso:\n{self.output_pdf}")
 
 if __name__ == "__main__":
