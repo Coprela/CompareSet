@@ -228,12 +228,17 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.thread = ComparisonThread(old, new, out)
         self.thread.progress.connect(self.progress.setValue)
+        self.thread.progress.connect(self.update_status_label)
         self.thread.finished.connect(self.compare_finished)
         self.thread.start()
+
+    def update_status_label(self, value: float):
+        self.label_status.setText(f"{int(value)}%")
 
     def compare_finished(self, status: str, info: str):
         self.btn_compare.setEnabled(True)
         self.progress.hide()
+        self.label_status.clear()
         if status == "success":
             QtWidgets.QMessageBox.information(self, self.tr("success"), self.tr("pdf_saved").format(info))
         else:
