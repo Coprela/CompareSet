@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, colorchooser
 from tkinter import ttk
 import threading
 import os
@@ -26,6 +26,9 @@ class CompareSetApp:
         self.pdf_antigo_path = ""
         self.pdf_novo_path = ""
         self.output_pdf = ""
+        self.color_add = (0, 0.8, 0)
+        self.color_remove = (1, 0, 0)
+        self.opacity = 0.4
 
         resources_dir = os.path.join(os.path.dirname(__file__), "Imagem")
         icon_path = os.path.join(resources_dir, "Icon janela.ico")
@@ -102,6 +105,42 @@ class CompareSetApp:
         )
         self.button_novo.grid(row=1, column=1, padx=5, pady=5)
 
+        # Opções de destaque
+        self.frame_opcoes = tk.Frame(self.outer_frame, bg="white")
+        self.frame_opcoes.pack(pady=5)
+
+        self.button_cor_add = tk.Button(
+            self.frame_opcoes,
+            text="Cor de Adição",
+            command=self.selecionar_cor_add,
+            bg=self.rgb_to_hex(self.color_add),
+            fg="white",
+            width=15,
+        )
+        self.button_cor_add.grid(row=0, column=0, padx=5)
+
+        self.button_cor_remove = tk.Button(
+            self.frame_opcoes,
+            text="Cor de Remoção",
+            command=self.selecionar_cor_remove,
+            bg=self.rgb_to_hex(self.color_remove),
+            fg="white",
+            width=15,
+        )
+        self.button_cor_remove.grid(row=0, column=1, padx=5)
+
+        self.opacity_scale = tk.Scale(
+            self.frame_opcoes,
+            from_=0.1,
+            to=1.0,
+            resolution=0.05,
+            orient="horizontal",
+            label="Opacidade",
+            length=150,
+        )
+        self.opacity_scale.set(self.opacity)
+        self.opacity_scale.grid(row=0, column=2, padx=5)
+
         self.button_comparar = tk.Button(
             self.outer_frame,
             text="Comparar Revisões",
@@ -143,6 +182,22 @@ class CompareSetApp:
             self.entry_novo.delete(0, tk.END)
             self.entry_novo.insert(0, os.path.basename(path))
 
+    def rgb_to_hex(self, color):
+        r, g, b = color
+        return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+    def selecionar_cor_add(self):
+        cor = colorchooser.askcolor(color=self.rgb_to_hex(self.color_add))[0]
+        if cor:
+            self.color_add = tuple(v/255 for v in cor)
+            self.button_cor_add.configure(bg=self.rgb_to_hex(self.color_add))
+
+    def selecionar_cor_remove(self):
+        cor = colorchooser.askcolor(color=self.rgb_to_hex(self.color_remove))[0]
+        if cor:
+            self.color_remove = tuple(v/255 for v in cor)
+            self.button_cor_remove.configure(bg=self.rgb_to_hex(self.color_remove))
+
     def iniciar_comparacao(self):
         if not self.pdf_antigo_path or not self.pdf_novo_path:
             messagebox.showerror("Erro", "Selecione ambos os PDFs para comparação.")
@@ -161,6 +216,7 @@ class CompareSetApp:
             return
 
         self.output_pdf = output_pdf
+        self.opacity = self.opacity_scale.get()
         self.progress_bar['value'] = 0
         self.progress_bar.pack(pady=10)
 
@@ -177,6 +233,9 @@ class CompareSetApp:
                 dados["removidos"],
                 dados["adicionados"],
                 self.output_pdf,
+                color_add=self.color_add,
+                color_remove=self.color_remove,
+                opacity=self.opacity,
             )
         except Exception as e:
             messagebox.showerror("Erro", f"Erro durante a comparação:\n{e}")
