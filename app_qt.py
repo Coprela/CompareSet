@@ -39,11 +39,100 @@ class CompareSetQt(QtWidgets.QWidget):
         super().__init__()
         self.setWindowTitle("CompareSet")
         self.resize(500, 300)
+        self.lang = "en"
+        self.translations = {
+            "en": {
+                "old_placeholder": "Old revision",
+                "select_old": "Select old revision",
+                "new_placeholder": "New revision",
+                "select_new": "Select new revision",
+                "compare": "Compare Revisions",
+                "developed_by": "Developed by DDT-FUE",
+                "version": "Version 2025.0.1 [Beta]",
+                "license": "License",
+                "select_old_dialog": "Select old PDF",
+                "select_new_dialog": "Select new PDF",
+                "save_dialog": "Save comparison PDF",
+                "error": "Error",
+                "success": "Success",
+                "select_both": "Select both PDFs for comparison.",
+                "choose_diff": "Choose a different file name from the input PDF.",
+                "file_in_use": "The PDF is open in another program.",
+                "starting": "Starting...",
+                "pdf_saved": "PDF saved to: {}",
+                "license_missing": "License file not found.",
+                "license_title": "License",
+                "improvement_tooltip": "Suggest improvement",
+                "help_tooltip": "Coming soon",
+            },
+            "pt": {
+                "old_placeholder": "Revis\u00e3o antiga",
+                "select_old": "Selecionar revis\u00e3o antiga",
+                "new_placeholder": "Nova revis\u00e3o",
+                "select_new": "Selecionar nova revis\u00e3o",
+                "compare": "Comparar Revis\u00f5es",
+                "developed_by": "Desenvolvido por DDT-FUE",
+                "version": "Vers\u00e3o 2025.0.1 [Beta]",
+                "license": "Licen\u00e7a",
+                "select_old_dialog": "Selecione o PDF antigo",
+                "select_new_dialog": "Selecione o PDF novo",
+                "save_dialog": "Salvar PDF de compara\u00e7\u00e3o",
+                "error": "Erro",
+                "success": "Sucesso",
+                "select_both": "Selecione ambos os PDFs para compara\u00e7\u00e3o.",
+                "choose_diff": "Escolha um nome de arquivo diferente do PDF de entrada.",
+                "file_in_use": "O PDF est\u00e1 aberto em outro programa.",
+                "starting": "Iniciando...",
+                "pdf_saved": "PDF salvo em: {}",
+                "license_missing": "Arquivo de licen\u00e7a n\u00e3o encontrado.",
+                "license_title": "Licen\u00e7a",
+                "improvement_tooltip": "Sugerir melhoria",
+                "help_tooltip": "Em breve",
+            },
+        }
         self._setup_ui()
         self.thread: ComparisonThread | None = None
 
+    def tr(self, key: str) -> str:
+        return self.translations[self.lang].get(key, key)
+
+    def set_language(self, lang: str):
+        if lang in self.translations:
+            self.lang = lang
+        t = self.translations[self.lang]
+        self.edit_old.setPlaceholderText(t["old_placeholder"])
+        self.btn_old.setText(t["select_old"])
+        self.edit_new.setPlaceholderText(t["new_placeholder"])
+        self.btn_new.setText(t["select_new"])
+        self.btn_compare.setText(t["compare"])
+        self.lbl_credit.setText(t["developed_by"])
+        self.lbl_version.setText(t["version"])
+        self.btn_license.setText(t["license"])
+        self.btn_improve.setToolTip(t["improvement_tooltip"])
+        self.btn_help.setToolTip(t["help_tooltip"])
+
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
+
+        top = QtWidgets.QHBoxLayout()
+        layout.addLayout(top)
+        top.addStretch()
+
+        self.btn_improve = QtWidgets.QToolButton()
+        self.btn_improve.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogApplyButton))
+        self.btn_improve.clicked.connect(self.open_improvement_link)
+        top.addWidget(self.btn_improve)
+
+        self.btn_help = QtWidgets.QToolButton()
+        self.btn_help.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogHelpButton))
+        top.addWidget(self.btn_help)
+
+        self.combo_lang = QtWidgets.QComboBox()
+        self.combo_lang.addItem("English", "en")
+        self.combo_lang.addItem("Portugu\u00eas", "pt")
+        self.combo_lang.setCurrentIndex(0)
+        self.combo_lang.currentIndexChanged.connect(lambda: self.set_language(self.combo_lang.currentData()))
+        top.addWidget(self.combo_lang)
 
         logo_path = os.path.join(os.path.dirname(__file__), "Imagem", "logo.png")
         if os.path.exists(logo_path):
@@ -57,22 +146,20 @@ class CompareSetQt(QtWidgets.QWidget):
         layout.addLayout(grid)
 
         self.edit_old = QtWidgets.QLineEdit()
-        self.edit_old.setPlaceholderText("Revis\u00e3o antiga")
         self.edit_old.setReadOnly(True)
-        btn_old = QtWidgets.QPushButton("Selecionar revis\u00e3o antiga")
-        btn_old.clicked.connect(self.select_old)
+        self.btn_old = QtWidgets.QPushButton()
+        self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
-        grid.addWidget(btn_old, 0, 1)
+        grid.addWidget(self.btn_old, 0, 1)
 
         self.edit_new = QtWidgets.QLineEdit()
-        self.edit_new.setPlaceholderText("Nova revis\u00e3o")
         self.edit_new.setReadOnly(True)
-        btn_new = QtWidgets.QPushButton("Selecionar nova revis\u00e3o")
-        btn_new.clicked.connect(self.select_new)
+        self.btn_new = QtWidgets.QPushButton()
+        self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
-        grid.addWidget(btn_new, 1, 1)
+        grid.addWidget(self.btn_new, 1, 1)
 
-        self.btn_compare = QtWidgets.QPushButton("Comparar Revis\u00f5es")
+        self.btn_compare = QtWidgets.QPushButton()
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
 
@@ -87,29 +174,31 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom = QtWidgets.QHBoxLayout()
         layout.addLayout(bottom)
 
-        lbl_credit = QtWidgets.QLabel("Desenvolvido por DDT-FUE")
-        lbl_credit.setStyleSheet("color: gray")
-        bottom.addWidget(lbl_credit)
+        self.lbl_credit = QtWidgets.QLabel()
+        self.lbl_credit.setStyleSheet("color: gray")
+        bottom.addWidget(self.lbl_credit)
 
         bottom.addStretch()
 
-        lbl_version = QtWidgets.QLabel("Vers\u00e3o 2025.0.1 [Beta]")
-        lbl_version.setStyleSheet("color: gray")
-        bottom.addWidget(lbl_version)
+        self.lbl_version = QtWidgets.QLabel()
+        self.lbl_version.setStyleSheet("color: gray")
+        bottom.addWidget(self.lbl_version)
 
-        btn_license = QtWidgets.QPushButton("Licen\u00e7a")
-        btn_license.setFlat(True)
-        btn_license.clicked.connect(self.show_license)
-        bottom.addWidget(btn_license)
+        self.btn_license = QtWidgets.QPushButton()
+        self.btn_license.setFlat(True)
+        self.btn_license.clicked.connect(self.show_license)
+        bottom.addWidget(self.btn_license)
+
+        self.set_language(self.lang)
 
     # slots
     def select_old(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Selecione o PDF antigo", filter="PDF Files (*.pdf)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, self.tr("select_old_dialog"), filter="PDF Files (*.pdf)")
         if path:
             self.edit_old.setText(path)
 
     def select_new(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Selecione o PDF novo", filter="PDF Files (*.pdf)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, self.tr("select_new_dialog"), filter="PDF Files (*.pdf)")
         if path:
             self.edit_new.setText(path)
 
@@ -117,24 +206,24 @@ class CompareSetQt(QtWidgets.QWidget):
         old = self.edit_old.text()
         new = self.edit_new.text()
         if not old or not new:
-            QtWidgets.QMessageBox.critical(self, "Erro", "Selecione ambos os PDFs para compara\u00e7\u00e3o.")
+            QtWidgets.QMessageBox.critical(self, self.tr("error"), self.tr("select_both"))
             return
 
-        out, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Salvar PDF de compara\u00e7\u00e3o", filter="PDF Files (*.pdf)")
+        out, _ = QtWidgets.QFileDialog.getSaveFileName(self, self.tr("save_dialog"), filter="PDF Files (*.pdf)")
         if not out:
             return
 
         if out in (old, new):
-            QtWidgets.QMessageBox.critical(self, "Erro", "Escolha um nome de arquivo diferente do PDF de entrada.")
+            QtWidgets.QMessageBox.critical(self, self.tr("error"), self.tr("choose_diff"))
             return
 
         if os.path.exists(out) and not os.access(out, os.W_OK):
-            QtWidgets.QMessageBox.warning(self, "Arquivo em uso", "O PDF est\u00e1 aberto em outro programa.")
+            QtWidgets.QMessageBox.warning(self, self.tr("error"), self.tr("file_in_use"))
             return
 
         self.progress.setValue(0)
         self.progress.show()
-        self.label_status.setText("Iniciando...")
+        self.label_status.setText(self.tr("starting"))
         self.btn_compare.setEnabled(False)
 
         self.thread = ComparisonThread(old, new, out)
@@ -146,9 +235,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare.setEnabled(True)
         self.progress.hide()
         if status == "success":
-            QtWidgets.QMessageBox.information(self, "Sucesso", f"PDF salvo em: {info}")
+            QtWidgets.QMessageBox.information(self, self.tr("success"), self.tr("pdf_saved").format(info))
         else:
-            QtWidgets.QMessageBox.critical(self, "Erro", info)
+            QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
 
     def show_license(self):
         license_path = os.path.join(os.path.dirname(__file__), "LICENSE")
@@ -156,11 +245,16 @@ class CompareSetQt(QtWidgets.QWidget):
             with open(license_path, "r", encoding="utf-8") as f:
                 text = f.read()
         except Exception:
-            text = "Arquivo de licen\u00e7a n\u00e3o encontrado."
+            text = self.tr("license_missing")
         dlg = QtWidgets.QMessageBox(self)
-        dlg.setWindowTitle("Licen\u00e7a")
+        dlg.setWindowTitle(self.tr("license_title"))
         dlg.setText(text)
         dlg.exec()
+
+    def open_improvement_link(self):
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(
+            "https://forms.office.com/pages/responsepage.aspx?id=UckECKCTXUCA5PqHx1UdaqDQL679cxJPq2yFoswL_2BUNVFZVFYzRFhVUzNaQzU0R0xYVEFNN1VXVi4u&route=shorturl"
+        ))
 
 
 if __name__ == "__main__":
