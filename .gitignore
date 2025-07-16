@@ -20,3 +20,6 @@ dist/
 
 # Misc
 .DS_Store
+# Debug/export files
+*terminal.txt
+pyinstaller
