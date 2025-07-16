@@ -14,7 +14,6 @@ def gerar_pdf_com_destaques(
     output_pdf: str,
     color_add: tuple = COLOR_ADD_DEFAULT,
     color_remove: tuple = COLOR_REMOVE_DEFAULT,
-    opacity: float = OPACITY_DEFAULT,
     progress_callback: Optional[Callable[[float], None]] = None,
 ) -> None:
     """Create a PDF highlighting removed and added regions.
@@ -29,8 +28,7 @@ def gerar_pdf_com_destaques(
         File path where the annotated PDF will be saved.
     color_add, color_remove : tuple, optional
         RGB colors in the range ``0-1`` for additions and removals.
-    opacity : float, optional
-        Fill transparency in the range ``0-1``.
+        The highlight opacity is fixed at ``0.3``.
     """
     doc_old = fitz.open(pdf_old)
     doc_new = fitz.open(pdf_new)
@@ -45,8 +43,12 @@ def gerar_pdf_com_destaques(
         for item in removidos:
             if item["pagina"] == i:
                 r = fitz.Rect(item["bbox"])
-                new_page.draw_rect(r, fill=color_remove, width=0,
-                                   fill_opacity=opacity)
+                new_page.draw_rect(
+                    r,
+                    fill=color_remove,
+                    width=0,
+                    fill_opacity=OPACITY_DEFAULT,
+                )
         done += 1
         if progress_callback:
             progress_callback((done / total_steps) * 100)
@@ -58,8 +60,12 @@ def gerar_pdf_com_destaques(
         for item in adicionados:
             if item["pagina"] == i:
                 r = fitz.Rect(item["bbox"])
-                new_page.draw_rect(r, fill=color_add, width=0,
-                                   fill_opacity=opacity)
+                new_page.draw_rect(
+                    r,
+                    fill=color_add,
+                    width=0,
+                    fill_opacity=OPACITY_DEFAULT,
+                )
         done += 1
         if progress_callback:
             progress_callback((done / total_steps) * 100)

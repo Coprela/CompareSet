@@ -28,7 +28,6 @@ class CompareSetApp:
         self.output_pdf = ""
         self.color_add = (0, 0.8, 0)
         self.color_remove = (1, 0, 0)
-        self.opacity = 0.3
 
         resources_dir = os.path.join(os.path.dirname(__file__), "Imagem")
         icon_path = os.path.join(resources_dir, "Icon janela.ico")
@@ -258,7 +257,6 @@ class CompareSetApp:
                 self.output_pdf,
                 color_add=self.color_add,
                 color_remove=self.color_remove,
-                opacity=self.opacity,
                 progress_callback=lambda p: self.set_progress(50 + p / 2),
             )
         except Exception as e:
