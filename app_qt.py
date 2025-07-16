@@ -4,6 +4,14 @@ from comparador import comparar_pdfs
 from pdf_marker import gerar_pdf_com_destaques
 
 
+def file_in_use(path: str) -> bool:
+    try:
+        with open(path, "rb+"):
+            return False
+    except Exception:
+        return True
+
+
 class ComparisonThread(QtCore.QThread):
     progress = QtCore.Signal(float)
     finished = QtCore.Signal(str, str)
@@ -246,7 +254,7 @@ class CompareSetQt(QtWidgets.QWidget):
             QtWidgets.QMessageBox.critical(self, self.tr("error"), self.tr("choose_diff"))
             return
 
-        if os.path.exists(out) and not os.access(out, os.W_OK):
+        if os.path.exists(out) and file_in_use(out):
             QtWidgets.QMessageBox.warning(self, self.tr("error"), self.tr("file_in_use"))
             return
 
