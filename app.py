@@ -207,16 +207,16 @@ class CompareSetApp:
             messagebox.showerror("Erro", "Selecione ambos os PDFs para comparação.")
             return
 
-        if arquivo_em_uso(self.pdf_antigo_path) or arquivo_em_uso(self.pdf_novo_path):
-            messagebox.showwarning("Arquivo em uso", "O PDF está aberto em outro programa. Feche antes de continuar.")
-            return
-
         output_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF Files", "*.pdf")], title="Salvar PDF de comparação")
         if not output_pdf:
             return
 
         if output_pdf in (self.pdf_antigo_path, self.pdf_novo_path):
             messagebox.showerror("Erro", "Escolha um nome de arquivo diferente do PDF de entrada.")
+            return
+
+        if os.path.exists(output_pdf) and arquivo_em_uso(output_pdf):
+            messagebox.showwarning("Arquivo em uso", "O PDF está aberto em outro programa. Feche antes de continuar.")
             return
 
         self.output_pdf = output_pdf
@@ -246,6 +246,13 @@ class CompareSetApp:
                 self.output_pdf,
                 progress_callback=lambda p: self.set_progress(50 + p / 2),
             )
+        except PermissionError:
+            messagebox.showwarning("Arquivo em uso", "O PDF está aberto em outro programa. Feche antes de continuar.")
+        except OSError as e:
+            if getattr(e, "errno", None) in (13, 32):
+                messagebox.showwarning("Arquivo em uso", "O PDF está aberto em outro programa. Feche antes de continuar.")
+            else:
+                messagebox.showerror("Erro", f"Erro durante a comparação:\n{e}")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro durante a comparação:\n{e}")
 
