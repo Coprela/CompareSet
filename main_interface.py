@@ -219,11 +219,11 @@ class CompareSetQt(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Expanding,
             QtWidgets.QSizePolicy.Fixed,
         )
+        progress_height = max(8, self.progress.sizeHint().height() // 2)
+        self.progress.setFixedHeight(progress_height)
 
         self._progress_placeholder = QtWidgets.QWidget()
-        self._progress_placeholder.setFixedHeight(
-            self.progress.sizeHint().height()
-        )
+        self._progress_placeholder.setFixedHeight(progress_height)
         self._progress_stack = QtWidgets.QStackedLayout()
         self._progress_stack.addWidget(self.progress)
         self._progress_stack.addWidget(self._progress_placeholder)
