@@ -5,6 +5,7 @@ import fitz  # PyMuPDF
 COLOR_REMOVE_DEFAULT = (1, 0, 0)  # vermelho
 COLOR_ADD_DEFAULT = (0, 0.8, 0)  # verde mais evidente
 OPACITY_DEFAULT = 0.3
+BBOX_MARGIN = 0.5  # increase highlight thickness (points)
 
 
 def gerar_pdf_com_destaques(
@@ -48,6 +49,10 @@ def gerar_pdf_com_destaques(
                 for item in removidos:
                     if item["pagina"] == i:
                         r = fitz.Rect(item["bbox"])
+                        r.x0 -= BBOX_MARGIN
+                        r.y0 -= BBOX_MARGIN
+                        r.x1 += BBOX_MARGIN
+                        r.y1 += BBOX_MARGIN
                         new_page.draw_rect(
                             r,
                             fill=color_remove,
@@ -67,6 +72,10 @@ def gerar_pdf_com_destaques(
                 for item in adicionados:
                     if item["pagina"] == i:
                         r = fitz.Rect(item["bbox"])
+                        r.x0 -= BBOX_MARGIN
+                        r.y0 -= BBOX_MARGIN
+                        r.x1 += BBOX_MARGIN
+                        r.y1 += BBOX_MARGIN
                         new_page.draw_rect(
                             r,
                             fill=color_add,

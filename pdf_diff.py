@@ -174,6 +174,38 @@ def _remove_unchanged(
     return rem_filtered, add_filtered
 
 
+def _remove_contained(boxes: List[Dict], eps: float = 0.01) -> List[Dict]:
+    """Remove boxes fully contained within larger ones."""
+
+    def _contains(a: List[float], b: List[float]) -> bool:
+        return (
+            a[0] <= b[0] + eps
+            and a[1] <= b[1] + eps
+            and a[2] >= b[2] - eps
+            and a[3] >= b[3] - eps
+        )
+
+    filtered: List[Dict] = []
+    for i, box in enumerate(boxes):
+        contained = False
+        for j, other in enumerate(boxes):
+            if i == j:
+                continue
+            if _contains(other["bbox"], box["bbox"]):
+                if (
+                    (other["bbox"][2] - other["bbox"][0])
+                    * (other["bbox"][3] - other["bbox"][1])
+                    <=
+                    (box["bbox"][2] - box["bbox"][0])
+                    * (box["bbox"][3] - box["bbox"][1])
+                ):
+                    contained = True
+                    break
+        if not contained:
+            filtered.append(box)
+    return filtered
+
+
 from typing import Callable
 
 
@@ -267,6 +299,8 @@ def comparar_pdfs(
                     progress_callback(progress)
 
             removidos, adicionados = _remove_unchanged(removidos, adicionados)
+            removidos = _remove_contained(removidos)
+            adicionados = _remove_contained(adicionados)
             result = {"removidos": removidos, "adicionados": adicionados}
             current = (
                 {(r["pagina"], tuple(r["bbox"])) for r in removidos},
