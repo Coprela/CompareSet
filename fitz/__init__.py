@@ -58,6 +58,15 @@ else:
             pass
 
 
+    class Pixmap:
+        """Minimal stand in for :class:`fitz.Pixmap`."""
+
+        def __init__(self, width=0, height=0, samples=b"", alpha=0):
+            self.width = width
+            self.height = height
+            self.samples = samples
+            self.alpha = alpha
+
     def open(*args, **kwargs):
         return Document()
 
