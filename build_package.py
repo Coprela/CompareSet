@@ -16,11 +16,13 @@ PyInstaller.__main__.run(
         f"--add-data=Images{os.sep}Icon - Question Mark Help.png{sep}Images",
         f"--add-data=Images{os.sep}Icon - Gear.png{sep}Images",
         f"--add-data=Images{os.sep}Icon - License.png{sep}Images",
-        f"--add-data=Images{os.sep}Icon - CompareSet.ico{sep}Images",
+        # the application icon is bundled using the 256x256 version
+        # as we don't ship a generic 'Icon - CompareSet.ico'
+        f"--add-data=Images{os.sep}Icon - CompareSet 256 x 256.ico{sep}Images",
         f"--add-data=LICENSE{sep}.",
         f"--add-data=LICENSE_EN.txt{sep}.",
         f"--add-data=LICENSE_PT.txt{sep}.",
-        f"--icon=Images{os.sep}Icon - CompareSet.ico",
+        f"--icon=Images{os.sep}Icon - CompareSet 256 x 256.ico",
     ]
 )
 
