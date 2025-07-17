@@ -31,7 +31,7 @@ To create a standalone executable from the project, install
 
 ```bash
 pip install pyinstaller
-python package.py
+python build_package.py
 ```
 
 The resulting binary will be placed in the `dist` directory.  If the
