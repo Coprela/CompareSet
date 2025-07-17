@@ -37,6 +37,10 @@ class ComparisonThread(QtCore.QThread):
                 adaptive=True,
                 progress_callback=lambda p: self.progress.emit(p / 2),
             )
+            if not dados["removidos"] and not dados["adicionados"]:
+                self.progress.emit(100.0)
+                self.finished.emit("no_diffs", "")
+                return
             gerar_pdf_com_destaques(
                 self.old_pdf,
                 self.new_pdf,
@@ -87,6 +91,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Language:",
                 "settings_tooltip": "Settings",
                 "settings_title": "Settings",
+                "no_diffs_title": "No differences",
+                "no_diffs_msg": "The PDF comparison found no differences.",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -112,6 +118,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Idioma:",
                 "settings_tooltip": "Configura\u00e7\u00f5es",
                 "settings_title": "Configura\u00e7\u00f5es",
+                "no_diffs_title": "Sem diferen\u00e7as",
+                "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
             },
         }
         self.old_path = ""
@@ -289,6 +297,12 @@ class CompareSetQt(QtWidgets.QWidget):
             )
             return
 
+        if os.path.abspath(old) == os.path.abspath(new):
+            QtWidgets.QMessageBox.information(
+                self, self.tr("no_diffs_title"), self.tr("no_diffs_msg")
+            )
+            return
+
         out, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, self.tr("save_dialog"), filter="PDF Files (*.pdf)"
         )
@@ -347,7 +361,11 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings.setEnabled(True)
         self._progress_stack.setCurrentIndex(1)
         self.label_status.clear()
-        if status == "success":
+        if status == "no_diffs":
+            QtWidgets.QMessageBox.information(
+                self, self.tr("no_diffs_title"), self.tr("no_diffs_msg")
+            )
+        elif status == "success":
             QtWidgets.QMessageBox.information(
                 self, self.tr("success"), self.tr("pdf_saved").format(info)
             )
