@@ -396,6 +396,14 @@ class CompareSetQt(QtWidgets.QWidget):
 
 
 if __name__ == "__main__":
+    # enable high DPI scaling so icons look crisp on high-resolution screens
+    QtCore.QCoreApplication.setAttribute(
+        QtCore.Qt.AA_EnableHighDpiScaling, True
+    )
+    QtCore.QCoreApplication.setAttribute(
+        QtCore.Qt.AA_UseHighDpiPixmaps, True
+    )
+
     app = QtWidgets.QApplication([])
     win = CompareSetQt()
     win.show()
