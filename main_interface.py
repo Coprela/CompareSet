@@ -233,7 +233,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.lbl_version = QtWidgets.QLabel()
         ver_font = self.lbl_version.font()
-        ver_font.setPointSize(ver_font.pointSize() + 2)
+        ver_font.setPointSize(ver_font.pointSize() + 4)
         ver_font.setBold(True)
         self.lbl_version.setFont(ver_font)
         self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
@@ -245,19 +245,20 @@ class CompareSetQt(QtWidgets.QWidget):
         layout.addLayout(bottom)
 
         self.lbl_copyright = QtWidgets.QLabel()
-        self.lbl_copyright.setStyleSheet("color: blue")
+        self.lbl_copyright.setStyleSheet("color: gray")
         bottom.addWidget(self.lbl_copyright)
 
         bottom.addStretch()
 
         self.btn_license = QtWidgets.QPushButton()
         self.btn_license.setStyleSheet(
-            "QPushButton{color: blue; background: transparent; border: none;}"
-            "QPushButton:disabled{color: #555555;}"
+            "QPushButton{background-color:white; color:black; border:1px solid black;}"
+            "QPushButton:disabled{color:#555555;}"
         )
         font = self.btn_license.font()
         font.setBold(True)
-        font.setPointSize(max(font.pointSize() - 1, 1))
+        font.setPointSize(font.pointSize())
+        font.setUnderline(True)
         self.btn_license.setFont(font)
         self.btn_license.clicked.connect(self.show_license)
 
