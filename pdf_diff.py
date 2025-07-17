@@ -124,12 +124,13 @@ def _compare_page(
     new_boxes: List[Tuple[float, float, float, float, str]],
     thr: float,
 ) -> Tuple[
-    List[Tuple[float, float, float, float]], List[Tuple[float, float, float, float]]
+    List[Tuple[float, float, float, float, str]],
+    List[Tuple[float, float, float, float, str]],
 ]:
     """Compare two lists of boxes returning removed and added ones."""
     matched_new = set()
-    removed = []
-    added = []
+    removed: List[Tuple[float, float, float, float, str]] = []
+    added: List[Tuple[float, float, float, float, str]] = []
 
     for ob in old_boxes:
         found = False
@@ -141,14 +142,14 @@ def _compare_page(
                 found = True
                 if ob[4].strip() != nb[4].strip():
                     # Geometry matches but text differs
-                    removed.append(ob[:4])
-                    added.append(nb[:4])
+                    removed.append(ob)
+                    added.append(nb)
                 break
         if not found:
-            removed.append(ob[:4])
+            removed.append(ob)
 
     # Any new boxes not matched are considered additions
-    added.extend(nb[:4] for i, nb in enumerate(new_boxes) if i not in matched_new)
+    added.extend(nb for i, nb in enumerate(new_boxes) if i not in matched_new)
     return removed, added
 
 
@@ -172,6 +173,44 @@ def _remove_unchanged(
     rem_filtered = [r for r in removidos if _key(r) not in duplicates]
     add_filtered = [a for a in adicionados if _key(a) not in duplicates]
     return rem_filtered, add_filtered
+
+
+def _remove_moved_same_text(
+    removidos: List[Dict],
+    adicionados: List[Dict],
+    dist: float = 1.0,
+    size_eps: float = 0.5,
+) -> Tuple[List[Dict], List[Dict]]:
+    """Discard pairs with the same text that only moved slightly."""
+
+    def _center(b: List[float]) -> Tuple[float, float]:
+        return ((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0)
+
+    filtered_rem: List[Dict] = []
+    used_add = set()
+    for r in removidos:
+        match = None
+        for i, a in enumerate(adicionados):
+            if i in used_add or r["pagina"] != a["pagina"]:
+                continue
+            if r.get("texto", "").strip() == a.get("texto", "").strip():
+                crx, cry = _center(r["bbox"])
+                cax, cay = _center(a["bbox"])
+                if abs(crx - cax) <= dist and abs(cry - cay) <= dist:
+                    rw = r["bbox"][2] - r["bbox"][0]
+                    rh = r["bbox"][3] - r["bbox"][1]
+                    aw = a["bbox"][2] - a["bbox"][0]
+                    ah = a["bbox"][3] - a["bbox"][1]
+                    if abs(rw - aw) <= size_eps and abs(rh - ah) <= size_eps:
+                        match = i
+                        break
+        if match is None:
+            filtered_rem.append(r)
+        else:
+            used_add.add(match)
+
+    filtered_add = [a for i, a in enumerate(adicionados) if i not in used_add]
+    return filtered_rem, filtered_add
 
 
 def _remove_contained(boxes: List[Dict], eps: float = 0.01) -> List[Dict]:
@@ -291,14 +330,19 @@ def comparar_pdfs(
                 old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
                 new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
                 rem, add = _compare_page(old_boxes, new_boxes, thr_val)
-                removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
-                adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
+                removidos.extend(
+                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]} for b in rem
+                )
+                adicionados.extend(
+                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]} for b in add
+                )
                 if progress_callback:
                     done = j * max_pages + page_num + 1
                     progress = (done / total_steps) * 100
                     progress_callback(progress)
 
             removidos, adicionados = _remove_unchanged(removidos, adicionados)
+            removidos, adicionados = _remove_moved_same_text(removidos, adicionados)
             removidos = _remove_contained(removidos)
             adicionados = _remove_contained(adicionados)
             result = {"removidos": removidos, "adicionados": adicionados}
