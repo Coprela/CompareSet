@@ -45,22 +45,20 @@ class ComparisonThread(QtCore.QThread):
 class CompareSetQt(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CompareSet")
+        self.setWindowTitle("CompareSet – Version 2025.0.1 Beta")
         self.resize(500, 300)
         icon_path = os.path.join(
             os.path.dirname(__file__), "Imagem", "Icon janela.ico"
         )
         self.setWindowIcon(QtGui.QIcon(icon_path))
-        self.lang = "en"
+        self.lang = "pt"
         self.translations = {
             "en": {
-                "old_placeholder": "Old revision",
                 "select_old": "Select old revision",
-                "new_placeholder": "New revision",
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
                 "developed_by": "Developed by DDT-FUE",
-                "version": "Version 2025.0.1 [Beta]",
+                "copyright": "\u00a9 TechnipFMC",
                 "license": "License",
                 "select_old_dialog": "Select old PDF",
                 "select_new_dialog": "Select new PDF",
@@ -81,13 +79,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Language:",
             },
             "pt": {
-                "old_placeholder": "Revis\u00e3o antiga",
                 "select_old": "Selecionar revis\u00e3o antiga",
-                "new_placeholder": "Nova revis\u00e3o",
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
                 "developed_by": "Desenvolvido por DDT-FUE",
-                "version": "Vers\u00e3o 2025.0.1 [Beta]",
+                "copyright": "\u00a9 TechnipFMC",
                 "license": "Licen\u00e7a",
                 "select_old_dialog": "Selecione o PDF antigo",
                 "select_new_dialog": "Selecione o PDF novo",
@@ -108,6 +104,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Idioma:",
             },
         }
+        self.old_path = ""
+        self.new_path = ""
         self._setup_ui()
         self.thread: ComparisonThread | None = None
 
@@ -118,13 +116,13 @@ class CompareSetQt(QtWidgets.QWidget):
         if lang in self.translations:
             self.lang = lang
         t = self.translations[self.lang]
-        self.edit_old.setPlaceholderText(t["old_placeholder"])
+        self.edit_old.setPlaceholderText("")
         self.btn_old.setText(t["select_old"])
-        self.edit_new.setPlaceholderText(t["new_placeholder"])
+        self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
         self.lbl_credit.setText(t["developed_by"])
-        self.lbl_version.setText(t["version"])
+        self.lbl_copyright.setText(t["copyright"])
         self.btn_license.setText(t["license"])
         self.btn_improve.setToolTip(t["improvement_tooltip"])
         self.btn_help.setToolTip(t["help_tooltip"])
@@ -137,18 +135,11 @@ class CompareSetQt(QtWidgets.QWidget):
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
 
-        logo_path = os.path.join(os.path.dirname(__file__), "Imagem", "logo.png")
-        if os.path.exists(logo_path):
-            pix = QtGui.QPixmap(logo_path).scaledToWidth(200)
-            lbl_logo = QtWidgets.QLabel()
-            lbl_logo.setPixmap(pix)
-            top.addWidget(lbl_logo)
-
-            lbl_name = QtWidgets.QLabel("CompareSet")
-            font = lbl_name.font()
-            font.setBold(True)
-            lbl_name.setFont(font)
-            top.addWidget(lbl_name)
+        lbl_name = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
+        font = lbl_name.font()
+        font.setBold(True)
+        lbl_name.setFont(font)
+        top.addWidget(lbl_name)
 
         top.addStretch()
 
@@ -167,7 +158,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.combo_lang = QtWidgets.QComboBox()
         self.combo_lang.addItem("EN", "en")
         self.combo_lang.addItem("PTBR", "pt")
-        self.combo_lang.setCurrentIndex(0)
+        self.combo_lang.setCurrentIndex(1)
         self.combo_lang.currentIndexChanged.connect(lambda: self.set_language(self.combo_lang.currentData()))
         top.addWidget(self.combo_lang)
 
@@ -176,10 +167,11 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.edit_old = QtWidgets.QLineEdit()
         self.edit_old.setReadOnly(True)
+        self.edit_old.setFixedWidth(200)
         self.btn_old = QtWidgets.QPushButton()
         self.btn_old.setStyleSheet(
-            "QPushButton{background-color:#bd0003;color:white;}"
-            "QPushButton:disabled{background-color:#bd0003;color:white;}"
+            "QPushButton{background-color:#000000;color:white;}"
+            "QPushButton:disabled{background-color:#000000;color:white;}"
         )
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
@@ -187,10 +179,11 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.edit_new = QtWidgets.QLineEdit()
         self.edit_new.setReadOnly(True)
+        self.edit_new.setFixedWidth(200)
         self.btn_new = QtWidgets.QPushButton()
         self.btn_new.setStyleSheet(
-            "QPushButton{background-color:#009929;color:white;}"
-            "QPushButton:disabled{background-color:#009929;color:white;}"
+            "QPushButton{background-color:#000000;color:white;}"
+            "QPushButton:disabled{background-color:#000000;color:white;}"
         )
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
@@ -221,12 +214,17 @@ class CompareSetQt(QtWidgets.QWidget):
 
         bottom.addStretch()
 
-        self.lbl_version = QtWidgets.QLabel()
-        self.lbl_version.setStyleSheet("color: gray")
-        bottom.addWidget(self.lbl_version)
+        self.lbl_copyright = QtWidgets.QLabel()
+        self.lbl_copyright.setStyleSheet("color: gray")
+        bottom.addWidget(self.lbl_copyright)
 
         self.btn_license = QtWidgets.QPushButton()
-        self.btn_license.setFlat(True)
+        self.btn_license.setStyleSheet(
+            "QPushButton{border:1px solid #471F6F;padding:3px;}"
+        )
+        font = self.btn_license.font()
+        font.setBold(True)
+        self.btn_license.setFont(font)
         self.btn_license.clicked.connect(self.show_license)
         bottom.addWidget(self.btn_license)
 
@@ -234,18 +232,24 @@ class CompareSetQt(QtWidgets.QWidget):
 
     # slots
     def select_old(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, self.tr("select_old_dialog"), filter="PDF Files (*.pdf)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, self.tr("select_old_dialog"), filter="PDF Files (*.pdf)")
         if path:
-            self.edit_old.setText(path)
+            self.old_path = path
+            name = os.path.splitext(os.path.basename(path))[0]
+            self.edit_old.setText(name)
 
     def select_new(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, self.tr("select_new_dialog"), filter="PDF Files (*.pdf)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, self.tr("select_new_dialog"), filter="PDF Files (*.pdf)")
         if path:
-            self.edit_new.setText(path)
+            self.new_path = path
+            name = os.path.splitext(os.path.basename(path))[0]
+            self.edit_new.setText(name)
 
     def start_compare(self):
-        old = self.edit_old.text()
-        new = self.edit_new.text()
+        old = self.old_path
+        new = self.new_path
         if not old or not new:
             QtWidgets.QMessageBox.critical(self, self.tr("error"), self.tr("select_both"))
             return
