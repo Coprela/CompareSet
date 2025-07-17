@@ -21,20 +21,18 @@ class ComparisonThread(QtCore.QThread):
         old_pdf: str,
         new_pdf: str,
         output_pdf: str,
-        adaptive: bool = False,
     ):
         super().__init__()
         self.old_pdf = old_pdf
         self.new_pdf = new_pdf
         self.output_pdf = output_pdf
-        self.adaptive = adaptive
 
     def run(self):
         try:
             dados = comparar_pdfs(
                 self.old_pdf,
                 self.new_pdf,
-                adaptive=self.adaptive,
+                adaptive=True,
                 progress_callback=lambda p: self.progress.emit(p / 2),
             )
             gerar_pdf_com_destaques(
@@ -87,7 +85,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Language:",
                 "settings_tooltip": "Settings",
                 "settings_title": "Settings",
-                "adaptive_label": "Adaptive mode",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -113,12 +110,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Idioma:",
                 "settings_tooltip": "Configura\u00e7\u00f5es",
                 "settings_title": "Configura\u00e7\u00f5es",
-                "adaptive_label": "Modo adaptativo",
             },
         }
         self.old_path = ""
         self.new_path = ""
-        self.adaptive_enabled = False
         self._setup_ui()
         self.thread: ComparisonThread | None = None
 
@@ -318,7 +313,6 @@ class CompareSetQt(QtWidgets.QWidget):
             old,
             new,
             out,
-            adaptive=self.adaptive_enabled,
         )
         self.thread.progress.connect(self.progress.setValue)
         self.thread.progress.connect(self.update_status_label)
@@ -391,14 +385,10 @@ class CompareSetQt(QtWidgets.QWidget):
         combo.setCurrentIndex(0 if self.lang == "en" else 1)
         combo.currentIndexChanged.connect(lambda: self.set_language(combo.currentData()))
         layout.addWidget(combo)
-        chk_adapt = QtWidgets.QCheckBox(self.tr("adaptive_label"))
-        chk_adapt.setChecked(self.adaptive_enabled)
-        layout.addWidget(chk_adapt)
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
-        if dlg.exec():
-            self.adaptive_enabled = chk_adapt.isChecked()
+        dlg.exec()
 
 
 if __name__ == "__main__":

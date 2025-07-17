@@ -101,14 +101,10 @@ gerar_pdf_com_destaques(
 )
 ```
 
-## Adaptive comparison
-
-`comparar_pdfs` normally uses a single IoU threshold of ``0.9`` to match
-elements between revisions.  When adaptive mode is enabled from the
-**Settings** dialog the function reruns the comparison starting from an IoU of
-``1.0`` and decreasing by ``0.05`` until no new differences appear or the
-minimum threshold is reached.  The result of the final iteration is returned to
-the caller.
+The comparison function automatically runs multiple passes starting from a
+strict IoU threshold of ``1.0`` and gradually decreasing it by ``0.05`` until
+no new differences are detected.  This ensures small positional variations do
+not generate false positives while still highlighting relevant changes.
 
 ## Legacy C++ engine
 
