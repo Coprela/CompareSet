@@ -123,7 +123,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.btn_license.setText(t["license"])
+        self.action_license.setToolTip(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
@@ -150,6 +150,9 @@ class CompareSetQt(QtWidgets.QWidget):
         settings_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.jpg")
         )
+        license_icon = QtGui.QIcon(
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - License.ppm")
+        )
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
         self.action_improve.setToolTip(self.tr("improvement_tooltip"))
@@ -162,6 +165,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings = self.toolbar.addAction(settings_icon, "")
         self.action_settings.setToolTip(self.tr("settings_tooltip"))
         self.action_settings.triggered.connect(self.open_settings)
+
+        self.action_license = self.toolbar.addAction(license_icon, "")
+        self.action_license.setToolTip(self.tr("license"))
+        self.action_license.triggered.connect(self.show_license)
 
         top.addWidget(self.toolbar)
 
@@ -238,26 +245,6 @@ class CompareSetQt(QtWidgets.QWidget):
         layout.addWidget(self.lbl_version)
         layout.addSpacing(10)
 
-        bottom = QtWidgets.QHBoxLayout()
-        layout.addLayout(bottom)
-
-        bottom.addStretch()
-
-        self.btn_license = QtWidgets.QPushButton()
-        self.btn_license.setStyleSheet(
-            "QPushButton{background-color:white; color:#888888; border:1px solid #CCCCCC; padding:2px 6px;}"
-            "QPushButton:disabled{color:#AAAAAA; border:1px solid #AAAAAA;}"
-        )
-        font = self.btn_license.font()
-        font.setBold(True)
-        font.setPointSize(font.pointSize())
-        font.setUnderline(False)
-        self.btn_license.setFont(font)
-        self.btn_license.setFixedWidth(80)
-        self.btn_license.clicked.connect(self.show_license)
-
-        bottom.addWidget(self.btn_license)
-
         self.set_language(self.lang)
 
     # slots
@@ -306,7 +293,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(False)
         self.edit_old.setEnabled(False)
         self.edit_new.setEnabled(False)
-        self.btn_license.setEnabled(False)
+        self.action_license.setEnabled(False)
         self.action_improve.setEnabled(False)
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
@@ -326,7 +313,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(True)
         self.edit_old.setEnabled(True)
         self.edit_new.setEnabled(True)
-        self.btn_license.setEnabled(True)
+        self.action_license.setEnabled(True)
         self.action_improve.setEnabled(True)
         self.action_help.setEnabled(True)
         self.action_settings.setEnabled(True)
