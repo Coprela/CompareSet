@@ -1,10 +1,12 @@
+from typing import Dict, List, Optional, Tuple
+
 import fitz
-from typing import List, Tuple, Dict, Optional
 
 
-def _extract_bboxes(doc: fitz.Document,
-                    transforms: Optional[List[Tuple[float, float, float, float]]] = None
-                    ) -> List[List[Tuple[float, float, float, float, str]]]:
+def _extract_bboxes(
+    doc: fitz.Document,
+    transforms: Optional[List[Tuple[float, float, float, float]]] = None,
+) -> List[List[Tuple[float, float, float, float, str]]]:
     """Return list of bboxes per page from drawings and text blocks.
 
     Parameters
@@ -78,7 +80,9 @@ def _extract_bboxes(doc: fitz.Document,
     return pages
 
 
-def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> float:
+def _iou(
+    a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]
+) -> float:
     x1 = max(a[0], b[0])
     y1 = max(a[1], b[1])
     x2 = min(a[2], b[2])
@@ -115,10 +119,13 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
     return cleaned
 
 
-def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
-                  new_boxes: List[Tuple[float, float, float, float, str]],
-                  thr: float) -> Tuple[List[Tuple[float, float, float, float]],
-                                       List[Tuple[float, float, float, float]]]:
+def _compare_page(
+    old_boxes: List[Tuple[float, float, float, float, str]],
+    new_boxes: List[Tuple[float, float, float, float, str]],
+    thr: float,
+) -> Tuple[
+    List[Tuple[float, float, float, float]], List[Tuple[float, float, float, float]]
+]:
     """Compare two lists of boxes returning removed and added ones."""
     matched_new = set()
     removed = []
@@ -145,9 +152,11 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
-def _remove_unchanged(removidos: List[Dict], adicionados: List[Dict],
-                      eps: float = 0.01) -> Tuple[List[Dict], List[Dict]]:
+def _remove_unchanged(
+    removidos: List[Dict], adicionados: List[Dict], eps: float = 0.01
+) -> Tuple[List[Dict], List[Dict]]:
     """Filter out pairs of boxes that are effectively identical."""
+
     def _key(item: Dict) -> Tuple[int, Tuple[int, int, int, int]]:
         return (
             item["pagina"],
@@ -195,8 +204,9 @@ def comparar_pdfs(
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     """
-    with _load_pdf_without_signatures(old_pdf) as doc_old, \
-            _load_pdf_without_signatures(new_pdf) as doc_new:
+    with _load_pdf_without_signatures(old_pdf) as doc_old, _load_pdf_without_signatures(
+        new_pdf
+    ) as doc_new:
 
         tolerance_pt = 72 / 25.4  # roughly one millimetre
 
