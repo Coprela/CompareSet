@@ -1,7 +1,7 @@
 from PySide6 import QtWidgets, QtGui, QtCore
 import os
-from comparador import comparar_pdfs
-from pdf_marker import gerar_pdf_com_destaques
+from pdf_diff import comparar_pdfs
+from pdf_highlighter import gerar_pdf_com_destaques
 
 
 def file_in_use(path: str) -> bool:
@@ -48,7 +48,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.setWindowTitle("CompareSet – Version 2025.0.1 Beta")
         self.resize(500, 300)
         icon_path = os.path.join(
-            os.path.dirname(__file__), "Imagem", "Icon janela.ico"
+            os.path.dirname(__file__), "Images", "Icon - CompareSet.ico"
         )
         self.setWindowIcon(QtGui.QIcon(icon_path))
         self.lang = "pt"
@@ -124,8 +124,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.lbl_credit.setText(t["developed_by"])
         self.lbl_copyright.setText(t["copyright"])
         self.btn_license.setText(t["license"])
-        self.btn_improve.setToolTip(t["improvement_tooltip"])
-        self.btn_help.setToolTip(t["help_tooltip"])
+        self.action_improve.setToolTip(t["improvement_tooltip"])
+        self.action_help.setToolTip(t["help_tooltip"])
         if hasattr(self, "lbl_language"):
             self.lbl_language.setText(t.get("language", "Language:"))
 
@@ -143,14 +143,24 @@ class CompareSetQt(QtWidgets.QWidget):
 
         top.addStretch()
 
-        self.btn_improve = QtWidgets.QToolButton()
-        self.btn_improve.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_ArrowUp))
-        self.btn_improve.clicked.connect(self.open_improvement_link)
-        top.addWidget(self.btn_improve)
+        self.toolbar = QtWidgets.QToolBar()
+        self.toolbar.setIconSize(QtCore.QSize(16, 16))
+        self.toolbar.setMovable(False)
 
-        self.btn_help = QtWidgets.QToolButton()
-        self.btn_help.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MessageBoxQuestion))
-        top.addWidget(self.btn_help)
+        improve_icon = QtGui.QIcon(
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.jpg")
+        )
+        help_icon = QtGui.QIcon(
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - Question Mark Help.jpg")
+        )
+
+        self.action_improve = self.toolbar.addAction(improve_icon, "")
+        self.action_improve.triggered.connect(self.open_improvement_link)
+
+        self.action_help = self.toolbar.addAction(help_icon, "")
+        self.action_help.triggered.connect(self.open_help)
+
+        top.addWidget(self.toolbar)
 
         self.lbl_language = QtWidgets.QLabel("Language:")
         top.addWidget(self.lbl_language)
@@ -316,6 +326,11 @@ class CompareSetQt(QtWidgets.QWidget):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(
             "https://forms.office.com/pages/responsepage.aspx?id=UckECKCTXUCA5PqHx1UdaqDQL679cxJPq2yFoswL_2BUNVFZVFYzRFhVUzNaQzU0R0xYVEFNN1VXVi4u&route=shorturl"
         ))
+
+    def open_help(self):
+        QtWidgets.QMessageBox.information(
+            self, self.tr("help_tooltip"), self.tr("help_tooltip")
+        )
 
 
 if __name__ == "__main__":

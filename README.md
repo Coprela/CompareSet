@@ -18,7 +18,7 @@ tolerance is applied so that minor shifts do not count as changes.
 4. Run the Qt application (requires `PySide6` which is included in the
    requirements file or can be installed with `pip install PySide6`):
    ```bash
-   python app_qt.py
+   python main_interface.py
    ```
    This interface provides improvement/help icons and a language
    switcher. The original `app.py` Tkinter interface is kept for legacy
@@ -57,7 +57,7 @@ size so no scaling is applied.
 
 ## Using the GUI
 
-1. Launch the program using `python app_qt.py`. The window shows a custom icon from `Imagem/Icon janela.ico`.
+1. Launch the program using `python main_interface.py`. The window shows a custom icon from `Images/Icon - CompareSet.ico`.
 2. Click **Selecionar revisão antiga** (red button) and choose the old PDF.
 3. Click **Selecionar nova revisão** (green button) and choose the new PDF.
 4. Press the purple **Comparar Revisões** button and select where to save the output PDF.
@@ -69,7 +69,7 @@ size so no scaling is applied.
    is still working or if something went wrong.
 8. After the PDF is created you are asked if you want to open it with your default viewer.
 
-The icons used by the GUI are located in the `Imagem` folder.
+The icons used by the GUI are located in the `Images` folder.
 
 ### Qt interface
 
@@ -77,7 +77,7 @@ The Qt version includes improvement and help icons aligned to the top-right of t
 Ensure `PySide6` is installed (e.g. `pip install PySide6`) and run:
 
 ```bash
-python app_qt.py
+python main_interface.py
 ```
 The classic `app.py` Tkinter interface remains available for legacy users.
 
@@ -88,7 +88,7 @@ It accepts optional `color_add` and `color_remove` parameters. Highlight
 opacity is always fixed at `0.3`:
 
 ```python
-from pdf_marker import gerar_pdf_com_destaques
+from pdf_highlighter import gerar_pdf_com_destaques
 
 gerar_pdf_com_destaques(
     "old.pdf",

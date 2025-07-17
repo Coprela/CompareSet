@@ -10,10 +10,11 @@ PyInstaller.__main__.run([
     '--name=CompareSet',
     '--onefile',
     '--windowed',
-    f"--add-data=Imagem{os.sep}logo.png{sep}Imagem",
-    f"--add-data=Imagem{os.sep}Icon janela.ico{sep}Imagem",
+    f"--add-data=Images{os.sep}Icon - Improvement.jpg{sep}Images",
+    f"--add-data=Images{os.sep}Icon - Question Mark Help.jpg{sep}Images",
+    f"--add-data=Images{os.sep}Icon - CompareSet.ico{sep}Images",
     f"--add-data=LICENSE{sep}.",
-    f"--icon=Imagem{os.sep}Icon arquivo.ico",
+    f"--icon=Images{os.sep}Icon - CompareSet.ico",
 ])
 
 
