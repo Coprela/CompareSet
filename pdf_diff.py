@@ -39,6 +39,20 @@ def _extract_bboxes(doc: fitz.Document,
                 bboxes.append((r.x0 * sx + tx, r.y0 * sy + ty,
                                r.x1 * sx + tx, r.y1 * sy + ty, ""))
 
+        # Bounding boxes from images
+        for img in page.get_images(full=True):
+            xref = img[0]
+            for r in page.get_image_rects(xref):
+                bboxes.append(
+                    (
+                        r.x0 * sx + tx,
+                        r.y0 * sy + ty,
+                        r.x1 * sx + tx,
+                        r.y1 * sy + ty,
+                        "",
+                    )
+                )
+
         # Bounding boxes from individual words instead of full text blocks
         for word in page.get_text("words"):
             if len(word) >= 5:

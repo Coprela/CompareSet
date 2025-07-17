@@ -2,8 +2,8 @@
 
 CompareSet is a graphical tool for comparing two PDF revisions. It highlights
 vector differences between documents, producing a new PDF that shows additions
-and removals. All drawing primitives such as lines and shapes as well as the
-words that compose the text are analysed. This finer granularity avoids
+and removals. All drawing primitives such as lines and shapes, embedded images
+and the words that compose the text are analysed. This finer granularity avoids
 marking whole paragraphs when only a few words changed. A small positional
 tolerance is applied so that minor shifts do not count as changes.
 
