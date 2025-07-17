@@ -1,6 +1,9 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
+
+import io
 
 import fitz
+from PIL import Image, ImageChops
 
 
 def _extract_bboxes(
@@ -245,7 +248,91 @@ def _remove_contained(boxes: List[Dict], eps: float = 0.01) -> List[Dict]:
     return filtered
 
 
-from typing import Callable
+def _pix_to_pil(pix: fitz.Pixmap) -> Image.Image:
+    """Convert a PyMuPDF Pixmap to a PIL Image."""
+    mode = "RGB" if pix.alpha == 0 else "RGBA"
+    return Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+
+
+def _boxes_from_diff(diff: Image.Image, thr: int = 10) -> List[Tuple[int, int, int, int]]:
+    """Return bounding boxes from a binary difference image."""
+    gray = diff.convert("L")
+    w, h = gray.size
+    data = gray.load()
+    visited = [[False] * w for _ in range(h)]
+    boxes = []
+    for y in range(h):
+        for x in range(w):
+            if data[x, y] > thr and not visited[y][x]:
+                stack = [(x, y)]
+                visited[y][x] = True
+                minx = maxx = x
+                miny = maxy = y
+                while stack:
+                    cx, cy = stack.pop()
+                    for nx, ny in (
+                        (cx - 1, cy),
+                        (cx + 1, cy),
+                        (cx, cy - 1),
+                        (cx, cy + 1),
+                        (cx - 1, cy - 1),
+                        (cx + 1, cy - 1),
+                        (cx - 1, cy + 1),
+                        (cx + 1, cy + 1),
+                    ):
+                        if (
+                            0 <= nx < w
+                            and 0 <= ny < h
+                            and not visited[ny][nx]
+                            and data[nx, ny] > thr
+                        ):
+                            visited[ny][nx] = True
+                            stack.append((nx, ny))
+                            minx = min(minx, nx)
+                            maxx = max(maxx, nx)
+                            miny = min(miny, ny)
+                            maxy = max(maxy, ny)
+                boxes.append((minx, miny, maxx + 1, maxy + 1))
+    return boxes
+
+
+def comparar_pdfs_imagem(
+    old_pdf: str,
+    new_pdf: str,
+    progress_callback: Optional[Callable[[float], None]] = None,
+) -> Dict[str, List[Dict]]:
+    """Compare PDFs rendering pages to images."""
+    with fitz.open(old_pdf) as doc_old, fitz.open(new_pdf) as doc_new:
+        max_pages = max(len(doc_old), len(doc_new))
+        result = {"removidos": [], "adicionados": []}
+        for i in range(max_pages):
+            if i < len(doc_old):
+                pix_old = doc_old[i].get_pixmap()
+                img_old = _pix_to_pil(pix_old)
+            else:
+                rect = doc_new[i].rect
+                img_old = Image.new("RGB", (int(rect.width), int(rect.height)), "white")
+            if i < len(doc_new):
+                pix_new = doc_new[i].get_pixmap()
+                img_new = _pix_to_pil(pix_new)
+            else:
+                rect = doc_old[i].rect
+                img_new = Image.new("RGB", (int(rect.width), int(rect.height)), "white")
+
+            diff_rem = ImageChops.subtract(img_old, img_new)
+            diff_add = ImageChops.subtract(img_new, img_old)
+            rem_boxes = _boxes_from_diff(diff_rem)
+            add_boxes = _boxes_from_diff(diff_add)
+            for b in rem_boxes:
+                result["removidos"].append({"pagina": i, "bbox": list(b), "texto": ""})
+            for b in add_boxes:
+                result["adicionados"].append({"pagina": i, "bbox": list(b), "texto": ""})
+            if progress_callback:
+                progress_callback(((i + 1) / max_pages) * 100)
+        return result
+
+
+
 
 
 def comparar_pdfs(
