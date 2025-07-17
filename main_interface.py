@@ -59,7 +59,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_old": "Select old revision",
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
-                "developed_by": "Developed by DDT-FUE",
+                "developed_by": "DDT FUI",
                 "copyright": "\u00a9 CompareSet / TechnipFMC",
                 "license": "License",
                 "select_old_dialog": "Select old PDF",
@@ -81,13 +81,12 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Language:",
                 "settings_tooltip": "Settings",
                 "settings_title": "Settings",
-                "version": "Version",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
-                "developed_by": "Desenvolvido por DDT-FUE",
+                "developed_by": "DDT FUI",
                 "copyright": "\u00a9 CompareSet / TechnipFMC",
                 "license": "Licen\u00e7a",
                 "select_old_dialog": "Selecione o PDF antigo",
@@ -109,7 +108,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Idioma:",
                 "settings_tooltip": "Configura\u00e7\u00f5es",
                 "settings_title": "Configura\u00e7\u00f5es",
-                "version": "Vers\u00e3o",
             },
         }
         self.old_path = ""
@@ -135,7 +133,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
-        self.lbl_version.setText(f"CompareSet – {t['version']} 2025.0.1 Beta")
+        self.lbl_version.setText("CompareSet – v0.2.0-beta")
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -184,7 +182,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_old = QtWidgets.QPushButton()
         self.btn_old.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;}"
-            "QPushButton:disabled{background-color:gray;color:white;}"
+            "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
@@ -197,7 +195,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new = QtWidgets.QPushButton()
         self.btn_new.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;}"
-            "QPushButton:disabled{background-color:gray;color:white;}"
+            "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
@@ -206,7 +204,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare = QtWidgets.QPushButton()
         self.btn_compare.setStyleSheet(
             "QPushButton{background-color:#471F6F;color:white;}"
-            "QPushButton:disabled{background-color:gray;color:white;}"
+            "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
@@ -262,7 +260,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_license = QtWidgets.QPushButton()
         self.btn_license.setStyleSheet(
             "QPushButton{border:1px solid #471F6F;padding:3px;}"
-            "QPushButton:disabled{background-color:gray;color:white;border:1px solid gray;}"
+            "QPushButton:disabled{background-color:#555555;color:white;border:1px solid #555555;}"
         )
         font = self.btn_license.font()
         font.setBold(True)
