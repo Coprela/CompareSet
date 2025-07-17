@@ -151,7 +151,7 @@ class CompareSetQt(QtWidgets.QWidget):
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.jpg")
         )
         license_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - License.ppm")
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - License.jpg")
         )
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
