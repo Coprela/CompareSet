@@ -5,7 +5,9 @@ vector differences between documents, producing a new PDF that shows additions
 and removals. All drawing primitives such as lines and shapes, embedded images
 and the words that compose the text are analysed. This finer granularity avoids
 marking whole paragraphs when only a few words changed. A small positional
-tolerance is applied so that minor shifts do not count as changes.
+tolerance is applied so that minor shifts do not count as changes. Elements
+with the same text that merely move are ignored, preventing highlights when
+vector shapes or words shift without altering content.
 
 ## Setup
 
@@ -116,6 +118,7 @@ scripts.
 
 ## License
 
-This project is distributed under the terms of the MIT License. The
-GUI includes a **Licen\u00e7a** button that opens a dialog displaying the
+This project is distributed under a proprietary license. See `LICENSE`,
+`LICENSE_EN.txt` or `LICENSE_PT.txt` for the full terms. The GUI includes a
+**Licen\u00e7a** button that opens a dialog displaying the
 full license text.
