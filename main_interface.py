@@ -219,7 +219,7 @@ class CompareSetQt(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Expanding,
             QtWidgets.QSizePolicy.Fixed,
         )
-        progress_height = max(8, self.progress.sizeHint().height() // 2)
+        progress_height = max(8, int(self.progress.sizeHint().height() * 0.6))
         self.progress.setFixedHeight(progress_height)
 
         self._progress_placeholder = QtWidgets.QWidget()
@@ -228,11 +228,16 @@ class CompareSetQt(QtWidgets.QWidget):
         self._progress_stack.addWidget(self.progress)
         self._progress_stack.addWidget(self._progress_placeholder)
         self._progress_stack.setCurrentIndex(1)
-        layout.addLayout(self._progress_stack)
+
+        progress_group = QtWidgets.QVBoxLayout()
+        progress_group.addLayout(self._progress_stack)
 
         self.label_status = QtWidgets.QLabel()
         self.label_status.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(self.label_status)
+        progress_group.addWidget(self.label_status)
+        progress_group.setSpacing(2)
+
+        layout.addLayout(progress_group)
         layout.addSpacing(10)
 
         self.lbl_version = QtWidgets.QLabel()
