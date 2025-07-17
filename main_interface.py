@@ -81,6 +81,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Language:",
                 "settings_tooltip": "Settings",
                 "settings_title": "Settings",
+                "version": "Version",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -108,6 +109,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Idioma:",
                 "settings_tooltip": "Configura\u00e7\u00f5es",
                 "settings_title": "Configura\u00e7\u00f5es",
+                "version": "Vers\u00e3o",
             },
         }
         self.old_path = ""
@@ -133,6 +135,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
+        self.lbl_version.setText(f"CompareSet – {t['version']} 2025.0.1 Beta")
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -212,6 +215,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setTextVisible(False)
+        self.progress.setFixedWidth(300)
 
         self._progress_placeholder = QtWidgets.QWidget()
         self._progress_placeholder.setFixedHeight(
@@ -226,8 +230,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.label_status = QtWidgets.QLabel()
         self.label_status.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.label_status)
+        layout.addSpacing(10)
 
-        self.lbl_version = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
+        self.lbl_version = QtWidgets.QLabel()
         ver_font = self.lbl_version.font()
         ver_font.setPointSize(ver_font.pointSize() + 2)
         ver_font.setBold(True)
@@ -235,6 +240,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
         self.lbl_version.setStyleSheet("color:#471F6F")
         layout.addWidget(self.lbl_version)
+        layout.addSpacing(10)
 
         bottom = QtWidgets.QHBoxLayout()
         layout.addLayout(bottom)
@@ -301,6 +307,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self._progress_stack.setCurrentIndex(0)
         self.label_status.setText(self.tr("starting"))
         self.btn_compare.setEnabled(False)
+        self.btn_old.setEnabled(False)
+        self.btn_new.setEnabled(False)
+        self.btn_license.setEnabled(False)
+        self.action_improve.setEnabled(False)
+        self.action_help.setEnabled(False)
+        self.action_settings.setEnabled(False)
 
         self.thread = ComparisonThread(old, new, out)
         self.thread.progress.connect(self.progress.setValue)
@@ -313,6 +325,12 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def compare_finished(self, status: str, info: str):
         self.btn_compare.setEnabled(True)
+        self.btn_old.setEnabled(True)
+        self.btn_new.setEnabled(True)
+        self.btn_license.setEnabled(True)
+        self.action_improve.setEnabled(True)
+        self.action_help.setEnabled(True)
+        self.action_settings.setEnabled(True)
         self._progress_stack.setCurrentIndex(1)
         self.label_status.clear()
         if status == "success":
