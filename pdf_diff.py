@@ -127,16 +127,31 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
 from typing import Callable
 
 
-def comparar_pdfs(old_pdf: str,
-                   new_pdf: str,
-                   thr: float = 0.9,
-                   progress_callback: Optional[Callable[[float], None]] = None
-                   ) -> Dict[str, List[Dict]]:
+def comparar_pdfs(
+    old_pdf: str,
+    new_pdf: str,
+    thr: float = 0.9,
+    adaptive: bool = False,
+    progress_callback: Optional[Callable[[float], None]] = None,
+) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
     The function takes page dimensions into account. When pages have
     different sizes they are scaled and translated so that comparisons
     happen in a shared coordinate space based on the old PDF pages.
+
+    Parameters
+    ----------
+    old_pdf, new_pdf : str
+        Paths to the PDFs being compared.
+    thr : float, optional
+        Minimum IoU threshold used for matching elements between PDFs.
+    adaptive : bool, optional
+        When ``True`` the comparison is repeated decreasing the threshold from
+        ``1.0`` down to ``thr`` in ``0.05`` steps. Iterations stop as soon as no
+        new differences are found.
+    progress_callback : callable, optional
+        Function called with a ``0-100`` progress percentage.
     """
     with _load_pdf_without_signatures(old_pdf) as doc_old, \
             _load_pdf_without_signatures(new_pdf) as doc_new:
@@ -170,18 +185,44 @@ def comparar_pdfs(old_pdf: str,
         new_pages = _extract_bboxes(doc_new, transforms_new)
         max_pages = max(len(old_pages), len(new_pages))
 
-        removidos = []
-        adicionados = []
-        for page_num in range(max_pages):
-            old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
-            new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
-            rem, add = _compare_page(old_boxes, new_boxes, thr)
-            removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
-            adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
-            if progress_callback:
-                progress = ((page_num + 1) / max_pages) * 100
-                progress_callback(progress)
+        if adaptive:
+            thr_values: List[float] = []
+            val = 1.0
+            while val >= thr:
+                thr_values.append(round(val, 2))
+                val -= 0.05
+            if thr_values[-1] != thr:
+                thr_values.append(thr)
+        else:
+            thr_values = [thr]
 
-        result = {"removidos": removidos, "adicionados": adicionados}
+        total_steps = max_pages * len(thr_values)
+        result = {"removidos": [], "adicionados": []}
+        previous: Optional[Tuple[set, set]] = None
+
+        for j, thr_val in enumerate(thr_values):
+            removidos = []
+            adicionados = []
+            for page_num in range(max_pages):
+                old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
+                new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
+                rem, add = _compare_page(old_boxes, new_boxes, thr_val)
+                removidos.extend({"pagina": page_num, "bbox": list(b)} for b in rem)
+                adicionados.extend({"pagina": page_num, "bbox": list(b)} for b in add)
+                if progress_callback:
+                    done = j * max_pages + page_num + 1
+                    progress = (done / total_steps) * 100
+                    progress_callback(progress)
+
+            result = {"removidos": removidos, "adicionados": adicionados}
+            current = (
+                {(r["pagina"], tuple(r["bbox"])) for r in removidos},
+                {(a["pagina"], tuple(a["bbox"])) for a in adicionados},
+            )
+            if previous is not None and current == previous:
+                break
+            previous = current
+            if not removidos and not adicionados:
+                break
 
     return result
