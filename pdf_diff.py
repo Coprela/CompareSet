@@ -36,8 +36,15 @@ def _extract_bboxes(doc: fitz.Document,
                 if xs and ys:
                     r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
             if r:
-                bboxes.append((r.x0 * sx + tx, r.y0 * sy + ty,
-                               r.x1 * sx + tx, r.y1 * sy + ty, ""))
+                x0 = r.x0 * sx + tx
+                y0 = r.y0 * sy + ty
+                x1 = r.x1 * sx + tx
+                y1 = r.y1 * sy + ty
+                if x1 - x0 == 0:
+                    x1 += 0.1
+                if y1 - y0 == 0:
+                    y1 += 0.1
+                bboxes.append((x0, y0, x1, y1, ""))
 
         # Bounding boxes from images
         for img in page.get_images(full=True):
@@ -138,6 +145,26 @@ def _compare_page(old_boxes: List[Tuple[float, float, float, float, str]],
     return removed, added
 
 
+def _remove_unchanged(removidos: List[Dict], adicionados: List[Dict],
+                      eps: float = 0.01) -> Tuple[List[Dict], List[Dict]]:
+    """Filter out pairs of boxes that are effectively identical."""
+    def _key(item: Dict) -> Tuple[int, Tuple[int, int, int, int]]:
+        return (
+            item["pagina"],
+            tuple(int(round(v / eps)) for v in item["bbox"]),
+        )
+
+    removed_keys = {_key(r) for r in removidos}
+    added_keys = {_key(a) for a in adicionados}
+    duplicates = removed_keys & added_keys
+    if not duplicates:
+        return removidos, adicionados
+
+    rem_filtered = [r for r in removidos if _key(r) not in duplicates]
+    add_filtered = [a for a in adicionados if _key(a) not in duplicates]
+    return rem_filtered, add_filtered
+
+
 from typing import Callable
 
 
@@ -163,7 +190,8 @@ def comparar_pdfs(
     adaptive : bool, optional
         When ``True`` the comparison is repeated decreasing the threshold from
         ``1.0`` down to ``thr`` in ``0.05`` steps. Iterations stop as soon as no
-        new differences are found.
+        new differences are found. This approach improves precision by
+        progressively relaxing the tolerance.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     """
@@ -228,6 +256,7 @@ def comparar_pdfs(
                     progress = (done / total_steps) * 100
                     progress_callback(progress)
 
+            removidos, adicionados = _remove_unchanged(removidos, adicionados)
             result = {"removidos": removidos, "adicionados": adicionados}
             current = (
                 {(r["pagina"], tuple(r["bbox"])) for r in removidos},
