@@ -59,7 +59,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_old": "Select old revision",
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
-                "copyright": "TechnipFMC / DDT-FUE",
                 "license": "License",
                 "select_old_dialog": "Select old PDF",
                 "select_new_dialog": "Select new PDF",
@@ -85,7 +84,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_old": "Selecionar revis\u00e3o antiga",
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
-                "copyright": "TechnipFMC / DDT-FUE",
                 "license": "Licen\u00e7a",
                 "select_old_dialog": "Selecione o PDF antigo",
                 "select_new_dialog": "Selecione o PDF novo",
@@ -125,7 +123,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.lbl_copyright.setText(t["copyright"])
         self.btn_license.setText(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
@@ -244,21 +241,17 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom = QtWidgets.QHBoxLayout()
         layout.addLayout(bottom)
 
-        self.lbl_copyright = QtWidgets.QLabel()
-        self.lbl_copyright.setStyleSheet("color: gray")
-        bottom.addWidget(self.lbl_copyright)
-
         bottom.addStretch()
 
         self.btn_license = QtWidgets.QPushButton()
         self.btn_license.setStyleSheet(
-            "QPushButton{background-color:white; color:black; border:1px solid black;}"
-            "QPushButton:disabled{color:#555555;}"
+            "QPushButton{background-color:white; color:gray; border:2px solid gray; padding:4px 8px;}"
+            "QPushButton:disabled{color:#555555; border:2px solid #555555;}"
         )
         font = self.btn_license.font()
         font.setBold(True)
         font.setPointSize(font.pointSize())
-        font.setUnderline(True)
+        font.setUnderline(False)
         self.btn_license.setFont(font)
         self.btn_license.clicked.connect(self.show_license)
 
