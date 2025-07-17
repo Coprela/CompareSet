@@ -59,11 +59,20 @@ class CompareSetQt(QtWidgets.QWidget):
         super().__init__()
         self.setWindowTitle("CompareSet")
         self.setFixedSize(480, 280)
-        icon_path = os.path.join(
-            os.path.dirname(__file__), "Images", "Icon - CompareSet.ico"
-        )
-        icon = QtGui.QIcon(icon_path)
-        icon.addFile(icon_path, QtCore.QSize(256, 256))
+        icons_dir = os.path.join(os.path.dirname(__file__), "Images")
+        icon = QtGui.QIcon()
+        icon_files = {
+            16: "Icon - CompareSet 16x16.ico",
+            24: "Icon - CompareSet 24x24.ico",
+            32: "Icon - CompareSet 32x32.ico",
+            48: "Icon - CompareSet 48×48.ico",
+            64: "Icon - CompareSet 64×64.ico",
+            128: "Icon - CompareSet 128 x 128.ico",
+            256: "Icon - CompareSet 256 x 256.ico",
+        }
+        for size, fname in icon_files.items():
+            path = os.path.join(icons_dir, fname)
+            icon.addFile(path, QtCore.QSize(size, size))
         self.setWindowIcon(icon)
         self.lang = "pt"
         self.translations = {
