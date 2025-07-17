@@ -6,7 +6,7 @@ sep = ';' if os.name == 'nt' else ':'
 
 # Build the executable starting from the Qt interface entry script.
 PyInstaller.__main__.run([
-    'app_qt.py',
+    'main_interface.py',
     '--name=CompareSet',
     '--onefile',
     '--windowed',
@@ -14,6 +14,8 @@ PyInstaller.__main__.run([
     f"--add-data=Images{os.sep}Icon - Question Mark Help.jpg{sep}Images",
     f"--add-data=Images{os.sep}Icon - CompareSet.ico{sep}Images",
     f"--add-data=LICENSE{sep}.",
+    f"--add-data=LICENSE_EN.txt{sep}.",
+    f"--add-data=LICENSE_PT.txt{sep}.",
     f"--icon=Images{os.sep}Icon - CompareSet.ico",
 ])
 

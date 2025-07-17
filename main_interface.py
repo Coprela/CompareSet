@@ -50,7 +50,9 @@ class CompareSetQt(QtWidgets.QWidget):
         icon_path = os.path.join(
             os.path.dirname(__file__), "Images", "Icon - CompareSet.ico"
         )
-        self.setWindowIcon(QtGui.QIcon(icon_path))
+        icon = QtGui.QIcon(icon_path)
+        icon.addFile(icon_path, QtCore.QSize(256, 256))
+        self.setWindowIcon(icon)
         self.lang = "pt"
         self.translations = {
             "en": {
@@ -58,7 +60,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
                 "developed_by": "Developed by DDT-FUE",
-                "copyright": "\u00a9 TechnipFMC",
+                "copyright": "\u00a9 CompareSet / TechnipFMC",
                 "license": "License",
                 "select_old_dialog": "Select old PDF",
                 "select_new_dialog": "Select new PDF",
@@ -85,7 +87,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
                 "developed_by": "Desenvolvido por DDT-FUE",
-                "copyright": "\u00a9 TechnipFMC",
+                "copyright": "\u00a9 CompareSet / TechnipFMC",
                 "license": "Licen\u00e7a",
                 "select_old_dialog": "Selecione o PDF antigo",
                 "select_new_dialog": "Selecione o PDF novo",
@@ -168,14 +170,6 @@ class CompareSetQt(QtWidgets.QWidget):
 
         top.addWidget(self.toolbar)
 
-        self.lbl_version = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
-        ver_font = self.lbl_version.font()
-        ver_font.setPointSize(ver_font.pointSize() + 2)
-        ver_font.setBold(True)
-        self.lbl_version.setFont(ver_font)
-        self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
-        self.lbl_version.setStyleSheet("color:#471F6F")
-        layout.addWidget(self.lbl_version)
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
@@ -218,12 +212,29 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setTextVisible(False)
-        self.progress.hide()
-        layout.addWidget(self.progress)
+
+        self._progress_placeholder = QtWidgets.QWidget()
+        self._progress_placeholder.setFixedHeight(
+            self.progress.sizeHint().height()
+        )
+        self._progress_stack = QtWidgets.QStackedLayout()
+        self._progress_stack.addWidget(self.progress)
+        self._progress_stack.addWidget(self._progress_placeholder)
+        self._progress_stack.setCurrentIndex(1)
+        layout.addLayout(self._progress_stack)
 
         self.label_status = QtWidgets.QLabel()
         self.label_status.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.label_status)
+
+        self.lbl_version = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
+        ver_font = self.lbl_version.font()
+        ver_font.setPointSize(ver_font.pointSize() + 2)
+        ver_font.setBold(True)
+        self.lbl_version.setFont(ver_font)
+        self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
+        self.lbl_version.setStyleSheet("color:#471F6F")
+        layout.addWidget(self.lbl_version)
 
         bottom = QtWidgets.QHBoxLayout()
         layout.addLayout(bottom)
@@ -287,7 +298,7 @@ class CompareSetQt(QtWidgets.QWidget):
             return
 
         self.progress.setValue(0)
-        self.progress.show()
+        self._progress_stack.setCurrentIndex(0)
         self.label_status.setText(self.tr("starting"))
         self.btn_compare.setEnabled(False)
 
@@ -302,7 +313,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def compare_finished(self, status: str, info: str):
         self.btn_compare.setEnabled(True)
-        self.progress.hide()
+        self._progress_stack.setCurrentIndex(1)
         self.label_status.clear()
         if status == "success":
             QtWidgets.QMessageBox.information(
