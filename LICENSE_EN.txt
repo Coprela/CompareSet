@@ -1,4 +1,4 @@
-Copyright (c) 2024 CompareSet. All rights reserved.
+Copyright (c) 2024 CompareSet and TechnipFMC. All rights reserved.
 
 This software and its associated documentation are protected intellectual property. Reproduction, distribution, modification or disclosure, in whole or in part, is strictly prohibited without prior written authorization from the rights holders.
 
