@@ -1,8 +1,9 @@
-import fitz  # PyMuPDF
 from typing import Callable, Optional
 
+import fitz  # PyMuPDF
+
 COLOR_REMOVE_DEFAULT = (1, 0, 0)  # vermelho
-COLOR_ADD_DEFAULT = (0, 0.8, 0)   # verde mais evidente
+COLOR_ADD_DEFAULT = (0, 0.8, 0)  # verde mais evidente
 OPACITY_DEFAULT = 0.3
 
 
@@ -30,7 +31,9 @@ def gerar_pdf_com_destaques(
         RGB colors in the range ``0-1`` for additions and removals.
         The highlight opacity is fixed at ``0.3``.
     """
-    with fitz.open(pdf_old) as doc_old, fitz.open(pdf_new) as doc_new, fitz.open() as final:
+    with fitz.open(pdf_old) as doc_old, fitz.open(
+        pdf_new
+    ) as doc_new, fitz.open() as final:
         total_steps = len(doc_old) + len(doc_new)
         done = 0
 
@@ -38,7 +41,9 @@ def gerar_pdf_com_destaques(
         for i in range(max_pages):
             if i < len(doc_old):
                 page = doc_old[i]
-                new_page = final.new_page(width=page.rect.width, height=page.rect.height)
+                new_page = final.new_page(
+                    width=page.rect.width, height=page.rect.height
+                )
                 new_page.show_pdf_page(page.rect, doc_old, i)
                 for item in removidos:
                     if item["pagina"] == i:
@@ -55,7 +60,9 @@ def gerar_pdf_com_destaques(
 
             if i < len(doc_new):
                 page = doc_new[i]
-                new_page = final.new_page(width=page.rect.width, height=page.rect.height)
+                new_page = final.new_page(
+                    width=page.rect.width, height=page.rect.height
+                )
                 new_page.show_pdf_page(page.rect, doc_new, i)
                 for item in adicionados:
                     if item["pagina"] == i:
