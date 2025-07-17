@@ -1,5 +1,7 @@
-from PySide6 import QtWidgets, QtGui, QtCore
 import os
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
 from pdf_diff import comparar_pdfs
 from pdf_highlighter import gerar_pdf_com_destaques
 
@@ -151,7 +153,9 @@ class CompareSetQt(QtWidgets.QWidget):
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.png")
         )
         help_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - Question Mark Help.png")
+            os.path.join(
+                os.path.dirname(__file__), "Images", "Icon - Question Mark Help.png"
+            )
         )
         settings_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
@@ -177,7 +181,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_license.triggered.connect(self.show_license)
 
         top.addWidget(self.toolbar)
-
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
@@ -261,7 +264,8 @@ class CompareSetQt(QtWidgets.QWidget):
     # slots
     def select_old(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, self.tr("select_old_dialog"), filter="PDF Files (*.pdf)")
+            self, self.tr("select_old_dialog"), filter="PDF Files (*.pdf)"
+        )
         if path:
             self.old_path = path
             name = os.path.splitext(os.path.basename(path))[0]
@@ -269,7 +273,8 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def select_new(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, self.tr("select_new_dialog"), filter="PDF Files (*.pdf)")
+            self, self.tr("select_new_dialog"), filter="PDF Files (*.pdf)"
+        )
         if path:
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
@@ -279,19 +284,27 @@ class CompareSetQt(QtWidgets.QWidget):
         old = self.old_path
         new = self.new_path
         if not old or not new:
-            QtWidgets.QMessageBox.critical(self, self.tr("error"), self.tr("select_both"))
+            QtWidgets.QMessageBox.critical(
+                self, self.tr("error"), self.tr("select_both")
+            )
             return
 
-        out, _ = QtWidgets.QFileDialog.getSaveFileName(self, self.tr("save_dialog"), filter="PDF Files (*.pdf)")
+        out, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, self.tr("save_dialog"), filter="PDF Files (*.pdf)"
+        )
         if not out:
             return
 
         if out in (old, new):
-            QtWidgets.QMessageBox.critical(self, self.tr("error"), self.tr("choose_diff"))
+            QtWidgets.QMessageBox.critical(
+                self, self.tr("error"), self.tr("choose_diff")
+            )
             return
 
         if os.path.exists(out) and file_in_use(out):
-            QtWidgets.QMessageBox.warning(self, self.tr("error"), self.tr("file_in_use"))
+            QtWidgets.QMessageBox.warning(
+                self, self.tr("error"), self.tr("file_in_use")
+            )
             return
 
         self.progress.setValue(0)
@@ -344,9 +357,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 self.tr("open_pdf_prompt"),
             )
             if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-                QtGui.QDesktopServices.openUrl(
-                    QtCore.QUrl.fromLocalFile(info)
-                )
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(info))
         else:
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
 
@@ -364,9 +375,11 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg.exec()
 
     def open_improvement_link(self):
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl(
-            "https://forms.office.com/pages/responsepage.aspx?id=UckECKCTXUCA5PqHx1UdaqDQL679cxJPq2yFoswL_2BUNVFZVFYzRFhVUzNaQzU0R0xYVEFNN1VXVi4u&route=shorturl"
-        ))
+        QtGui.QDesktopServices.openUrl(
+            QtCore.QUrl(
+                "https://forms.office.com/pages/responsepage.aspx?id=UckECKCTXUCA5PqHx1UdaqDQL679cxJPq2yFoswL_2BUNVFZVFYzRFhVUzNaQzU0R0xYVEFNN1VXVi4u&route=shorturl"
+            )
+        )
 
     def open_help(self):
         QtWidgets.QMessageBox.information(
@@ -383,7 +396,9 @@ class CompareSetQt(QtWidgets.QWidget):
         combo.addItem("English (US)", "en")
         combo.addItem("Portugu\u00eas (Brasil)", "pt")
         combo.setCurrentIndex(0 if self.lang == "en" else 1)
-        combo.currentIndexChanged.connect(lambda: self.set_language(combo.currentData()))
+        combo.currentIndexChanged.connect(
+            lambda: self.set_language(combo.currentData())
+        )
         layout.addWidget(combo)
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
@@ -393,12 +408,8 @@ class CompareSetQt(QtWidgets.QWidget):
 
 if __name__ == "__main__":
     # enable high DPI scaling so icons look crisp on high-resolution screens
-    QtCore.QCoreApplication.setAttribute(
-        QtCore.Qt.AA_EnableHighDpiScaling, True
-    )
-    QtCore.QCoreApplication.setAttribute(
-        QtCore.Qt.AA_UseHighDpiPixmaps, True
-    )
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
     app = QtWidgets.QApplication([])
     win = CompareSetQt()
