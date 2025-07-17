@@ -1,0 +1,9 @@
+Copyright (c) 2024 CompareSet. All rights reserved.
+
+This software and its associated documentation are protected intellectual property. Reproduction, distribution, modification or disclosure, in whole or in part, is strictly prohibited without prior written authorization from the rights holders.
+
+All information contained in this material is confidential and may not be shared, reproduced or used for any unauthorized purposes without express written consent.
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.
+
+Any unauthorized use, copy or distribution will be subject to the penalties provided for under applicable law.

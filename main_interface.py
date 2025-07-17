@@ -45,8 +45,8 @@ class ComparisonThread(QtCore.QThread):
 class CompareSetQt(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CompareSet – Version 2025.0.1 Beta")
-        self.resize(500, 300)
+        self.setWindowTitle("CompareSet")
+        self.setFixedSize(480, 280)
         icon_path = os.path.join(
             os.path.dirname(__file__), "Images", "Icon - CompareSet.ico"
         )
@@ -77,6 +77,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "improvement_tooltip": "Suggest improvement",
                 "help_tooltip": "Coming soon",
                 "language": "Language:",
+                "settings_tooltip": "Settings",
+                "settings_title": "Settings",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -102,6 +104,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "improvement_tooltip": "Sugerir melhoria",
                 "help_tooltip": "Em breve",
                 "language": "Idioma:",
+                "settings_tooltip": "Configura\u00e7\u00f5es",
+                "settings_title": "Configura\u00e7\u00f5es",
             },
         }
         self.old_path = ""
@@ -126,8 +130,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_license.setText(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
-        if hasattr(self, "lbl_language"):
-            self.lbl_language.setText(t.get("language", "Language:"))
+        self.action_settings.setToolTip(t["settings_tooltip"])
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -135,7 +138,7 @@ class CompareSetQt(QtWidgets.QWidget):
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
 
-        lbl_name = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
+        lbl_name = QtWidgets.QLabel("CompareSet")
         font = lbl_name.font()
         font.setBold(True)
         lbl_name.setFont(font)
@@ -148,29 +151,28 @@ class CompareSetQt(QtWidgets.QWidget):
         self.toolbar.setMovable(False)
 
         improve_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.jpg")
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.png")
         )
         help_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Question Mark Help.jpg")
         )
+        settings_icon = QtGui.QIcon(
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.jpg")
+        )
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
+        self.action_improve.setToolTip(self.tr("improvement_tooltip"))
         self.action_improve.triggered.connect(self.open_improvement_link)
 
         self.action_help = self.toolbar.addAction(help_icon, "")
+        self.action_help.setToolTip(self.tr("help_tooltip"))
         self.action_help.triggered.connect(self.open_help)
 
+        self.action_settings = self.toolbar.addAction(settings_icon, "")
+        self.action_settings.setToolTip(self.tr("settings_tooltip"))
+        self.action_settings.triggered.connect(self.open_settings)
+
         top.addWidget(self.toolbar)
-
-        self.lbl_language = QtWidgets.QLabel("Language:")
-        top.addWidget(self.lbl_language)
-
-        self.combo_lang = QtWidgets.QComboBox()
-        self.combo_lang.addItem("EN", "en")
-        self.combo_lang.addItem("PTBR", "pt")
-        self.combo_lang.setCurrentIndex(1)
-        self.combo_lang.currentIndexChanged.connect(lambda: self.set_language(self.combo_lang.currentData()))
-        top.addWidget(self.combo_lang)
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
@@ -237,6 +239,15 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_license.setFont(font)
         self.btn_license.clicked.connect(self.show_license)
         bottom.addWidget(self.btn_license)
+
+        self.lbl_version = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
+        ver_font = self.lbl_version.font()
+        ver_font.setPointSize(ver_font.pointSize() + 2)
+        ver_font.setBold(True)
+        self.lbl_version.setFont(ver_font)
+        self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
+        self.lbl_version.setStyleSheet("color:#471F6F")
+        layout.addWidget(self.lbl_version)
 
         self.set_language(self.lang)
 
@@ -311,7 +322,8 @@ class CompareSetQt(QtWidgets.QWidget):
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
 
     def show_license(self):
-        license_path = os.path.join(os.path.dirname(__file__), "LICENSE")
+        fname = "LICENSE_EN.txt" if self.lang == "en" else "LICENSE_PT.txt"
+        license_path = os.path.join(os.path.dirname(__file__), fname)
         try:
             with open(license_path, "r", encoding="utf-8") as f:
                 text = f.read()
@@ -331,6 +343,23 @@ class CompareSetQt(QtWidgets.QWidget):
         QtWidgets.QMessageBox.information(
             self, self.tr("help_tooltip"), self.tr("help_tooltip")
         )
+
+    def open_settings(self):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("settings_title"))
+        layout = QtWidgets.QVBoxLayout(dlg)
+        lbl = QtWidgets.QLabel(self.tr("language"))
+        layout.addWidget(lbl)
+        combo = QtWidgets.QComboBox()
+        combo.addItem("English (US)", "en")
+        combo.addItem("Portugu\u00eas (Brasil)", "pt")
+        combo.setCurrentIndex(0 if self.lang == "en" else 1)
+        combo.currentIndexChanged.connect(lambda: self.set_language(combo.currentData()))
+        layout.addWidget(combo)
+        btn = QtWidgets.QPushButton("OK")
+        btn.clicked.connect(dlg.accept)
+        layout.addWidget(btn)
+        dlg.exec()
 
 
 if __name__ == "__main__":
