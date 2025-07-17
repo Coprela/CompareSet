@@ -145,7 +145,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.toolbar.setMovable(False)
 
         improve_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.png")
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.jpg")
         )
         help_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Question Mark Help.jpg")
