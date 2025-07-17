@@ -59,8 +59,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_old": "Select old revision",
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
-                "developed_by": "DDT FUI",
-                "copyright": "\u00a9 CompareSet / TechnipFMC",
+                "copyright": "\u00a9 TechnipFMC / DDT FUI",
                 "license": "License",
                 "select_old_dialog": "Select old PDF",
                 "select_new_dialog": "Select new PDF",
@@ -86,8 +85,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_old": "Selecionar revis\u00e3o antiga",
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
-                "developed_by": "DDT FUI",
-                "copyright": "\u00a9 CompareSet / TechnipFMC",
+                "copyright": "\u00a9 TechnipFMC / DDT FUI",
                 "license": "Licen\u00e7a",
                 "select_old_dialog": "Selecione o PDF antigo",
                 "select_new_dialog": "Selecione o PDF novo",
@@ -127,7 +125,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.lbl_credit.setText(t["developed_by"])
         self.lbl_copyright.setText(t["copyright"])
         self.btn_license.setText(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
@@ -247,15 +244,7 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom = QtWidgets.QHBoxLayout()
         layout.addLayout(bottom)
 
-        self.lbl_credit = QtWidgets.QLabel()
-        self.lbl_credit.setStyleSheet("color: gray")
-        bottom.addWidget(self.lbl_credit)
-
         bottom.addStretch()
-
-        self.lbl_copyright = QtWidgets.QLabel()
-        self.lbl_copyright.setStyleSheet("color: gray")
-        bottom.addWidget(self.lbl_copyright)
 
         self.btn_license = QtWidgets.QPushButton()
         self.btn_license.setStyleSheet(
@@ -266,7 +255,12 @@ class CompareSetQt(QtWidgets.QWidget):
         font.setBold(True)
         self.btn_license.setFont(font)
         self.btn_license.clicked.connect(self.show_license)
+
         bottom.addWidget(self.btn_license)
+
+        self.lbl_copyright = QtWidgets.QLabel()
+        self.lbl_copyright.setStyleSheet("color: gray")
+        bottom.addWidget(self.lbl_copyright)
 
         self.set_language(self.lang)
 
