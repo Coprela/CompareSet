@@ -245,14 +245,15 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.btn_license = QtWidgets.QPushButton()
         self.btn_license.setStyleSheet(
-            "QPushButton{background-color:white; color:gray; border:2px solid gray; padding:4px 8px;}"
-            "QPushButton:disabled{color:#555555; border:2px solid #555555;}"
+            "QPushButton{background-color:white; color:#888888; border:1px solid #CCCCCC; padding:2px 6px;}"
+            "QPushButton:disabled{color:#AAAAAA; border:1px solid #AAAAAA;}"
         )
         font = self.btn_license.font()
         font.setBold(True)
         font.setPointSize(font.pointSize())
         font.setUnderline(False)
         self.btn_license.setFont(font)
+        self.btn_license.setFixedWidth(80)
         self.btn_license.clicked.connect(self.show_license)
 
         bottom.addWidget(self.btn_license)
