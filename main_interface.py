@@ -138,12 +138,6 @@ class CompareSetQt(QtWidgets.QWidget):
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
 
-        lbl_name = QtWidgets.QLabel("CompareSet")
-        font = lbl_name.font()
-        font.setBold(True)
-        lbl_name.setFont(font)
-        top.addWidget(lbl_name)
-
         top.addStretch()
 
         self.toolbar = QtWidgets.QToolBar()
@@ -174,12 +168,22 @@ class CompareSetQt(QtWidgets.QWidget):
 
         top.addWidget(self.toolbar)
 
+        self.lbl_version = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
+        ver_font = self.lbl_version.font()
+        ver_font.setPointSize(ver_font.pointSize() + 2)
+        ver_font.setBold(True)
+        self.lbl_version.setFont(ver_font)
+        self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
+        self.lbl_version.setStyleSheet("color:#471F6F")
+        layout.addWidget(self.lbl_version)
+
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
 
         self.edit_old = QtWidgets.QLineEdit()
         self.edit_old.setReadOnly(True)
         self.edit_old.setFixedWidth(200)
+        self.edit_old.setAlignment(QtCore.Qt.AlignCenter)
         self.btn_old = QtWidgets.QPushButton()
         self.btn_old.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;}"
@@ -192,6 +196,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new = QtWidgets.QLineEdit()
         self.edit_new.setReadOnly(True)
         self.edit_new.setFixedWidth(200)
+        self.edit_new.setAlignment(QtCore.Qt.AlignCenter)
         self.btn_new = QtWidgets.QPushButton()
         self.btn_new.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;}"
@@ -209,7 +214,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
 
+        layout.addSpacing(10)
+
         self.progress = QtWidgets.QProgressBar()
+        self.progress.setTextVisible(False)
         self.progress.hide()
         layout.addWidget(self.progress)
 
@@ -239,15 +247,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_license.setFont(font)
         self.btn_license.clicked.connect(self.show_license)
         bottom.addWidget(self.btn_license)
-
-        self.lbl_version = QtWidgets.QLabel("CompareSet – Version 2025.0.1 Beta")
-        ver_font = self.lbl_version.font()
-        ver_font.setPointSize(ver_font.pointSize() + 2)
-        ver_font.setBold(True)
-        self.lbl_version.setFont(ver_font)
-        self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
-        self.lbl_version.setStyleSheet("color:#471F6F")
-        layout.addWidget(self.lbl_version)
 
         self.set_language(self.lang)
 
