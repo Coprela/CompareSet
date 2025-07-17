@@ -10,10 +10,9 @@ O SOFTWARE É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA", SEM QUALQUER GARANTIA, E
 
 Qualquer uso, cópia ou distribuição não autorizada estará sujeito às sanções previstas na legislação aplicável.
 
----
 
-**Créditos:**
+Créditos:
 
-- **Desenvolvimento e implementação:** Daniel Oliveira  
-- **Setor responsável pela aplicação:** DDT-FUE  
-- **Empresa:** TechnipFMC
+- Desenvolvimento e implementação: Daniel Oliveira  
+- Setor responsável pela aplicação: DDT-FUE  
+- Empresa: TechnipFMC
