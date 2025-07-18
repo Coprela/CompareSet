@@ -1,3 +1,2 @@
-Pillow
 PyMuPDF
 PySide6

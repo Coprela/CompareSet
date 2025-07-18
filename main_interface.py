@@ -2,7 +2,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from pdf_diff import comparar_pdfs, comparar_pdfs_imagem
+from pdf_diff import comparar_pdfs
 from pdf_highlighter import gerar_pdf_com_destaques
 
 
@@ -23,29 +23,20 @@ class ComparisonThread(QtCore.QThread):
         old_pdf: str,
         new_pdf: str,
         output_pdf: str,
-        mode: str,
     ):
         super().__init__()
         self.old_pdf = old_pdf
         self.new_pdf = new_pdf
         self.output_pdf = output_pdf
-        self.mode = mode
 
     def run(self):
         try:
-            if self.mode == "image":
-                dados = comparar_pdfs_imagem(
-                    self.old_pdf,
-                    self.new_pdf,
-                    progress_callback=lambda p: self.progress.emit(p / 2),
-                )
-            else:
-                dados = comparar_pdfs(
-                    self.old_pdf,
-                    self.new_pdf,
-                    adaptive=True,
-                    progress_callback=lambda p: self.progress.emit(p / 2),
-                )
+            dados = comparar_pdfs(
+                self.old_pdf,
+                self.new_pdf,
+                adaptive=True,
+                progress_callback=lambda p: self.progress.emit(p / 2),
+            )
             if not dados["removidos"] and not dados["adicionados"]:
                 self.progress.emit(100.0)
                 self.finished.emit("no_diffs", "")
@@ -112,10 +103,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "no_diffs_title": "No differences",
                 "no_diffs_msg": "The PDF comparison found no differences.",
                 "mode_label": "Comparison mode:",
-                "mode_select": "Select mode",
                 "mode_vector": "Vector",
-                "mode_image": "Image",
-                "select_mode": "Choose a comparison mode.",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -144,15 +132,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "no_diffs_title": "Sem diferen\u00e7as",
                 "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
                 "mode_label": "Tipo de compara\u00e7\u00e3o:",
-                "mode_select": "Selecione o modo",
                 "mode_vector": "Vetorial",
-                "mode_image": "Por imagem",
-                "select_mode": "Escolha o modo de compara\u00e7\u00e3o.",
             },
         }
         self.old_path = ""
         self.new_path = ""
-        self.compare_mode = ""
         self._setup_ui()
         self.thread: ComparisonThread | None = None
 
@@ -170,15 +154,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare.setText(t["compare"])
         self.lbl_mode.setText(t["mode_label"])
         self.combo_mode.clear()
-        self.combo_mode.addItem(t["mode_select"], "")
         self.combo_mode.addItem(t["mode_vector"], "vector")
-        self.combo_mode.addItem(t["mode_image"], "image")
-        idx = 0
-        if self.compare_mode == "vector":
-            idx = 1
-        elif self.compare_mode == "image":
-            idx = 2
-        self.combo_mode.setCurrentIndex(idx)
+        self.combo_mode.setCurrentIndex(0)
         self.mode_changed()
         self.action_license.setToolTip(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
@@ -341,8 +318,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.edit_new.setText(name)
 
     def mode_changed(self):
-        self.compare_mode = self.combo_mode.currentData() or ""
-        enabled = bool(self.compare_mode)
+        enabled = True
         self.btn_old.setEnabled(enabled)
         self.btn_new.setEnabled(enabled)
         self.btn_compare.setEnabled(enabled)
@@ -350,11 +326,6 @@ class CompareSetQt(QtWidgets.QWidget):
     def start_compare(self):
         old = self.old_path
         new = self.new_path
-        if not self.compare_mode:
-            QtWidgets.QMessageBox.critical(
-                self, self.tr("error"), self.tr("select_mode")
-            )
-            return
         if not old or not new:
             QtWidgets.QMessageBox.critical(
                 self, self.tr("error"), self.tr("select_both")
@@ -404,7 +375,6 @@ class CompareSetQt(QtWidgets.QWidget):
             old,
             new,
             out,
-            self.compare_mode,
         )
         self.thread.progress.connect(self.progress.setValue)
         self.thread.progress.connect(self.update_status_label)
