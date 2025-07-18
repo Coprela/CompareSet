@@ -173,6 +173,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.start_time: float | None = None
         self.estimated_total: float | None = None
         self.cancelling = False
+        self.last_stats: tuple[int, int] | None = None
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
@@ -186,9 +187,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText(t["no_file"])
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.action_improve.setToolTip(t["improvement_tooltip"])
-        self.action_help.setToolTip(t["help_tooltip"])
-        self.action_settings.setToolTip(t["settings_tooltip"])
+        # keep actions without tooltip popups
+        self.action_improve.setToolTip("")
+        self.action_help.setToolTip("")
+        self.action_settings.setToolTip("")
         self.action_improve.setText(t["improve_label"])
         self.action_help.setText(t["help_label"])
         self.action_settings.setText(t["settings_label"])
@@ -199,6 +201,8 @@ class CompareSetQt(QtWidgets.QWidget):
         if hasattr(self, "btn_view"):
             self.btn_view.setText(t["view_result"])
         self.lbl_version.setText("CompareSet – v0.2.0-beta")
+        if hasattr(self, "label_status") and self.last_stats:
+            self.label_status.setText(t["stats"].format(*self.last_stats))
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -229,20 +233,27 @@ class CompareSetQt(QtWidgets.QWidget):
         )
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
-        self.action_improve.setToolTip(self.tr("improvement_tooltip"))
+        # disable tooltip popups for cleaner hover behaviour
+        self.action_improve.setToolTip("")
         self.action_improve.triggered.connect(self.open_improvement_link)
 
         self.toolbar.addWidget(QtWidgets.QLabel("|") )
 
         self.action_help = self.toolbar.addAction(help_icon, "")
-        self.action_help.setToolTip(self.tr("help_tooltip"))
+        self.action_help.setToolTip("")
         self.action_help.triggered.connect(self.open_help)
 
         self.toolbar.addWidget(QtWidgets.QLabel("|") )
 
         self.action_settings = self.toolbar.addAction(settings_icon, "")
-        self.action_settings.setToolTip(self.tr("settings_tooltip"))
+        self.action_settings.setToolTip("")
         self.action_settings.triggered.connect(self.open_settings)
+
+        # subtle hover effect for toolbar buttons
+        self.toolbar.setStyleSheet(
+            "QToolButton{background:transparent;border-radius:4px;padding:4px;}"
+            "QToolButton:hover{background:#d0d0d0;}"
+        )
 
         top.addWidget(self.toolbar)
 
@@ -252,8 +263,15 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.edit_old = QtWidgets.QLineEdit()
         self.edit_old.setReadOnly(True)
+        self.edit_old.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.edit_old.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        self.edit_old.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
         self.edit_old.setFixedWidth(200)
         self.edit_old.setAlignment(QtCore.Qt.AlignCenter)
+        self.edit_old.setStyleSheet(
+            "QLineEdit{background:#eeeeee;border:1px solid #cccccc;}"
+            "QLineEdit:hover{background:#dddddd;}"
+        )
         self.btn_old = QtWidgets.QPushButton()
         self.btn_old.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
@@ -267,8 +285,15 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.edit_new = QtWidgets.QLineEdit()
         self.edit_new.setReadOnly(True)
+        self.edit_new.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.edit_new.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        self.edit_new.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
         self.edit_new.setFixedWidth(200)
         self.edit_new.setAlignment(QtCore.Qt.AlignCenter)
+        self.edit_new.setStyleSheet(
+            "QLineEdit{background:#eeeeee;border:1px solid #cccccc;}"
+            "QLineEdit:hover{background:#dddddd;}"
+        )
         self.btn_new = QtWidgets.QPushButton()
         self.btn_new.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
@@ -530,9 +555,11 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_view.hide()
 
         if self.thread and status != "error":
-            stats = self.tr("stats").format(
-                self.thread.elements_checked, self.thread.diff_count
+            self.last_stats = (
+                self.thread.elements_checked,
+                self.thread.diff_count,
             )
+            stats = self.tr("stats").format(*self.last_stats)
             self.label_status.setText(stats)
 
     def show_license(self):
