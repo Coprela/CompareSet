@@ -79,7 +79,8 @@ class CompareSetQt(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CompareSet")
-        self.setFixedSize(500, 340)
+        # allow slightly taller window for additional spacing
+        self.setFixedSize(500, 360)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
         icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
         self.setWindowIcon(QtGui.QIcon(icon_path))
@@ -90,7 +91,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
                 "license": "License",
-                "improve_label": "Improve",
+                "improve_label": "Feedback & improvements",
                 "help_label": "Help",
                 "settings_label": "Settings",
                 "no_file": "no file selected",
@@ -126,7 +127,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
                 "license": "Licen\u00e7a",
-                "improve_label": "Melhorias",
+                "improve_label": "Feedback & melhorias",
                 "help_label": "Ajuda",
                 "settings_label": "Configura\u00e7\u00f5es",
                 "no_file": "nenhum arquivo selecionado",
@@ -195,6 +196,8 @@ class CompareSetQt(QtWidgets.QWidget):
 
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
+        # add breathing room between the toolbar and the file selectors
+        layout.addSpacing(10)
 
         top.addStretch()
 
@@ -298,7 +301,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self._progress_stack.setCurrentIndex(1)
 
         self.progress_frame = QtWidgets.QFrame()
-        self.progress_frame.setStyleSheet("background:#f9f9f9;")
+        # remove the white background so the frame blends with the window
+        self.progress_frame.setStyleSheet("")
         progress_group = QtWidgets.QVBoxLayout(self.progress_frame)
         progress_group.addLayout(self._progress_stack)
 
@@ -322,7 +326,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_cancel.clicked.connect(self.cancel_compare)
         self.btn_cancel.hide()
         progress_group.addWidget(self.btn_cancel, alignment=QtCore.Qt.AlignCenter)
-        progress_group.setSpacing(2)
+        # more spacing so the status information and buttons don't feel cramped
+        progress_group.setSpacing(8)
 
         self.btn_view = QtWidgets.QPushButton(self.tr("view_result"))
         self.btn_view.setStyleSheet(
@@ -354,11 +359,16 @@ class CompareSetQt(QtWidgets.QWidget):
         self.lbl_license.linkActivated.connect(lambda _: self.show_license())
 
         bottom = QtWidgets.QHBoxLayout()
+        # keep the separator close to the version and license labels
+        bottom.setContentsMargins(0, 0, 0, 0)
+        bottom.setSpacing(4)
         bottom.addWidget(self.lbl_version, stretch=1)
         bottom.addWidget(self.lbl_license)
         layout.addLayout(bottom)
 
         self.set_language(self.lang)
+        # ensure no line edit starts focused so placeholders remain visible
+        self.btn_compare.setFocus()
 
     # slots
     def select_old(self):
@@ -474,13 +484,6 @@ class CompareSetQt(QtWidgets.QWidget):
             QtWidgets.QMessageBox.information(
                 self, self.tr("success"), self.tr("pdf_saved").format(info)
             )
-            reply = QtWidgets.QMessageBox.question(
-                self,
-                self.tr("open_pdf_title"),
-                self.tr("open_pdf_prompt"),
-            )
-            if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(info))
             self.view_path = info
             self.btn_view.show()
         elif status == "error":
@@ -493,8 +496,7 @@ class CompareSetQt(QtWidgets.QWidget):
             stats = self.tr("stats").format(
                 self.thread.elements_checked, self.thread.diff_count
             )
-            prefix = "✅ " if status == "success" else ""
-            self.label_status.setText(prefix + stats)
+            self.label_status.setText(stats)
 
     def show_license(self):
         fname = "LICENSE_EN.txt" if self.lang == "en" else "LICENSE_PT.txt"
