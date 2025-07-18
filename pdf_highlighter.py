@@ -1,5 +1,7 @@
 from typing import Callable, Optional
 
+from pdf_diff import CancelledError
+
 import fitz  # PyMuPDF
 
 COLOR_REMOVE_DEFAULT = (1, 0, 0)  # vermelho
@@ -17,6 +19,7 @@ def gerar_pdf_com_destaques(
     color_add: tuple = COLOR_ADD_DEFAULT,
     color_remove: tuple = COLOR_REMOVE_DEFAULT,
     progress_callback: Optional[Callable[[float], None]] = None,
+    cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> None:
     """Create a PDF highlighting removed and added regions.
 
@@ -31,6 +34,8 @@ def gerar_pdf_com_destaques(
     color_add, color_remove : tuple, optional
         RGB colors in the range ``0-1`` for additions and removals.
         The highlight opacity is fixed at ``0.3``.
+    cancel_callback : callable, optional
+        Function returning ``True`` to abort the operation.
     """
     with fitz.open(pdf_old) as doc_old, fitz.open(
         pdf_new
@@ -62,6 +67,8 @@ def gerar_pdf_com_destaques(
                 done += 1
                 if progress_callback:
                     progress_callback((done / total_steps) * 100)
+                if cancel_callback and cancel_callback():
+                    raise CancelledError()
 
             if i < len(doc_new):
                 page = doc_new[i]
@@ -85,6 +92,8 @@ def gerar_pdf_com_destaques(
                 done += 1
                 if progress_callback:
                     progress_callback((done / total_steps) * 100)
+                if cancel_callback and cancel_callback():
+                    raise CancelledError()
 
         final.save(output_pdf)
         if progress_callback:
