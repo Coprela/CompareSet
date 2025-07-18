@@ -45,7 +45,6 @@ URL (defaults to the DigiCert service).
 ## Dependencies
 
 - Python 3.8 or later
-- [Pillow](https://pypi.org/project/Pillow/) for image handling
 - [PyMuPDF](https://pypi.org/project/PyMuPDF/) for PDF operations
 - Tkinter (bundled with Python) for the classic GUI
 - [PySide6](https://pypi.org/project/PySide6/) for the Qt interface
