@@ -90,6 +90,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
                 "license": "License",
+                "improve_label": "Improve",
+                "help_label": "Help",
+                "settings_label": "Settings",
+                "no_file": "no file selected",
+                "view_result": "View result",
                 "select_old_dialog": "Select old PDF",
                 "select_new_dialog": "Select new PDF",
                 "save_dialog": "Save comparison PDF",
@@ -121,6 +126,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
                 "license": "Licen\u00e7a",
+                "improve_label": "Melhorias",
+                "help_label": "Ajuda",
+                "settings_label": "Configura\u00e7\u00f5es",
+                "no_file": "nenhum arquivo selecionado",
+                "view_result": "Visualizar resultado",
                 "select_old_dialog": "Selecione o PDF antigo",
                 "select_new_dialog": "Selecione o PDF novo",
                 "save_dialog": "Salvar PDF de compara\u00e7\u00e3o",
@@ -160,22 +170,28 @@ class CompareSetQt(QtWidgets.QWidget):
         if lang in self.translations:
             self.lang = lang
         t = self.translations[self.lang]
-        self.edit_old.setPlaceholderText("")
+        self.edit_old.setPlaceholderText(t["no_file"])
         self.btn_old.setText(t["select_old"])
-        self.edit_new.setPlaceholderText("")
+        self.edit_new.setPlaceholderText(t["no_file"])
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
+        self.action_improve.setText(t["improve_label"])
+        self.action_help.setText(t["help_label"])
+        self.action_settings.setText(t["settings_label"])
         if hasattr(self, "lbl_license"):
             self.lbl_license.setText(f'<a href="#">{t["license"]}</a>')
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
+        if hasattr(self, "btn_view"):
+            self.btn_view.setText(t["view_result"])
         self.lbl_version.setText("CompareSet – v0.2.0-beta")
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 20)
 
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
@@ -185,6 +201,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.toolbar = QtWidgets.QToolBar()
         self.toolbar.setIconSize(QtCore.QSize(16, 16))
         self.toolbar.setMovable(False)
+        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
 
         improve_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.png")
@@ -202,9 +219,13 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setToolTip(self.tr("improvement_tooltip"))
         self.action_improve.triggered.connect(self.open_improvement_link)
 
+        self.toolbar.addWidget(QtWidgets.QLabel("|") )
+
         self.action_help = self.toolbar.addAction(help_icon, "")
         self.action_help.setToolTip(self.tr("help_tooltip"))
         self.action_help.triggered.connect(self.open_help)
+
+        self.toolbar.addWidget(QtWidgets.QLabel("|") )
 
         self.action_settings = self.toolbar.addAction(settings_icon, "")
         self.action_settings.setToolTip(self.tr("settings_tooltip"))
@@ -222,13 +243,14 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_old.setAlignment(QtCore.Qt.AlignCenter)
         self.btn_old = QtWidgets.QPushButton()
         self.btn_old.setStyleSheet(
-            "QPushButton{background-color:#000000;color:white;}"
+            "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_old.setEnabled(True)
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
-        grid.addWidget(self.btn_old, 0, 1)
+        grid.addWidget(self.btn_old, 0, 1, alignment=QtCore.Qt.AlignVCenter)
 
         self.edit_new = QtWidgets.QLineEdit()
         self.edit_new.setReadOnly(True)
@@ -236,17 +258,19 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setAlignment(QtCore.Qt.AlignCenter)
         self.btn_new = QtWidgets.QPushButton()
         self.btn_new.setStyleSheet(
-            "QPushButton{background-color:#000000;color:white;}"
+            "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_new.setEnabled(True)
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
-        grid.addWidget(self.btn_new, 1, 1)
+        grid.addWidget(self.btn_new, 1, 1, alignment=QtCore.Qt.AlignVCenter)
 
         self.btn_compare = QtWidgets.QPushButton()
         self.btn_compare.setStyleSheet(
-            "QPushButton{background-color:#471F6F;color:white;}"
+            "QPushButton{background-color:#471F6F;color:white;padding:6px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#5c2c88;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_compare.setEnabled(True)
@@ -273,25 +297,50 @@ class CompareSetQt(QtWidgets.QWidget):
         self._progress_stack.addWidget(self._progress_placeholder)
         self._progress_stack.setCurrentIndex(1)
 
-        progress_group = QtWidgets.QVBoxLayout()
+        self.progress_frame = QtWidgets.QFrame()
+        self.progress_frame.setStyleSheet("background:#f9f9f9;border:1px solid #cccccc;border-radius:4px;")
+        progress_group = QtWidgets.QVBoxLayout(self.progress_frame)
         progress_group.addLayout(self._progress_stack)
 
+        status_row = QtWidgets.QHBoxLayout()
+        status_row.setAlignment(QtCore.Qt.AlignCenter)
+        self.spinner = QtWidgets.QLabel()
+        self.spinner.setPixmap(self.style().standardPixmap(QtWidgets.QStyle.SP_BrowserReload))
+        self.spinner.hide()
+        status_row.addWidget(self.spinner)
         self.label_status = QtWidgets.QLabel()
         self.label_status.setAlignment(QtCore.Qt.AlignCenter)
-        progress_group.addWidget(self.label_status)
+        status_row.addWidget(self.label_status)
+        progress_group.addLayout(status_row)
         self.btn_cancel = QtWidgets.QPushButton(self.tr("cancel"))
         self.btn_cancel.setStyleSheet(
-            "QPushButton{background-color:#cc0000;color:white;}"
+            "QPushButton{background-color:#c0392b;color:white;font-weight:bold;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#e74c3c;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_cancel.setFixedWidth(80)
         self.btn_cancel.clicked.connect(self.cancel_compare)
         self.btn_cancel.hide()
-        progress_group.addWidget(self.btn_cancel)
+        progress_group.addWidget(self.btn_cancel, alignment=QtCore.Qt.AlignCenter)
         progress_group.setSpacing(2)
 
-        layout.addLayout(progress_group)
+        self.btn_view = QtWidgets.QPushButton(self.tr("view_result"))
+        self.btn_view.setStyleSheet(
+            "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#5c2c88;}"
+        )
+        self.btn_view.clicked.connect(self.open_result)
+        self.btn_view.hide()
+        progress_group.addWidget(self.btn_view, alignment=QtCore.Qt.AlignCenter)
+
+        layout.addWidget(self.progress_frame)
         layout.addSpacing(10)
+
+        self.separator = QtWidgets.QFrame()
+        self.separator.setFrameShape(QtWidgets.QFrame.HLine)
+        self.separator.setFrameShadow(QtWidgets.QFrame.Sunken)
+        self.separator.setStyleSheet("color:#cccccc")
+        layout.addWidget(self.separator)
 
         self.lbl_version = QtWidgets.QLabel()
         ver_font = self.lbl_version.font()
@@ -299,7 +348,7 @@ class CompareSetQt(QtWidgets.QWidget):
         ver_font.setBold(True)
         self.lbl_version.setFont(ver_font)
         self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
-        self.lbl_version.setStyleSheet("color:#471F6F")
+        self.lbl_version.setStyleSheet("color:#666666")
 
         self.lbl_license = QtWidgets.QLabel()
         self.lbl_license.setAlignment(QtCore.Qt.AlignRight)
@@ -373,6 +422,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_old.clearFocus()
         self.edit_new.clearFocus()
         self.label_status.setText(self.tr("starting"))
+        self.spinner.show()
+        self.btn_view.hide()
         self.btn_cancel.show()
         self.btn_cancel.setEnabled(True)
         self.btn_compare.setEnabled(False)
@@ -401,6 +452,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.thread.cancel()
             self.btn_cancel.setEnabled(False)
             self.label_status.setText(self.tr("cancelled_msg"))
+            self.spinner.hide()
 
     def compare_finished(self, status: str, info: str):
         self.btn_compare.setEnabled(True)
@@ -414,6 +466,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings.setEnabled(True)
         self.btn_cancel.hide()
         self._progress_stack.setCurrentIndex(1)
+        self.spinner.hide()
         if status == "cancelled":
             QtWidgets.QMessageBox.information(
                 self, self.tr("cancelled_title"), self.tr("cancelled_msg")
@@ -433,14 +486,20 @@ class CompareSetQt(QtWidgets.QWidget):
             )
             if reply == QtWidgets.QMessageBox.StandardButton.Yes:
                 QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(info))
+            self.view_path = info
+            self.btn_view.show()
         elif status == "error":
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
+            self.btn_view.hide()
+        else:
+            self.btn_view.hide()
 
         if self.thread and status != "error":
             stats = self.tr("stats").format(
                 self.thread.elements_checked, self.thread.diff_count
             )
-            self.label_status.setText(stats)
+            prefix = "✅ " if status == "success" else ""
+            self.label_status.setText(prefix + stats)
 
     def show_license(self):
         fname = "LICENSE_EN.txt" if self.lang == "en" else "LICENSE_PT.txt"
@@ -485,6 +544,10 @@ class CompareSetQt(QtWidgets.QWidget):
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
         dlg.exec()
+
+    def open_result(self):
+        if hasattr(self, "view_path"):
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.view_path))
 
 
 if __name__ == "__main__":
