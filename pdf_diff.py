@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
 
+
+class CancelledError(Exception):
+    """Raised when a comparison operation is cancelled."""
+    pass
+
 import io
 
 import fitz
@@ -258,6 +263,7 @@ def comparar_pdfs(
     thr: float = 0.9,
     adaptive: bool = False,
     progress_callback: Optional[Callable[[float], None]] = None,
+    cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
@@ -278,6 +284,14 @@ def comparar_pdfs(
         progressively relaxing the tolerance.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
+    cancel_callback : callable, optional
+        Function returning ``True`` to abort the operation.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys ``removidos`` and ``adicionados`` listing the
+        differences and ``verificados`` with the number of processed elements.
     """
     with _load_pdf_without_signatures(old_pdf) as doc_old, _load_pdf_without_signatures(
         new_pdf
@@ -324,7 +338,8 @@ def comparar_pdfs(
             thr_values = [thr]
 
         total_steps = max_pages * len(thr_values)
-        result = {"removidos": [], "adicionados": []}
+        result = {"removidos": [], "adicionados": [], "verificados": 0}
+        elements_counted = False
         previous: Optional[Tuple[set, set]] = None
 
         for j, thr_val in enumerate(thr_values):
@@ -333,6 +348,8 @@ def comparar_pdfs(
             for page_num in range(max_pages):
                 old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
                 new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
+                if not elements_counted:
+                    result["verificados"] += len(old_boxes) + len(new_boxes)
                 rem, add = _compare_page(old_boxes, new_boxes, thr_val)
                 removidos.extend(
                     {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]} for b in rem
@@ -344,12 +361,21 @@ def comparar_pdfs(
                     done = j * max_pages + page_num + 1
                     progress = (done / total_steps) * 100
                     progress_callback(progress)
+                if cancel_callback and cancel_callback():
+                    raise CancelledError()
 
             removidos, adicionados = _remove_unchanged(removidos, adicionados)
             removidos, adicionados = _remove_moved_same_text(removidos, adicionados)
             removidos = _remove_contained(removidos)
             adicionados = _remove_contained(adicionados)
-            result = {"removidos": removidos, "adicionados": adicionados}
+            result = {
+                "removidos": removidos,
+                "adicionados": adicionados,
+                "verificados": result["verificados"],
+            }
+            elements_counted = True
+            if cancel_callback and cancel_callback():
+                raise CancelledError()
             current = (
                 {(r["pagina"], tuple(r["bbox"])) for r in removidos},
                 {(a["pagina"], tuple(a["bbox"])) for a in adicionados},
