@@ -1,4 +1,5 @@
 import os
+import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -105,6 +106,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "choose_diff": "Choose a different file name from the input PDF.",
                 "file_in_use": "The PDF is open in another program.",
                 "starting": "Starting...",
+                "waiting": "Please wait",
+                "cancelling": "Cancelling...",
                 "pdf_saved": "PDF saved to: {}",
                 "open_pdf_title": "Open PDF",
                 "open_pdf_prompt": "Open generated PDF?",
@@ -141,6 +144,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "choose_diff": "Escolha um nome de arquivo diferente do PDF de entrada.",
                 "file_in_use": "O PDF est\u00e1 aberto em outro programa.",
                 "starting": "Iniciando...",
+                "waiting": "Aguarde",
+                "cancelling": "Cancelando...",
                 "pdf_saved": "PDF salvo em: {}",
                 "open_pdf_title": "Abrir PDF",
                 "open_pdf_prompt": "Abrir o PDF gerado?",
@@ -163,6 +168,11 @@ class CompareSetQt(QtWidgets.QWidget):
         self.new_path = ""
         self._setup_ui()
         self.thread: ComparisonThread | None = None
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.update_remaining_time)
+        self.start_time: float | None = None
+        self.estimated_total: float | None = None
+        self.cancelling = False
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
@@ -423,11 +433,15 @@ class CompareSetQt(QtWidgets.QWidget):
             return
 
         self.progress.setValue(0)
-        self._progress_stack.setCurrentIndex(0)
+        self._progress_stack.setCurrentIndex(1)
         self.edit_old.clearFocus()
         self.edit_new.clearFocus()
-        self.label_status.setText(self.tr("starting"))
-        self.spinner.show()
+        self.label_status.setText(f"{self.tr('waiting')} --:--")
+        self.spinner.hide()
+        self.start_time = time.perf_counter()
+        self.estimated_total = None
+        self.cancelling = False
+        self.timer.start(1000)
         self.btn_view.hide()
         self.btn_cancel.show()
         self.btn_cancel.setEnabled(True)
@@ -446,7 +460,7 @@ class CompareSetQt(QtWidgets.QWidget):
             new,
             out,
         )
-        self.thread.progress.connect(self.progress.setValue)
+        self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)
         self.thread.start()
 
@@ -456,10 +470,33 @@ class CompareSetQt(QtWidgets.QWidget):
         if self.thread:
             self.thread.cancel()
             self.btn_cancel.setEnabled(False)
-            self.label_status.setText(self.tr("cancelled_msg"))
+            self.cancelling = True
+            self.label_status.setText(f"{self.tr('cancelling')} --:--")
             self.spinner.hide()
 
+    def update_progress(self, value: float):
+        self.progress.setValue(value)
+        if self.start_time is None:
+            return
+        elapsed = time.perf_counter() - self.start_time
+        if value > 0:
+            self.estimated_total = elapsed / (value / 100)
+        self.update_remaining_time()
+
+    def update_remaining_time(self):
+        if self.start_time is None or self.estimated_total is None:
+            return
+        elapsed = time.perf_counter() - self.start_time
+        remaining = max(self.estimated_total - elapsed, 0)
+        m, s = divmod(int(remaining + 0.999), 60)
+        msg = self.tr("cancelling") if self.cancelling else self.tr("waiting")
+        self.label_status.setText(f"{msg} {m:02d}:{s:02d}")
+
     def compare_finished(self, status: str, info: str):
+        self.timer.stop()
+        self.start_time = None
+        self.estimated_total = None
+        self.cancelling = False
         self.btn_compare.setEnabled(True)
         self.btn_old.setEnabled(True)
         self.btn_new.setEnabled(True)
