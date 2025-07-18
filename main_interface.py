@@ -166,7 +166,6 @@ class CompareSetQt(QtWidgets.QWidget):
         }
         self.old_path = ""
         self.new_path = ""
-        self._setup_ui()
         self.thread: ComparisonThread | None = None
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_remaining_time)
@@ -174,6 +173,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.estimated_total: float | None = None
         self.cancelling = False
         self.last_stats: tuple[int, int] | None = None
+        self._setup_ui()
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
