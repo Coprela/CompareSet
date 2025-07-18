@@ -38,6 +38,8 @@ def _load_real_fitz():
 real_fitz = _load_real_fitz()
 if real_fitz is not None:
     globals().update(real_fitz.__dict__)
+    # Ensure future "import fitz" statements get the real module
+    sys.modules[__name__] = real_fitz
 else:
     class Rect:
         def __init__(self, x0=0, y0=0, x1=0, y1=0):
