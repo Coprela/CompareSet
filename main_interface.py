@@ -79,7 +79,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CompareSet")
-        self.setFixedSize(500, 300)
+        self.setFixedSize(500, 340)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
         icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
         self.setWindowIcon(QtGui.QIcon(icon_path))
@@ -191,7 +191,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 20)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
@@ -298,7 +298,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self._progress_stack.setCurrentIndex(1)
 
         self.progress_frame = QtWidgets.QFrame()
-        self.progress_frame.setStyleSheet("background:#f9f9f9;border:1px solid #cccccc;border-radius:4px;")
+        self.progress_frame.setStyleSheet("background:#f9f9f9;")
         progress_group = QtWidgets.QVBoxLayout(self.progress_frame)
         progress_group.addLayout(self._progress_stack)
 
@@ -326,7 +326,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.btn_view = QtWidgets.QPushButton(self.tr("view_result"))
         self.btn_view.setStyleSheet(
-            "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton{background-color:#471F6F;color:white;padding:6px;border-radius:4px;}"
             "QPushButton:hover{background-color:#5c2c88;}"
         )
         self.btn_view.clicked.connect(self.open_result)
@@ -339,14 +339,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.separator = QtWidgets.QFrame()
         self.separator.setFrameShape(QtWidgets.QFrame.HLine)
         self.separator.setFrameShadow(QtWidgets.QFrame.Sunken)
-        self.separator.setStyleSheet("color:#cccccc")
+        self.separator.setStyleSheet("color:#999999")
         layout.addWidget(self.separator)
 
         self.lbl_version = QtWidgets.QLabel()
-        ver_font = self.lbl_version.font()
-        ver_font.setPointSize(ver_font.pointSize() + 4)
-        ver_font.setBold(True)
-        self.lbl_version.setFont(ver_font)
         self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
         self.lbl_version.setStyleSheet("color:#666666")
 
@@ -361,7 +357,6 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom.addWidget(self.lbl_version, stretch=1)
         bottom.addWidget(self.lbl_license)
         layout.addLayout(bottom)
-        layout.addSpacing(10)
 
         self.set_language(self.lang)
 
