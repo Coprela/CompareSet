@@ -79,7 +79,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CompareSet")
-        self.setFixedSize(480, 280)
+        self.setFixedSize(480, 320)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
         icon = QtGui.QIcon()
         icon_files = {
@@ -123,8 +123,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "settings_title": "Settings",
                 "no_diffs_title": "No differences",
                 "no_diffs_msg": "The PDF comparison found no differences.",
-                "mode_label": "Comparison mode:",
-                "mode_vector": "Vector",
                 "cancel": "Cancel",
                 "cancelled_title": "Cancelled",
                 "cancelled_msg": "Comparison cancelled.",
@@ -156,8 +154,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "settings_title": "Configura\u00e7\u00f5es",
                 "no_diffs_title": "Sem diferen\u00e7as",
                 "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
-                "mode_label": "Tipo de compara\u00e7\u00e3o:",
-                "mode_vector": "Vetorial",
                 "cancel": "Cancelar",
                 "cancelled_title": "Cancelado",
                 "cancelled_msg": "Compara\u00e7\u00e3o cancelada.",
@@ -181,12 +177,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.lbl_mode.setText(t["mode_label"])
-        self.combo_mode.clear()
-        self.combo_mode.addItem(t["mode_vector"], "vector")
-        self.combo_mode.setCurrentIndex(0)
-        self.mode_changed()
-        self.action_license.setToolTip(t["license"])
+        # comparison mode is fixed, no selector needed
+        self.lbl_license.setText(f'<a href="#">{t["license"]}</a>')
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
@@ -198,12 +190,13 @@ class CompareSetQt(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
 
         top = QtWidgets.QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(top)
 
         top.addStretch()
 
         self.toolbar = QtWidgets.QToolBar()
-        self.toolbar.setIconSize(QtCore.QSize(16, 16))
+        self.toolbar.setIconSize(QtCore.QSize(20, 20))
         self.toolbar.setMovable(False)
 
         improve_icon = QtGui.QIcon(
@@ -216,9 +209,6 @@ class CompareSetQt(QtWidgets.QWidget):
         )
         settings_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
-        )
-        license_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - License.png")
         )
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
@@ -233,19 +223,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings.setToolTip(self.tr("settings_tooltip"))
         self.action_settings.triggered.connect(self.open_settings)
 
-        self.action_license = self.toolbar.addAction(license_icon, "")
-        self.action_license.setToolTip(self.tr("license"))
-        self.action_license.triggered.connect(self.show_license)
-
         top.addWidget(self.toolbar)
-
-        mode_layout = QtWidgets.QHBoxLayout()
-        layout.addLayout(mode_layout)
-        self.lbl_mode = QtWidgets.QLabel()
-        mode_layout.addWidget(self.lbl_mode)
-        self.combo_mode = QtWidgets.QComboBox()
-        self.combo_mode.currentIndexChanged.connect(self.mode_changed)
-        mode_layout.addWidget(self.combo_mode)
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
@@ -287,7 +265,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
 
-        layout.addSpacing(10)
+        layout.addSpacing(20)
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setTextVisible(False)
@@ -314,9 +292,14 @@ class CompareSetQt(QtWidgets.QWidget):
         progress_group.addWidget(self.label_status)
         self.btn_cancel = QtWidgets.QPushButton(self.tr("cancel"))
         self.btn_cancel.clicked.connect(self.cancel_compare)
+        self.btn_cancel.setFixedWidth(100)
+        self.btn_cancel.setStyleSheet(
+            "QPushButton{background-color:#cc0000;color:white;}"
+            "QPushButton:disabled{background-color:#ffaaaa;color:white;}"
+        )
         self.btn_cancel.hide()
-        progress_group.addWidget(self.btn_cancel)
-        progress_group.setSpacing(2)
+        progress_group.addWidget(self.btn_cancel, alignment=QtCore.Qt.AlignHCenter)
+        progress_group.setSpacing(5)
 
         layout.addLayout(progress_group)
         layout.addSpacing(10)
@@ -329,6 +312,13 @@ class CompareSetQt(QtWidgets.QWidget):
         self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
         self.lbl_version.setStyleSheet("color:#471F6F")
         layout.addWidget(self.lbl_version)
+        self.lbl_license = QtWidgets.QLabel()
+        self.lbl_license.setTextFormat(QtCore.Qt.RichText)
+        self.lbl_license.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        self.lbl_license.setOpenExternalLinks(False)
+        self.lbl_license.linkActivated.connect(lambda _: self.show_license())
+        self.lbl_license.setStyleSheet("color:#3399ff")
+        layout.addWidget(self.lbl_license, alignment=QtCore.Qt.AlignRight)
         layout.addSpacing(10)
 
         self.set_language(self.lang)
@@ -351,12 +341,6 @@ class CompareSetQt(QtWidgets.QWidget):
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
-
-    def mode_changed(self):
-        enabled = True
-        self.btn_old.setEnabled(enabled)
-        self.btn_new.setEnabled(enabled)
-        self.btn_compare.setEnabled(enabled)
 
     def start_compare(self):
         old = self.old_path
@@ -403,7 +387,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(False)
         self.edit_old.setEnabled(False)
         self.edit_new.setEnabled(False)
-        self.action_license.setEnabled(False)
         self.action_improve.setEnabled(False)
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
@@ -433,7 +416,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(True)
         self.edit_old.setEnabled(True)
         self.edit_new.setEnabled(True)
-        self.action_license.setEnabled(True)
         self.action_improve.setEnabled(True)
         self.action_help.setEnabled(True)
         self.action_settings.setEnabled(True)
