@@ -127,6 +127,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "history": "History",
                 "file_missing": "File not found at saved location",
                 "unavailable": "Unavailable",
+                "back": "Back",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -168,6 +169,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "history": "Hist\u00f3rico",
                 "file_missing": "Arquivo n\u00e3o encontrado no local de origem",
                 "unavailable": "Indispon\u00edvel",
+                "back": "Voltar",
             },
         }
         self.old_path = ""
@@ -214,7 +216,10 @@ class CompareSetQt(QtWidgets.QWidget):
             self.label_status.setText(t["stats"].format(*self.last_stats))
 
     def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
+        self.stack = QtWidgets.QStackedLayout(self)
+
+        self.main_page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(self.main_page)
         layout.setContentsMargins(10, 10, 10, 10)
 
         top = QtWidgets.QHBoxLayout()
@@ -258,11 +263,14 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings.setToolTip("")
         self.action_settings.triggered.connect(self.open_settings)
 
-        self.toolbar.addWidget(QtWidgets.QLabel("|") )
+        self.history_sep = QtWidgets.QLabel("|")
+        self.toolbar.addWidget(self.history_sep)
         history_icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
         self.action_history = self.toolbar.addAction(history_icon, "")
         self.action_history.setToolTip("")
         self.action_history.triggered.connect(self.open_history)
+        self.action_history.setVisible(False)
+        self.history_sep.setVisible(False)
 
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
@@ -417,12 +425,35 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom.addWidget(self.lbl_license)
         layout.addLayout(bottom)
 
+        self.stack.addWidget(self.main_page)
+        self.history_page = QtWidgets.QWidget()
+        self.history_layout = QtWidgets.QVBoxLayout(self.history_page)
+        self.history_layout.setContentsMargins(10, 10, 10, 10)
+        self.stack.addWidget(self.history_page)
+        self.stack.setCurrentWidget(self.main_page)
+
         self.set_language(self.lang)
         # ensure no line edit starts focused so placeholders remain visible
         self.btn_compare.setFocus()
 
+    def clear_results(self):
+        if hasattr(self, "label_status"):
+            self.label_status.setText("")
+        if hasattr(self, "btn_view"):
+            self.btn_view.hide()
+        self.last_stats = None
+
+    def _clear_layout(self, layout: QtWidgets.QLayout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
+
     # slots
     def select_old(self):
+        self.clear_results()
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, self.tr("select_old_dialog"), filter="PDF Files (*.pdf)"
         )
@@ -430,11 +461,9 @@ class CompareSetQt(QtWidgets.QWidget):
             self.old_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_old.setText(name)
-            self.label_status.setText("")
-            self.btn_view.hide()
-            self.last_stats = None
 
     def select_new(self):
+        self.clear_results()
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, self.tr("select_new_dialog"), filter="PDF Files (*.pdf)"
         )
@@ -442,9 +471,6 @@ class CompareSetQt(QtWidgets.QWidget):
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
-            self.label_status.setText("")
-            self.btn_view.hide()
-            self.last_stats = None
 
     def start_compare(self):
         old = self.old_path
@@ -577,8 +603,11 @@ class CompareSetQt(QtWidgets.QWidget):
                     "old": os.path.splitext(os.path.basename(self.old_path))[0],
                     "new": os.path.splitext(os.path.basename(self.new_path))[0],
                     "output": info,
+                    "mtime": os.path.getmtime(info),
                 }
             )
+            self.action_history.setVisible(True)
+            self.history_sep.setVisible(True)
         elif status == "error":
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
             self.btn_view.hide()
@@ -638,14 +667,21 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg.exec()
 
     def open_history(self):
-        dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle(self.tr("history"))
-        layout = QtWidgets.QVBoxLayout(dlg)
+        self.clear_results()
+        # rebuild history layout
+        while self.history_layout.count():
+            item = self.history_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
+
         for entry in reversed(self.history):
             row = QtWidgets.QHBoxLayout()
             name_label = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
             row.addWidget(name_label)
-            if os.path.exists(entry['output']):
+            valid = os.path.exists(entry['output']) and os.path.getmtime(entry['output']) == entry.get('mtime')
+            if valid:
                 btn = QtWidgets.QPushButton(self.tr("view_result"))
                 btn.setStyleSheet(
                     "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
@@ -662,13 +698,13 @@ class CompareSetQt(QtWidgets.QWidget):
                 btn = QtWidgets.QPushButton(self.tr("unavailable"))
                 btn.setEnabled(False)
                 row.addWidget(btn)
-            layout.addLayout(row)
+            self.history_layout.addLayout(row)
         if not self.history:
-            layout.addWidget(QtWidgets.QLabel("-"))
-        close_btn = QtWidgets.QPushButton("OK")
-        close_btn.clicked.connect(dlg.accept)
-        layout.addWidget(close_btn, alignment=QtCore.Qt.AlignCenter)
-        dlg.exec()
+            self.history_layout.addWidget(QtWidgets.QLabel("-"))
+        back_btn = QtWidgets.QPushButton(self.tr("back"))
+        back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
+        self.history_layout.addWidget(back_btn, alignment=QtCore.Qt.AlignCenter)
+        self.stack.setCurrentWidget(self.history_page)
 
     def open_result(self):
         if hasattr(self, "view_path"):
