@@ -124,6 +124,9 @@ class CompareSetQt(QtWidgets.QWidget):
                 "cancelled_title": "Cancelled",
                 "cancelled_msg": "Comparison cancelled.",
                 "stats": "Elements checked: {}\nDifferences found: {}",
+                "history": "History",
+                "file_missing": "File not found at saved location",
+                "unavailable": "Unavailable",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -162,6 +165,9 @@ class CompareSetQt(QtWidgets.QWidget):
                 "cancelled_title": "Cancelado",
                 "cancelled_msg": "Compara\u00e7\u00e3o cancelada.",
                 "stats": "Elementos verificados: {}\nDiferen\u00e7as encontradas: {}",
+                "history": "Hist\u00f3rico",
+                "file_missing": "Arquivo n\u00e3o encontrado no local de origem",
+                "unavailable": "Indispon\u00edvel",
             },
         }
         self.old_path = ""
@@ -173,6 +179,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.estimated_total: float | None = None
         self.cancelling = False
         self.last_stats: tuple[int, int] | None = None
+        self.history: list[dict] = []
         self._setup_ui()
 
     def tr(self, key: str) -> str:
@@ -191,9 +198,11 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setToolTip("")
         self.action_help.setToolTip("")
         self.action_settings.setToolTip("")
+        self.action_history.setToolTip("")
         self.action_improve.setText(t["improve_label"])
         self.action_help.setText(t["help_label"])
         self.action_settings.setText(t["settings_label"])
+        self.action_history.setText(t["history"])
         if hasattr(self, "lbl_license"):
             self.lbl_license.setText(f'<a href="#">{t["license"]}</a>')
         if hasattr(self, "btn_cancel"):
@@ -248,6 +257,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings = self.toolbar.addAction(settings_icon, "")
         self.action_settings.setToolTip("")
         self.action_settings.triggered.connect(self.open_settings)
+
+        self.toolbar.addWidget(QtWidgets.QLabel("|") )
+        history_icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
+        self.action_history = self.toolbar.addAction(history_icon, "")
+        self.action_history.setToolTip("")
+        self.action_history.triggered.connect(self.open_history)
 
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
@@ -415,6 +430,9 @@ class CompareSetQt(QtWidgets.QWidget):
             self.old_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_old.setText(name)
+            self.label_status.setText("")
+            self.btn_view.hide()
+            self.last_stats = None
 
     def select_new(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -424,6 +442,9 @@ class CompareSetQt(QtWidgets.QWidget):
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
+            self.label_status.setText("")
+            self.btn_view.hide()
+            self.last_stats = None
 
     def start_compare(self):
         old = self.old_path
@@ -480,6 +501,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setEnabled(False)
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
+        self.action_history.setEnabled(False)
 
         self.thread = ComparisonThread(
             old,
@@ -532,6 +554,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setEnabled(True)
         self.action_help.setEnabled(True)
         self.action_settings.setEnabled(True)
+        self.action_history.setEnabled(True)
         self.btn_cancel.hide()
         self._progress_stack.setCurrentIndex(1)
         self.spinner.hide()
@@ -549,6 +572,13 @@ class CompareSetQt(QtWidgets.QWidget):
             )
             self.view_path = info
             self.btn_view.show()
+            self.history.append(
+                {
+                    "old": os.path.splitext(os.path.basename(self.old_path))[0],
+                    "new": os.path.splitext(os.path.basename(self.new_path))[0],
+                    "output": info,
+                }
+            )
         elif status == "error":
             QtWidgets.QMessageBox.critical(self, self.tr("error"), info)
             self.btn_view.hide()
@@ -605,6 +635,39 @@ class CompareSetQt(QtWidgets.QWidget):
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
+        dlg.exec()
+
+    def open_history(self):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("history"))
+        layout = QtWidgets.QVBoxLayout(dlg)
+        for entry in reversed(self.history):
+            row = QtWidgets.QHBoxLayout()
+            name_label = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
+            row.addWidget(name_label)
+            if os.path.exists(entry['output']):
+                btn = QtWidgets.QPushButton(self.tr("view_result"))
+                btn.setStyleSheet(
+                    "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+                    "QPushButton:hover{background-color:#5c2c88;}"
+                )
+                btn.clicked.connect(
+                    lambda _, p=entry['output']: QtGui.QDesktopServices.openUrl(
+                        QtCore.QUrl.fromLocalFile(p)
+                    )
+                )
+                row.addWidget(btn)
+            else:
+                row.addWidget(QtWidgets.QLabel(self.tr("file_missing")))
+                btn = QtWidgets.QPushButton(self.tr("unavailable"))
+                btn.setEnabled(False)
+                row.addWidget(btn)
+            layout.addLayout(row)
+        if not self.history:
+            layout.addWidget(QtWidgets.QLabel("-"))
+        close_btn = QtWidgets.QPushButton("OK")
+        close_btn.clicked.connect(dlg.accept)
+        layout.addWidget(close_btn, alignment=QtCore.Qt.AlignCenter)
         dlg.exec()
 
     def open_result(self):
