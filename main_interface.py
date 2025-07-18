@@ -79,22 +79,10 @@ class CompareSetQt(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CompareSet")
-        self.setFixedSize(480, 280)
+        self.setFixedSize(500, 300)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
-        icon = QtGui.QIcon()
-        icon_files = {
-            16: "Icon - CompareSet 16x16.ico",
-            24: "Icon - CompareSet 24x24.ico",
-            32: "Icon - CompareSet 32x32.ico",
-            48: "Icon - CompareSet 48×48.ico",
-            64: "Icon - CompareSet 64×64.ico",
-            128: "Icon - CompareSet 128 x 128.ico",
-            256: "Icon - CompareSet 256 x 256.ico",
-        }
-        for size, fname in icon_files.items():
-            path = os.path.join(icons_dir, fname)
-            icon.addFile(path, QtCore.QSize(size, size))
-        self.setWindowIcon(icon)
+        icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
+        self.setWindowIcon(QtGui.QIcon(icon_path))
         self.lang = "pt"
         self.translations = {
             "en": {
@@ -123,8 +111,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "settings_title": "Settings",
                 "no_diffs_title": "No differences",
                 "no_diffs_msg": "The PDF comparison found no differences.",
-                "mode_label": "Comparison mode:",
-                "mode_vector": "Vector",
                 "cancel": "Cancel",
                 "cancelled_title": "Cancelled",
                 "cancelled_msg": "Comparison cancelled.",
@@ -156,8 +142,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "settings_title": "Configura\u00e7\u00f5es",
                 "no_diffs_title": "Sem diferen\u00e7as",
                 "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
-                "mode_label": "Tipo de compara\u00e7\u00e3o:",
-                "mode_vector": "Vetorial",
                 "cancel": "Cancelar",
                 "cancelled_title": "Cancelado",
                 "cancelled_msg": "Compara\u00e7\u00e3o cancelada.",
@@ -181,15 +165,11 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.lbl_mode.setText(t["mode_label"])
-        self.combo_mode.clear()
-        self.combo_mode.addItem(t["mode_vector"], "vector")
-        self.combo_mode.setCurrentIndex(0)
-        self.mode_changed()
-        self.action_license.setToolTip(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
+        if hasattr(self, "lbl_license"):
+            self.lbl_license.setText(f'<a href="#">{t["license"]}</a>')
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
         self.lbl_version.setText("CompareSet – v0.2.0-beta")
@@ -217,9 +197,6 @@ class CompareSetQt(QtWidgets.QWidget):
         settings_icon = QtGui.QIcon(
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
         )
-        license_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - License.png")
-        )
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
         self.action_improve.setToolTip(self.tr("improvement_tooltip"))
@@ -233,19 +210,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings.setToolTip(self.tr("settings_tooltip"))
         self.action_settings.triggered.connect(self.open_settings)
 
-        self.action_license = self.toolbar.addAction(license_icon, "")
-        self.action_license.setToolTip(self.tr("license"))
-        self.action_license.triggered.connect(self.show_license)
-
         top.addWidget(self.toolbar)
 
-        mode_layout = QtWidgets.QHBoxLayout()
-        layout.addLayout(mode_layout)
-        self.lbl_mode = QtWidgets.QLabel()
-        mode_layout.addWidget(self.lbl_mode)
-        self.combo_mode = QtWidgets.QComboBox()
-        self.combo_mode.currentIndexChanged.connect(self.mode_changed)
-        mode_layout.addWidget(self.combo_mode)
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
@@ -290,7 +256,8 @@ class CompareSetQt(QtWidgets.QWidget):
         layout.addSpacing(10)
 
         self.progress = QtWidgets.QProgressBar()
-        self.progress.setTextVisible(False)
+        self.progress.setTextVisible(True)
+        self.progress.setFormat("%p%")
         self.progress.setOrientation(QtCore.Qt.Horizontal)
         self.progress.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding,
@@ -313,6 +280,11 @@ class CompareSetQt(QtWidgets.QWidget):
         self.label_status.setAlignment(QtCore.Qt.AlignCenter)
         progress_group.addWidget(self.label_status)
         self.btn_cancel = QtWidgets.QPushButton(self.tr("cancel"))
+        self.btn_cancel.setStyleSheet(
+            "QPushButton{background-color:#cc0000;color:white;}"
+            "QPushButton:disabled{background-color:#555555;color:white;}"
+        )
+        self.btn_cancel.setFixedWidth(80)
         self.btn_cancel.clicked.connect(self.cancel_compare)
         self.btn_cancel.hide()
         progress_group.addWidget(self.btn_cancel)
@@ -328,7 +300,18 @@ class CompareSetQt(QtWidgets.QWidget):
         self.lbl_version.setFont(ver_font)
         self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
         self.lbl_version.setStyleSheet("color:#471F6F")
-        layout.addWidget(self.lbl_version)
+
+        self.lbl_license = QtWidgets.QLabel()
+        self.lbl_license.setAlignment(QtCore.Qt.AlignRight)
+        self.lbl_license.setStyleSheet("color:#666666")
+        self.lbl_license.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        self.lbl_license.setOpenExternalLinks(False)
+        self.lbl_license.linkActivated.connect(lambda _: self.show_license())
+
+        bottom = QtWidgets.QHBoxLayout()
+        bottom.addWidget(self.lbl_version, stretch=1)
+        bottom.addWidget(self.lbl_license)
+        layout.addLayout(bottom)
         layout.addSpacing(10)
 
         self.set_language(self.lang)
@@ -351,12 +334,6 @@ class CompareSetQt(QtWidgets.QWidget):
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
-
-    def mode_changed(self):
-        enabled = True
-        self.btn_old.setEnabled(enabled)
-        self.btn_new.setEnabled(enabled)
-        self.btn_compare.setEnabled(enabled)
 
     def start_compare(self):
         old = self.old_path
@@ -403,7 +380,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(False)
         self.edit_old.setEnabled(False)
         self.edit_new.setEnabled(False)
-        self.action_license.setEnabled(False)
+        self.lbl_license.setEnabled(False)
         self.action_improve.setEnabled(False)
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
@@ -414,12 +391,10 @@ class CompareSetQt(QtWidgets.QWidget):
             out,
         )
         self.thread.progress.connect(self.progress.setValue)
-        self.thread.progress.connect(self.update_status_label)
         self.thread.finished.connect(self.compare_finished)
         self.thread.start()
 
-    def update_status_label(self, value: float):
-        self.label_status.setText(f"{int(value)}%")
+
 
     def cancel_compare(self):
         if self.thread:
@@ -433,13 +408,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(True)
         self.edit_old.setEnabled(True)
         self.edit_new.setEnabled(True)
-        self.action_license.setEnabled(True)
+        self.lbl_license.setEnabled(True)
         self.action_improve.setEnabled(True)
         self.action_help.setEnabled(True)
         self.action_settings.setEnabled(True)
         self.btn_cancel.hide()
         self._progress_stack.setCurrentIndex(1)
-        self.label_status.clear()
         if status == "cancelled":
             QtWidgets.QMessageBox.information(
                 self, self.tr("cancelled_title"), self.tr("cancelled_msg")
@@ -466,8 +440,7 @@ class CompareSetQt(QtWidgets.QWidget):
             stats = self.tr("stats").format(
                 self.thread.elements_checked, self.thread.diff_count
             )
-            title = self.tr("success") if status == "success" else self.tr("cancelled_title") if status == "cancelled" else self.tr("no_diffs_title")
-            QtWidgets.QMessageBox.information(self, title, stats)
+            self.label_status.setText(stats)
 
     def show_license(self):
         fname = "LICENSE_EN.txt" if self.lang == "en" else "LICENSE_PT.txt"
