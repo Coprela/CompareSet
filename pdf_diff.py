@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, List, Optional, Tuple
 
 import io
 
 import fitz
-from PIL import Image, ImageChops
+try:  # Pillow might be missing when only running logic tests
+    from PIL import Image, ImageChops
+except Exception:  # pragma: no cover - optional dependency
+    Image = None
+    ImageChops = None
 
 
 def _extract_bboxes(
@@ -250,12 +256,16 @@ def _remove_contained(boxes: List[Dict], eps: float = 0.01) -> List[Dict]:
 
 def _pix_to_pil(pix: fitz.Pixmap) -> Image.Image:
     """Convert a PyMuPDF Pixmap to a PIL Image."""
+    if Image is None:
+        raise ImportError("Pillow is required for _pix_to_pil")
     mode = "RGB" if pix.alpha == 0 else "RGBA"
     return Image.frombytes(mode, (pix.width, pix.height), pix.samples)
 
 
 def _boxes_from_diff(diff: Image.Image, thr: int = 10) -> List[Tuple[int, int, int, int]]:
     """Return bounding boxes from a binary difference image."""
+    if Image is None:
+        raise ImportError("Pillow is required for _boxes_from_diff")
     gray = diff.convert("L")
     w, h = gray.size
     data = gray.load()
@@ -302,6 +312,8 @@ def comparar_pdfs_imagem(
     progress_callback: Optional[Callable[[float], None]] = None,
 ) -> Dict[str, List[Dict]]:
     """Compare PDFs rendering pages to images."""
+    if Image is None or ImageChops is None:
+        raise ImportError("Pillow is required for comparar_pdfs_imagem")
     with fitz.open(old_pdf) as doc_old, fitz.open(new_pdf) as doc_new:
         max_pages = max(len(doc_old), len(doc_new))
         result = {"removidos": [], "adicionados": []}
