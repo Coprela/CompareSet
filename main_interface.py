@@ -166,7 +166,6 @@ class CompareSetQt(QtWidgets.QWidget):
         }
         self.old_path = ""
         self.new_path = ""
-        self._setup_ui()
         self.thread: ComparisonThread | None = None
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_remaining_time)
@@ -174,6 +173,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.estimated_total: float | None = None
         self.cancelling = False
         self.last_stats: tuple[int, int] | None = None
+        self._setup_ui()
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
@@ -264,7 +264,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_old = QtWidgets.QLineEdit()
         self.edit_old.setReadOnly(True)
         self.edit_old.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.edit_old.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        # QLineEdit does not implement setTextInteractionFlags; disable
+        # editing via the read-only and focus settings instead
         self.edit_old.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
         self.edit_old.setFixedWidth(200)
         self.edit_old.setAlignment(QtCore.Qt.AlignCenter)
@@ -286,7 +287,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new = QtWidgets.QLineEdit()
         self.edit_new.setReadOnly(True)
         self.edit_new.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.edit_new.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        # setTextInteractionFlags is not available on QLineEdit
         self.edit_new.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
         self.edit_new.setFixedWidth(200)
         self.edit_new.setAlignment(QtCore.Qt.AlignCenter)
