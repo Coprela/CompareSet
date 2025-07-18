@@ -389,6 +389,9 @@ class CompareSetQt(QtWidgets.QWidget):
             self.old_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_old.setText(name)
+            # clear previous stats whenever a new file is chosen
+            self.label_status.clear()
+            self.btn_view.hide()
 
     def select_new(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -398,6 +401,9 @@ class CompareSetQt(QtWidgets.QWidget):
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
+            # clear previous stats whenever a new file is chosen
+            self.label_status.clear()
+            self.btn_view.hide()
 
     def start_compare(self):
         old = self.old_path
