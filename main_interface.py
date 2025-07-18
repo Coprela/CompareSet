@@ -102,8 +102,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "settings_title": "Settings",
                 "no_diffs_title": "No differences",
                 "no_diffs_msg": "The PDF comparison found no differences.",
-                "mode_label": "Comparison mode:",
-                "mode_vector": "Vector",
+                "pymupdf_missing": "PyMuPDF library is required to compare PDFs."
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -131,8 +130,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "settings_title": "Configura\u00e7\u00f5es",
                 "no_diffs_title": "Sem diferen\u00e7as",
                 "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
-                "mode_label": "Tipo de compara\u00e7\u00e3o:",
-                "mode_vector": "Vetorial",
+                "pymupdf_missing": "\u00c9 necess\u00e1rio instalar a biblioteca PyMuPDF para comparar PDFs."
             },
         }
         self.old_path = ""
@@ -152,11 +150,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText("")
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        self.lbl_mode.setText(t["mode_label"])
-        self.combo_mode.clear()
-        self.combo_mode.addItem(t["mode_vector"], "vector")
-        self.combo_mode.setCurrentIndex(0)
-        self.mode_changed()
+        # comparison mode removed, buttons always enabled
+        self.btn_old.setEnabled(True)
+        self.btn_new.setEnabled(True)
+        self.btn_compare.setEnabled(True)
         self.action_license.setToolTip(t["license"])
         self.action_improve.setToolTip(t["improvement_tooltip"])
         self.action_help.setToolTip(t["help_tooltip"])
@@ -208,13 +205,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         top.addWidget(self.toolbar)
 
-        mode_layout = QtWidgets.QHBoxLayout()
-        layout.addLayout(mode_layout)
-        self.lbl_mode = QtWidgets.QLabel()
-        mode_layout.addWidget(self.lbl_mode)
-        self.combo_mode = QtWidgets.QComboBox()
-        self.combo_mode.currentIndexChanged.connect(self.mode_changed)
-        mode_layout.addWidget(self.combo_mode)
+
 
         grid = QtWidgets.QGridLayout()
         layout.addLayout(grid)
@@ -317,18 +308,20 @@ class CompareSetQt(QtWidgets.QWidget):
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
 
-    def mode_changed(self):
-        enabled = True
-        self.btn_old.setEnabled(enabled)
-        self.btn_new.setEnabled(enabled)
-        self.btn_compare.setEnabled(enabled)
-
     def start_compare(self):
         old = self.old_path
         new = self.new_path
         if not old or not new:
             QtWidgets.QMessageBox.critical(
                 self, self.tr("error"), self.tr("select_both")
+            )
+            return
+
+        # Ensure PyMuPDF is available before proceeding
+        import fitz
+        if getattr(fitz, "real_fitz", None) is None:
+            QtWidgets.QMessageBox.critical(
+                self, self.tr("error"), self.tr("pymupdf_missing")
             )
             return
 
