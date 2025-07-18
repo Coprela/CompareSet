@@ -66,8 +66,8 @@ size so no scaling is applied.
    comparison so that signed documents can be processed normally.
 6. The generated file will contain two pages highlighting removals and
    additions.
-7. The progress bar indicates processing status so you know if the program
-   is still working or if something went wrong.
+7. A countdown timer shows the estimated time remaining so you know if the
+   program is still working or if something went wrong.
 8. After the PDF is created you are asked if you want to open it with your default viewer.
 
 The icons used by the GUI are located in the `Images` folder.
