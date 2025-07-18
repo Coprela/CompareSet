@@ -16,8 +16,16 @@ import sys
 def _load_real_fitz():
     """Load the actual PyMuPDF package if it is installed."""
 
-    current_dir = os.path.dirname(__file__)
-    search_paths = [p for p in sys.path if os.path.abspath(p) != os.path.abspath(current_dir)]
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir))
+    search_paths = []
+    for p in sys.path:
+        abs_p = os.path.abspath(p)
+        if abs_p in (current_dir, parent_dir):
+            continue
+        if os.path.abspath(os.path.join(abs_p, "fitz")) == current_dir:
+            continue
+        search_paths.append(p)
     spec = importlib.util.find_spec("fitz", search_paths)
     if spec and spec.origin and os.path.abspath(spec.origin) != os.path.abspath(__file__):
         module = importlib.util.module_from_spec(spec)
