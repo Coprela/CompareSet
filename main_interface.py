@@ -225,7 +225,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton{background-color:#000000;color:white;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_old.setEnabled(False)
+        self.btn_old.setEnabled(True)
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
         grid.addWidget(self.btn_old, 0, 1)
@@ -239,7 +239,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton{background-color:#000000;color:white;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_new.setEnabled(False)
+        self.btn_new.setEnabled(True)
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
         grid.addWidget(self.btn_new, 1, 1)
@@ -249,7 +249,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton{background-color:#471F6F;color:white;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_compare.setEnabled(False)
+        self.btn_compare.setEnabled(True)
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
 
