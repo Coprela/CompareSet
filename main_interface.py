@@ -1,6 +1,7 @@
 import os
 import time
 import math
+import urllib.request
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -135,6 +136,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_missing": "File not found at saved location",
                 "unavailable": "Unavailable",
                 "back": "Back",
+                "update_title": "Update available",
+                "update_msg": "A new version ({}) is available.",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -177,6 +180,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_missing": "Arquivo n\u00e3o encontrado no local de origem",
                 "unavailable": "Indispon\u00edvel",
                 "back": "Voltar",
+                "update_title": "Atualiza\u00e7\u00e3o dispon\u00edvel",
+                "update_msg": "Uma nova vers\u00e3o ({}) est\u00e1 dispon\u00edvel.",
             },
         }
         self.old_path = ""
@@ -190,6 +195,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.last_stats: tuple[int, int] | None = None
         self.history: list[dict] = []
         self._setup_ui()
+        self.check_for_updates()
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
@@ -755,14 +761,38 @@ class CompareSetQt(QtWidgets.QWidget):
             self.history_layout.addLayout(row)
         if not self.history:
             self.history_layout.addWidget(QtWidgets.QLabel("-"))
+        self.history_layout.addStretch()
         back_btn = QtWidgets.QPushButton(self.tr("back"))
         back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
-        self.history_layout.addWidget(back_btn, alignment=QtCore.Qt.AlignCenter)
+        version_lbl = QtWidgets.QLabel(f"CompareSet – v{VERSION}")
+        version_lbl.setStyleSheet("color:#666666")
+        bottom = QtWidgets.QHBoxLayout()
+        bottom.setContentsMargins(0, 0, 0, 0)
+        bottom.addWidget(back_btn)
+        bottom.addStretch()
+        bottom.addWidget(version_lbl)
+        self.history_layout.addLayout(bottom)
         self.stack.setCurrentWidget(self.history_page)
 
     def open_result(self):
         if hasattr(self, "view_path"):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.view_path))
+
+    def check_for_updates(self):
+        url = (
+            "https://raw.githubusercontent.com/example/CompareSet/main/latest_version.txt"
+        )
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                latest = resp.read().decode("utf-8").strip()
+            if latest and latest != VERSION:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    self.tr("update_title"),
+                    self.tr("update_msg").format(latest),
+                )
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
