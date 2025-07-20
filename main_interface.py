@@ -470,19 +470,17 @@ class CompareSetQt(QtWidgets.QWidget):
         pm.fill(QtCore.Qt.transparent)
         painter = QtGui.QPainter(pm)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        color = QtGui.QColor("#999999")
         painter.setPen(QtCore.Qt.NoPen)
-        center = size / 2
-        radius = center - 2
-        dot_r = 2
-        for i in range(12):
-            angle = math.radians(i * 30)
-            x = center + radius * math.cos(angle) - dot_r
-            y = center + radius * math.sin(angle) - dot_r
-            alpha = int(255 * (i + 1) / 12)
-            color.setAlpha(alpha)
-            painter.setBrush(color)
-            painter.drawEllipse(QtCore.QPointF(x + dot_r, y + dot_r), dot_r, dot_r)
+        painter.setBrush(QtGui.QColor("#999999"))
+        arrow = QtGui.QPolygonF(
+            [
+                QtCore.QPointF(size / 2, 2),
+                QtCore.QPointF(size - 2, size - 2),
+                QtCore.QPointF(size / 2, size * 0.6),
+                QtCore.QPointF(2, size - 2),
+            ]
+        )
+        painter.drawPolygon(arrow)
         painter.end()
         return pm
 
@@ -609,11 +607,6 @@ class CompareSetQt(QtWidgets.QWidget):
     def _rotate_spinner(self):
         transform = QtGui.QTransform().rotate(self.spinner_angle)
         pm = self.spinner_base.transformed(transform, QtCore.Qt.SmoothTransformation)
-        pm = pm.scaled(
-            self.spinner_base.size(),
-            QtCore.Qt.KeepAspectRatio,
-            QtCore.Qt.SmoothTransformation,
-        )
         self.spinner.setPixmap(pm)
         self.spinner_angle = (self.spinner_angle + 30) % 360
 
