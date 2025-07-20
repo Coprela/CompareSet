@@ -10,6 +10,8 @@ from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
 VERSION = "0.2.1-beta"
+# URL used when directing the user to download updates
+DOWNLOAD_URL = "https://github.com/example/CompareSet/releases/latest"
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
@@ -206,6 +208,20 @@ class CompareSetQt(QtWidgets.QWidget):
         self.history: list[dict] = []
         self._setup_ui()
         self.check_for_updates()
+
+    def start_update_blink(self):
+        if not hasattr(self, "_update_timer"):
+            self._update_timer = QtCore.QTimer(self)
+            self._update_timer.timeout.connect(
+                lambda: self.lbl_version.setVisible(not self.lbl_version.isVisible())
+            )
+        self.lbl_version.setVisible(True)
+        self._update_timer.start(800)
+
+    def stop_update_blink(self):
+        if hasattr(self, "_update_timer"):
+            self._update_timer.stop()
+        self.lbl_version.setVisible(True)
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
@@ -903,11 +919,17 @@ class CompareSetQt(QtWidgets.QWidget):
             except Exception:
                 latest = ""
         if latest and latest != VERSION:
-            QtWidgets.QMessageBox.information(
-                self,
-                self.tr("update_title"),
-                self.tr("update_msg").format(latest),
+            self.lbl_version.setText(
+                f'<a href="{DOWNLOAD_URL}">v{VERSION} – {self.tr("update_msg").format(latest)}</a>'
             )
+            self.lbl_version.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            self.lbl_version.setOpenExternalLinks(True)
+            self.start_update_blink()
+        else:
+            self.lbl_version.setText(f"v{VERSION}")
+            self.lbl_version.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+            self.lbl_version.setOpenExternalLinks(False)
+            self.stop_update_blink()
 
 
 if __name__ == "__main__":
