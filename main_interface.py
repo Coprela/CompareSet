@@ -259,8 +259,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_history.triggered.connect(self.open_history)
         self.action_history.setVisible(False)
 
-        self.history_sep = QtWidgets.QLabel("|")
-        self.toolbar.addWidget(self.history_sep)
+        self.history_sep = self.toolbar.addSeparator()
         self.history_sep.setVisible(False)
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
@@ -282,7 +281,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
-            "QToolButton{background:transparent;border-radius:4px;padding:4px;}"
+            "QToolButton{background:transparent;border-radius:2px;padding:2px;}"
             "QToolButton:hover{background:#d0d0d0;}"
         )
 
@@ -667,13 +666,16 @@ class CompareSetQt(QtWidgets.QWidget):
         else:
             self.btn_view.hide()
 
-        if self.thread and status != "error":
+        if self.thread and status not in ("error", "cancelled"):
             self.last_stats = (
                 self.thread.elements_checked,
                 self.thread.diff_count,
             )
             stats = self.tr("stats").format(*self.last_stats)
             self.label_status.setText(stats)
+        else:
+            self.last_stats = None
+            self.label_status.setText("")
         if self.history:
             self.action_history.setVisible(True)
             self.history_sep.setVisible(True)
