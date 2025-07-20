@@ -269,7 +269,9 @@ class CompareSetQt(QtWidgets.QWidget):
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
         )
 
-        history_icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
+        history_icon = QtGui.QIcon(
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - History.png")
+        )
         self.action_history = self.toolbar.addAction(history_icon, "")
         self.action_history.setToolTip("")
         self.action_history.triggered.connect(self.open_history)
