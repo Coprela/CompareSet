@@ -6,6 +6,11 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from pdf_diff import comparar_pdfs, CancelledError
 from pdf_highlighter import gerar_pdf_com_destaques
+import json
+import urllib.request
+
+APP_VERSION = "0.2.0-beta"
+GITHUB_REPO = "Coprela/CompareSet"
 
 
 def file_in_use(path: str) -> bool:
@@ -119,6 +124,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Language:",
                 "settings_tooltip": "Settings",
                 "settings_title": "Settings",
+                "check_updates": "Check for updates",
+                "update_title": "Software Update",
+                "new_version": "A new version ({}) is available.",
+                "up_to_date": "You are using the latest version.",
+                "update_error": "Unable to check for updates.",
                 "no_diffs_title": "No differences",
                 "no_diffs_msg": "The PDF comparison found no differences.",
                 "cancel": "Cancel",
@@ -161,6 +171,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "language": "Idioma:",
                 "settings_tooltip": "Configura\u00e7\u00f5es",
                 "settings_title": "Configura\u00e7\u00f5es",
+                "check_updates": "Verificar atualiza\u00e7\u00f5es",
+                "update_title": "Atualiza\u00e7\u00e3o de Software",
+                "new_version": "Uma nova vers\u00e3o ({}) est\u00e1 dispon\u00edvel.",
+                "up_to_date": "Voc\u00ea est\u00e1 usando a vers\u00e3o mais recente.",
+                "update_error": "N\u00e3o foi poss\u00edvel verificar atualiza\u00e7\u00f5es.",
                 "no_diffs_title": "Sem diferen\u00e7as",
                 "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
                 "cancel": "Cancelar",
@@ -212,7 +227,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
             self.btn_view.setText(t["view_result"])
-        self.lbl_version.setText("CompareSet – v0.2.0-beta")
+        self.lbl_version.setText(f"CompareSet – v{APP_VERSION}")
         if hasattr(self, "label_status") and self.last_stats:
             self.label_status.setText(t["stats"].format(*self.last_stats))
 
@@ -714,10 +729,40 @@ class CompareSetQt(QtWidgets.QWidget):
             lambda: self.set_language(combo.currentData())
         )
         layout.addWidget(combo)
+        btn_update = QtWidgets.QPushButton(self.tr("check_updates"))
+        btn_update.clicked.connect(self.check_for_updates)
+        layout.addWidget(btn_update)
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
         dlg.exec()
+
+    def check_for_updates(self):
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                data = json.load(resp)
+            latest = data.get("tag_name", "")
+            if latest.startswith("v"):
+                latest = latest[1:]
+            if latest and latest != APP_VERSION:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    self.tr("update_title"),
+                    self.tr("new_version").format(latest),
+                )
+            else:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    self.tr("update_title"),
+                    self.tr("up_to_date"),
+                )
+        except Exception:
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.tr("update_title"),
+                self.tr("update_error"),
+            )
 
     def open_history(self):
         self.clear_results()
@@ -754,9 +799,17 @@ class CompareSetQt(QtWidgets.QWidget):
             self.history_layout.addLayout(row)
         if not self.history:
             self.history_layout.addWidget(QtWidgets.QLabel("-"))
+
+        self.history_layout.addStretch()
         back_btn = QtWidgets.QPushButton(self.tr("back"))
         back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
-        self.history_layout.addWidget(back_btn, alignment=QtCore.Qt.AlignCenter)
+        bottom = QtWidgets.QHBoxLayout()
+        lbl_hist = QtWidgets.QLabel(self.lbl_version.text())
+        lbl_hist.setAlignment(QtCore.Qt.AlignCenter)
+        lbl_hist.setStyleSheet("color:#666666")
+        bottom.addWidget(lbl_hist, stretch=1)
+        bottom.addWidget(back_btn)
+        self.history_layout.addLayout(bottom)
         self.stack.setCurrentWidget(self.history_page)
 
     def open_result(self):
