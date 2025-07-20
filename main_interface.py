@@ -121,10 +121,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "open_pdf_prompt": "Open generated PDF?",
                 "license_missing": "License file not found.",
                 "license_title": "License",
-                "improvement_tooltip": "Suggest improvement",
-                "help_tooltip": "Coming soon",
+                "improvement_tooltip": "Send improvement suggestion",
+                "help_tooltip": "Access help",
                 "language": "Language:",
-                "settings_tooltip": "Settings",
+                "settings_tooltip": "Open settings",
                 "settings_title": "Settings",
                 "no_diffs_title": "No differences",
                 "no_diffs_msg": "The PDF comparison found no differences.",
@@ -170,10 +170,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "open_pdf_prompt": "Abrir o PDF gerado?",
                 "license_missing": "Arquivo de licen\u00e7a n\u00e3o encontrado.",
                 "license_title": "Licen\u00e7a",
-                "improvement_tooltip": "Sugerir melhoria",
-                "help_tooltip": "Em breve",
+                "improvement_tooltip": "Enviar sugest\u00e3o ou melhoria",
+                "help_tooltip": "Acessar ajuda",
                 "language": "Idioma:",
-                "settings_tooltip": "Configura\u00e7\u00f5es",
+                "settings_tooltip": "Abrir configura\u00e7\u00f5es",
                 "settings_title": "Configura\u00e7\u00f5es",
                 "no_diffs_title": "Sem diferen\u00e7as",
                 "no_diffs_msg": "A compara\u00e7\u00e3o de PDFs n\u00e3o resultou em nenhuma diferen\u00e7a.",
@@ -219,10 +219,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setPlaceholderText(t["no_file"])
         self.btn_new.setText(t["select_new"])
         self.btn_compare.setText(t["compare"])
-        # keep actions without tooltip popups
-        self.action_improve.setToolTip("")
-        self.action_help.setToolTip("")
-        self.action_settings.setToolTip("")
+        self.action_improve.setToolTip(t["improvement_tooltip"])
+        self.action_help.setToolTip(t["help_tooltip"])
+        self.action_settings.setToolTip(t["settings_tooltip"])
         self.action_history.setToolTip("")
         self.action_improve.setText(t["improve_label"])
         self.action_help.setText(t["help_label"])
@@ -248,7 +247,7 @@ class CompareSetQt(QtWidgets.QWidget):
         top = QtWidgets.QHBoxLayout()
         layout.addLayout(top)
         # add breathing room between the toolbar and the file selectors
-        layout.addSpacing(10)
+        layout.addSpacing(15)
 
         top.addStretch()
 
@@ -281,7 +280,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.history_sep.setVisible(False)
 
         self.action_improve = self.toolbar.addAction(improve_icon, "")
-        # disable tooltip popups for cleaner hover behaviour
         self.action_improve.setToolTip("")
         self.action_improve.triggered.connect(self.open_improvement_link)
 
@@ -299,6 +297,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
+            "QToolBar{spacing:8px;}"
             "QToolButton{background:transparent;border-radius:2px;padding:2px;}"
             "QToolButton:hover{background:#d0d0d0;}"
         )
@@ -372,7 +371,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
 
-        layout.addSpacing(10)
+        layout.addSpacing(15)
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setTextVisible(True)
@@ -437,7 +436,7 @@ class CompareSetQt(QtWidgets.QWidget):
         progress_group.addWidget(self.btn_view, alignment=QtCore.Qt.AlignCenter)
 
         layout.addWidget(self.progress_frame)
-        layout.addSpacing(10)
+        layout.addStretch()
 
         self.separator = QtWidgets.QFrame()
         self.separator.setFrameShape(QtWidgets.QFrame.HLine)
@@ -446,22 +445,22 @@ class CompareSetQt(QtWidgets.QWidget):
         layout.addWidget(self.separator)
 
         self.lbl_version = QtWidgets.QLabel()
-        self.lbl_version.setAlignment(QtCore.Qt.AlignCenter)
+        self.lbl_version.setAlignment(QtCore.Qt.AlignRight)
         self.lbl_version.setStyleSheet("color:#666666")
 
         self.lbl_license = QtWidgets.QLabel()
-        self.lbl_license.setAlignment(QtCore.Qt.AlignRight)
+        self.lbl_license.setAlignment(QtCore.Qt.AlignLeft)
         self.lbl_license.setStyleSheet("color:#666666")
         self.lbl_license.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         self.lbl_license.setOpenExternalLinks(False)
         self.lbl_license.linkActivated.connect(lambda _: self.show_license())
 
         bottom = QtWidgets.QHBoxLayout()
-        # keep the separator close to the version and license labels
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
-        bottom.addWidget(self.lbl_version, stretch=1)
         bottom.addWidget(self.lbl_license)
+        bottom.addStretch()
+        bottom.addWidget(self.lbl_version)
         layout.addLayout(bottom)
 
         self.stack.addWidget(self.main_page)
@@ -745,14 +744,12 @@ class CompareSetQt(QtWidgets.QWidget):
         combo.addItem("English (US)", "en")
         combo.addItem("Portugu\u00eas (Brasil)", "pt")
         combo.setCurrentIndex(0 if self.lang == "en" else 1)
-        combo.currentIndexChanged.connect(
-            lambda: self.set_language(combo.currentData())
-        )
         layout.addWidget(combo)
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
-        dlg.exec()
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            self.set_language(combo.currentData())
 
     def open_history(self):
         self.clear_results()
@@ -769,10 +766,20 @@ class CompareSetQt(QtWidgets.QWidget):
             name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
             name_label = QtWidgets.QLabel(name)
             row.addWidget(name_label)
-            date_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
+            date_str = time.strftime("%Y-%m-%d\n%H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
             date_lbl = QtWidgets.QLabel(date_str)
             date_lbl.setStyleSheet("color:#666666")
             row.addWidget(date_lbl)
+            exists = os.path.exists(entry['output'])
+            mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
+            if not exists:
+                status_lbl = QtWidgets.QLabel(self.tr('file_missing'))
+                status_lbl.setStyleSheet("color:#666666")
+                row.addWidget(status_lbl)
+            elif not mtime_same:
+                status_lbl = QtWidgets.QLabel(self.tr('file_replaced'))
+                status_lbl.setStyleSheet("color:#666666")
+                row.addWidget(status_lbl)
             row.addStretch()
             btn = QtWidgets.QPushButton(self.tr("view_details"))
             btn.setStyleSheet(
@@ -825,36 +832,49 @@ class CompareSetQt(QtWidgets.QWidget):
         btn_row.addStretch()
         view_btn = QtWidgets.QPushButton(self.tr("view_result"))
         if exists and mtime_same:
-            view_btn.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(entry['output'])))
+            view_btn.clicked.connect(
+                lambda: QtGui.QDesktopServices.openUrl(
+                    QtCore.QUrl.fromLocalFile(entry['output'])
+                )
+            )
         else:
             view_btn.setEnabled(False)
         btn_row.addWidget(view_btn)
-        close_btn = QtWidgets.QPushButton(self.tr("back"))
-        close_btn.clicked.connect(dlg.accept)
-        btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
-
+        dlg.setModal(True)
         dlg.exec()
 
     def open_result(self):
         if hasattr(self, "view_path"):
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.view_path))
+            QtGui.QDesktopServices.openUrl(
+                QtCore.QUrl.fromLocalFile(self.view_path)
+            )
+            self.clear_results()
 
     def check_for_updates(self):
-        url = (
-            "https://raw.githubusercontent.com/example/CompareSet/main/latest_version.txt"
-        )
-        try:
-            with urllib.request.urlopen(url, timeout=3) as resp:
-                latest = resp.read().decode("utf-8").strip()
-            if latest and latest != VERSION:
-                QtWidgets.QMessageBox.information(
-                    self,
-                    self.tr("update_title"),
-                    self.tr("update_msg").format(latest),
-                )
-        except Exception:
-            pass
+        latest = ""
+        local_path = os.path.join(os.path.dirname(__file__), "latest_version.txt")
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, "r", encoding="utf-8") as f:
+                    latest = f.read().strip()
+            except Exception:
+                latest = ""
+        if not latest:
+            url = (
+                "https://raw.githubusercontent.com/example/CompareSet/main/latest_version.txt"
+            )
+            try:
+                with urllib.request.urlopen(url, timeout=3) as resp:
+                    latest = resp.read().decode("utf-8").strip()
+            except Exception:
+                latest = ""
+        if latest and latest != VERSION:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("update_title"),
+                self.tr("update_msg").format(latest),
+            )
 
 
 if __name__ == "__main__":
