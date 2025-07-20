@@ -297,8 +297,8 @@ class CompareSetQt(QtWidgets.QWidget):
 
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
-            "QToolBar{spacing:8px;}"
-            "QToolButton{background:transparent;border-radius:2px;padding:2px;}"
+            "QToolBar{spacing:0px;}"
+            "QToolButton{background:transparent;border-radius:2px;padding:0px;}"
             "QToolButton:hover{background:#d0d0d0;}"
         )
 
@@ -329,7 +329,8 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_old.setFixedHeight(self.edit_old.sizeHint().height())
+        self.btn_height = self.edit_old.sizeHint().height()
+        self.btn_old.setFixedHeight(self.btn_height)
         self.btn_old.setEnabled(True)
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
@@ -355,7 +356,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_new.setFixedHeight(self.edit_new.sizeHint().height())
+        self.btn_new.setFixedHeight(self.btn_height)
         self.btn_new.setEnabled(True)
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
@@ -367,6 +368,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#5c2c88;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
+        self.btn_compare.setFixedHeight(self.btn_height)
         self.btn_compare.setEnabled(True)
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
@@ -420,6 +422,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_cancel.setFixedWidth(80)
+        self.btn_cancel.setFixedHeight(self.btn_height)
         self.btn_cancel.clicked.connect(self.cancel_compare)
         self.btn_cancel.hide()
         progress_group.addWidget(self.btn_cancel, alignment=QtCore.Qt.AlignCenter)
@@ -431,6 +434,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton{background-color:#471F6F;color:white;padding:6px;border-radius:4px;}"
             "QPushButton:hover{background-color:#5c2c88;}"
         )
+        self.btn_view.setFixedHeight(self.btn_height)
         self.btn_view.clicked.connect(self.open_result)
         self.btn_view.hide()
         progress_group.addWidget(self.btn_view, alignment=QtCore.Qt.AlignCenter)
@@ -766,7 +770,7 @@ class CompareSetQt(QtWidgets.QWidget):
             name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
             name_label = QtWidgets.QLabel(name)
             row.addWidget(name_label)
-            date_str = time.strftime("%Y-%m-%d\n%H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
+            date_str = time.strftime("%Y-%m-%d / %H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
             date_lbl = QtWidgets.QLabel(date_str)
             date_lbl.setStyleSheet("color:#666666")
             row.addWidget(date_lbl)
@@ -786,6 +790,8 @@ class CompareSetQt(QtWidgets.QWidget):
                 "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
                 "QPushButton:hover{background-color:#5c2c88;}"
             )
+            btn.setFixedHeight(self.btn_height)
+            btn.setEnabled(exists and mtime_same)
             btn.clicked.connect(lambda _, e=entry: self.show_details(e))
             row.addWidget(btn)
             self.history_layout.addLayout(row)
@@ -793,11 +799,18 @@ class CompareSetQt(QtWidgets.QWidget):
             self.history_layout.addWidget(QtWidgets.QLabel("-"))
         self.history_layout.addStretch()
         back_btn = QtWidgets.QPushButton(self.tr("back"))
+        back_btn.setStyleSheet(
+            "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#333333;}"
+            "QPushButton:disabled{background-color:#555555;color:white;}"
+        )
+        back_btn.setFixedHeight(self.btn_height)
         back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
         version_lbl = QtWidgets.QLabel(f"v{VERSION}")
         version_lbl.setStyleSheet("color:#666666")
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
+        bottom.setSpacing(4)
         bottom.addWidget(back_btn)
         bottom.addStretch()
         bottom.addWidget(version_lbl)
@@ -831,6 +844,11 @@ class CompareSetQt(QtWidgets.QWidget):
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
         view_btn = QtWidgets.QPushButton(self.tr("view_result"))
+        view_btn.setStyleSheet(
+            "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#5c2c88;}"
+        )
+        view_btn.setFixedHeight(self.btn_height)
         if exists and mtime_same:
             view_btn.clicked.connect(
                 lambda: QtGui.QDesktopServices.openUrl(
