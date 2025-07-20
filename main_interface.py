@@ -10,6 +10,14 @@ from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
 VERSION = "0.2.1-beta"
+# url with the latest version string
+VERSION_URL = (
+    "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/latest_version.txt"
+)
+# download page for the application
+DOWNLOAD_URL = (
+    "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/"
+)
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
@@ -204,6 +212,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.cancelling = False
         self.last_stats: tuple[int, int] | None = None
         self.history: list[dict] = []
+        self.blink_timer = QtCore.QTimer(self)
+        self.blink_timer.timeout.connect(self._blink_version)
+        self._blink_state = False
         self._setup_ui()
         self.check_for_updates()
 
@@ -654,6 +665,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.spinner.setPixmap(pm)
         self.spinner_angle = (self.spinner_angle + 30) % 360
 
+    def _blink_version(self):
+        self._blink_state = not self._blink_state
+        self.lbl_version.setVisible(self._blink_state)
+
     def compare_finished(self, status: str, info: str):
         self.timer.stop()
         self.start_time = None
@@ -886,28 +901,20 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def check_for_updates(self):
         latest = ""
-        local_path = os.path.join(os.path.dirname(__file__), "latest_version.txt")
-        if os.path.exists(local_path):
-            try:
-                with open(local_path, "r", encoding="utf-8") as f:
-                    latest = f.read().strip()
-            except Exception:
-                latest = ""
-        if not latest:
-            url = (
-                "https://raw.githubusercontent.com/example/CompareSet/main/latest_version.txt"
-            )
-            try:
-                with urllib.request.urlopen(url, timeout=3) as resp:
-                    latest = resp.read().decode("utf-8").strip()
-            except Exception:
-                latest = ""
+        try:
+            with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
+                latest = resp.read().decode("utf-8").strip()
+        except Exception:
+            latest = ""
         if latest and latest != VERSION:
-            QtWidgets.QMessageBox.information(
-                self,
-                self.tr("update_title"),
-                self.tr("update_msg").format(latest),
+            self.lbl_version.setText(f'<a href="{DOWNLOAD_URL}">v{VERSION}</a>')
+            self.lbl_version.setTextInteractionFlags(
+                QtCore.Qt.TextBrowserInteraction
             )
+            self.lbl_version.setOpenExternalLinks(True)
+            self.blink_timer.start(500)
+        else:
+            self.lbl_version.setText(f"v{VERSION}")
 
 
 if __name__ == "__main__":
