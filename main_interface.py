@@ -134,7 +134,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Selecionar nova revis\u00e3o",
                 "compare": "Comparar Revis\u00f5es",
                 "license": "Licen\u00e7a",
-                "improve_label": "Feedback & melhorias",
+                "improve_label": "Ideias",
                 "help_label": "Ajuda",
                 "settings_label": "Configura\u00e7\u00f5es",
                 "no_file": "nenhum arquivo selecionado",
@@ -368,9 +368,13 @@ class CompareSetQt(QtWidgets.QWidget):
         status_row = QtWidgets.QHBoxLayout()
         status_row.setAlignment(QtCore.Qt.AlignCenter)
         self.spinner = QtWidgets.QLabel()
-        self.spinner.setPixmap(self.style().standardPixmap(QtWidgets.QStyle.SP_BrowserReload))
+        self.spinner_base = self.style().standardPixmap(QtWidgets.QStyle.SP_BrowserReload)
+        self.spinner.setPixmap(self.spinner_base)
         self.spinner.hide()
         status_row.addWidget(self.spinner)
+        self.spinner_timer = QtCore.QTimer(self)
+        self.spinner_timer.timeout.connect(self._rotate_spinner)
+        self.spinner_angle = 0
         self.label_status = QtWidgets.QLabel()
         self.label_status.setAlignment(QtCore.Qt.AlignCenter)
         status_row.addWidget(self.label_status)
@@ -510,7 +514,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_old.clearFocus()
         self.edit_new.clearFocus()
         self.label_status.setText(f"{self.tr('waiting')} --:--")
-        self.spinner.hide()
+        self.spinner_angle = 0
+        self.spinner.show()
+        self.spinner_timer.start(80)
         self.start_time = time.perf_counter()
         self.estimated_total = None
         self.cancelling = False
@@ -528,6 +534,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
         self.action_history.setEnabled(False)
+        self.action_history.setVisible(False)
+        self.history_sep.setVisible(False)
 
         self.thread = ComparisonThread(
             old,
@@ -546,6 +554,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_cancel.setEnabled(False)
             self.cancelling = True
             self.label_status.setText(f"{self.tr('cancelling')} --:--")
+            self.spinner_timer.stop()
             self.spinner.hide()
 
     def update_progress(self, value: float):
@@ -566,6 +575,12 @@ class CompareSetQt(QtWidgets.QWidget):
         msg = self.tr("cancelling") if self.cancelling else self.tr("waiting")
         self.label_status.setText(f"{msg} {m:02d}:{s:02d}")
 
+    def _rotate_spinner(self):
+        transform = QtGui.QTransform().rotate(self.spinner_angle)
+        pm = self.spinner_base.transformed(transform, QtCore.Qt.SmoothTransformation)
+        self.spinner.setPixmap(pm)
+        self.spinner_angle = (self.spinner_angle + 30) % 360
+
     def compare_finished(self, status: str, info: str):
         self.timer.stop()
         self.start_time = None
@@ -583,6 +598,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_history.setEnabled(True)
         self.btn_cancel.hide()
         self._progress_stack.setCurrentIndex(1)
+        self.spinner_timer.stop()
         self.spinner.hide()
         if status == "cancelled":
             QtWidgets.QMessageBox.information(
@@ -621,6 +637,12 @@ class CompareSetQt(QtWidgets.QWidget):
             )
             stats = self.tr("stats").format(*self.last_stats)
             self.label_status.setText(stats)
+        if self.history:
+            self.action_history.setVisible(True)
+            self.history_sep.setVisible(True)
+        else:
+            self.action_history.setVisible(False)
+            self.history_sep.setVisible(False)
 
     def show_license(self):
         fname = "LICENSE_EN.txt" if self.lang == "en" else "LICENSE_PT.txt"
