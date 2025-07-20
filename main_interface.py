@@ -269,17 +269,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_help.setText(t["help_label"])
         self.action_settings.setText(t["settings_label"])
         self.action_history.setText(t["history"])
-        if hasattr(self, "lbl_license"):
-            self.lbl_license.setText(f'<a href="#">{t["license"]}</a>')
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
             self.btn_view.setText(t["view_result"])
-        if hasattr(self, "sort_btn"):
-            if self.history_sort_by_date:
-                self.sort_btn.setText(t["sort_recent"])
-            else:
-                self.sort_btn.setText(t["sort_alpha"])
         self.lbl_version.setText(f"v{VERSION}")
         if hasattr(self, "label_status") and self.last_stats:
             self.label_status.setText(t["stats"].format(*self.last_stats))
@@ -345,7 +338,8 @@ class CompareSetQt(QtWidgets.QWidget):
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
             "QToolBar{spacing:0px;}"
-            "QToolButton{background:transparent;border-radius:2px;padding:0px;}"
+            "QToolBar::separator{width:1px;margin:0px;}"
+            "QToolButton{background:transparent;border-radius:2px;padding:0px;margin:0px;}"
             "QToolButton:hover{background:#d0d0d0;}"
         )
 
@@ -378,7 +372,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_height = self.edit_old.sizeHint().height()
+        self.btn_height = int(self.edit_old.sizeHint().height() * 1.5)
         self.edit_old.setFixedHeight(self.btn_height)
         self.btn_font = self.edit_old.font()
         self.edit_old.setFont(self.btn_font)
@@ -502,29 +496,22 @@ class CompareSetQt(QtWidgets.QWidget):
         layout.addWidget(self.progress_frame)
         layout.addStretch()
 
-        self.separator = QtWidgets.QFrame()
-        self.separator.setFrameShape(QtWidgets.QFrame.HLine)
-        self.separator.setFrameShadow(QtWidgets.QFrame.Sunken)
-        self.separator.setStyleSheet("color:#999999")
-        layout.addWidget(self.separator)
-
         self.lbl_version = QtWidgets.QLabel()
         self.lbl_version.setAlignment(QtCore.Qt.AlignRight)
         self.lbl_version.setStyleSheet("color:#666666")
         self.lbl_version.setFont(self.btn_font)
 
-        self.lbl_license = QtWidgets.QLabel()
-        self.lbl_license.setAlignment(QtCore.Qt.AlignLeft)
-        self.lbl_license.setStyleSheet("color:#666666")
-        self.lbl_license.setFont(self.btn_font)
-        self.lbl_license.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        self.lbl_license.setOpenExternalLinks(False)
-        self.lbl_license.linkActivated.connect(lambda _: self.show_license())
+        # label that indicates an update is available
+        self.lbl_update = QtWidgets.QLabel()
+        self.lbl_update.setAlignment(QtCore.Qt.AlignLeft)
+        self.lbl_update.setStyleSheet("color:red")
+        self.lbl_update.setFont(self.btn_font)
+        self.lbl_update.hide()
 
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
-        bottom.addWidget(self.lbl_license)
+        bottom.addWidget(self.lbl_update)
         bottom.addStretch()
         bottom.addWidget(self.lbl_version)
         layout.addLayout(bottom)
@@ -533,16 +520,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.history_page = QtWidgets.QWidget()
         self.history_layout = QtWidgets.QVBoxLayout(self.history_page)
         self.history_layout.setContentsMargins(10, 10, 10, 10)
-        self.history_sort_by_date = True
-        self.sort_btn = QtWidgets.QPushButton()
-        self.sort_btn.setStyleSheet(
-            "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
-            "QPushButton:hover{background-color:#333333;}"
-            "QPushButton:disabled{background-color:#555555;color:white;}"
-        )
-        self.sort_btn.setFixedHeight(self.btn_height)
-        self.sort_btn.setFont(self.btn_font)
-        self.sort_btn.clicked.connect(self.toggle_history_sort)
         self.stack.addWidget(self.history_page)
         self.stack.setCurrentWidget(self.main_page)
 
@@ -675,7 +652,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(False)
         self.edit_old.setEnabled(False)
         self.edit_new.setEnabled(False)
-        self.lbl_license.setEnabled(False)
         self.action_improve.setEnabled(False)
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
@@ -736,7 +712,10 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def _blink_version(self):
         self._blink_state = not self._blink_state
-        self.lbl_version.setVisible(self._blink_state)
+        if self._blink_state:
+            self.lbl_update.setStyleSheet("color:red")
+        else:
+            self.lbl_update.setStyleSheet("color:gray")
 
     def compare_finished(self, status: str, info: str):
         self.timer.stop()
@@ -748,7 +727,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_new.setEnabled(True)
         self.edit_old.setEnabled(True)
         self.edit_new.setEnabled(True)
-        self.lbl_license.setEnabled(True)
         self.action_improve.setEnabled(True)
         self.action_help.setEnabled(True)
         self.action_settings.setEnabled(True)
@@ -849,19 +827,17 @@ class CompareSetQt(QtWidgets.QWidget):
         combo.addItem("Portugu\u00eas (Brasil)", "pt")
         combo.setCurrentIndex(0 if self.lang == "en" else 1)
         layout.addWidget(combo)
+
+        license_link = QtWidgets.QLabel(f'<a href="#">{self.tr("license")}</a>')
+        license_link.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        license_link.linkActivated.connect(lambda _: self.show_license())
+        layout.addWidget(license_link)
+
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.set_language(combo.currentData())
-
-    def toggle_history_sort(self):
-        self.history_sort_by_date = not self.history_sort_by_date
-        if self.history_sort_by_date:
-            self.sort_btn.setText(self.tr("sort_recent"))
-        else:
-            self.sort_btn.setText(self.tr("sort_alpha"))
-        self._build_history()
 
     def open_history(self):
         self.clear_results()
@@ -872,19 +848,11 @@ class CompareSetQt(QtWidgets.QWidget):
         while self.history_layout.count():
             item = self.history_layout.takeAt(0)
             if item.widget():
-                if item.widget() is self.sort_btn:
-                    item.widget().setParent(None)
-                else:
-                    item.widget().deleteLater()
+                item.widget().deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
 
-        self.history_layout.addWidget(self.sort_btn, alignment=QtCore.Qt.AlignLeft)
-
-        if self.history_sort_by_date:
-            data = sorted(self.history, key=lambda e: e.get('timestamp', e.get('mtime', 0)), reverse=True)
-        else:
-            data = sorted(self.history, key=lambda e: os.path.basename(e['output']).lower())
+        data = sorted(self.history, key=lambda e: e.get('timestamp', e.get('mtime', 0)), reverse=True)
 
         for entry in data:
             row = QtWidgets.QHBoxLayout()
@@ -910,17 +878,16 @@ class CompareSetQt(QtWidgets.QWidget):
                 status_lbl.setStyleSheet("color:#666666")
                 row.addWidget(status_lbl)
             row.addStretch()
-            btn = QtWidgets.QPushButton(self.tr("view_details"))
-            btn.setStyleSheet(
-                "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
-                "QPushButton:hover{background-color:#5c2c88;}"
-                "QPushButton:disabled{background-color:#555555;color:white;}"
-            )
-            btn.setFixedHeight(self.btn_height)
-            btn.setFont(self.btn_font)
-            btn.setEnabled(exists and mtime_same)
-            btn.clicked.connect(lambda _, e=entry: self.show_details(e))
-            row.addWidget(btn)
+            if exists and mtime_same:
+                btn = QtWidgets.QPushButton(self.tr("view_details"))
+                btn.setStyleSheet(
+                    "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+                    "QPushButton:hover{background-color:#5c2c88;}"
+                )
+                btn.setFixedHeight(self.btn_height)
+                btn.setFont(self.btn_font)
+                btn.clicked.connect(lambda _, e=entry: self.show_details(e))
+                row.addWidget(btn)
             self.history_layout.addLayout(row)
 
         if not self.history:
@@ -1001,17 +968,17 @@ class CompareSetQt(QtWidgets.QWidget):
     def check_for_updates(self):
         latest = fetch_latest_version(VERSION_URL)
         if latest and latest != VERSION:
-            self.lbl_version.setStyleSheet("color:red")
+            self.lbl_version.setStyleSheet("color:#666666")
+            self.lbl_version.setText(f"v{VERSION}")
             msg = self.tr("update_download")
-            self.lbl_version.setText(f'<a href="{DOWNLOAD_URL}">{msg}</a>')
-            self.lbl_version.setTextInteractionFlags(
-                QtCore.Qt.TextBrowserInteraction
-            )
-            self.lbl_version.setOpenExternalLinks(True)
+            self.lbl_update.setText(f'<a href="{DOWNLOAD_URL}">{msg}</a>')
+            self.lbl_update.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            self.lbl_update.setOpenExternalLinks(True)
+            self.lbl_update.show()
             self.blink_timer.start(500)
         else:
             self.blink_timer.stop()
-            self.lbl_version.setVisible(True)
+            self.lbl_update.hide()
             self.lbl_version.setStyleSheet("color:#666666")
             self.lbl_version.setText(f"v{VERSION}")
             self.lbl_version.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
