@@ -4,13 +4,15 @@ import math
 import requests
 from requests_ntlm import HttpNtlmAuth
 
+from version_check import CURRENT_VERSION, check_for_update
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from pdf_diff import comparar_pdfs, CancelledError
 from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
-VERSION = "0.2.1-beta"
+VERSION = CURRENT_VERSION
 # url with the latest version string
 # URL with the latest version string. Can be overridden by the VERSION_URL
 # environment variable.
@@ -1023,6 +1025,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
 
 if __name__ == "__main__":
+    check_for_update()
     # enable high DPI scaling so icons look crisp on high-resolution screens
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
