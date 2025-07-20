@@ -9,7 +9,7 @@ from pdf_diff import comparar_pdfs, CancelledError
 from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
-VERSION = "0.2.1"
+VERSION = "0.2.1-beta"
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
@@ -330,7 +330,11 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_height = self.edit_old.sizeHint().height()
+        self.edit_old.setFixedHeight(self.btn_height)
+        self.btn_font = self.edit_old.font()
+        self.edit_old.setFont(self.btn_font)
         self.btn_old.setFixedHeight(self.btn_height)
+        self.btn_old.setFont(self.btn_font)
         self.btn_old.setEnabled(True)
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
@@ -350,6 +354,8 @@ class CompareSetQt(QtWidgets.QWidget):
             "QLineEdit{background:#eeeeee;border:1px solid #cccccc;}"
             "QLineEdit:hover{background:#dddddd;}"
         )
+        self.edit_new.setFont(self.btn_font)
+        self.edit_new.setFixedHeight(self.btn_height)
         self.btn_new = QtWidgets.QPushButton()
         self.btn_new.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
@@ -357,6 +363,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_new.setFixedHeight(self.btn_height)
+        self.btn_new.setFont(self.btn_font)
         self.btn_new.setEnabled(True)
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
@@ -364,11 +371,12 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.btn_compare = QtWidgets.QPushButton()
         self.btn_compare.setStyleSheet(
-            "QPushButton{background-color:#471F6F;color:white;padding:6px;border-radius:4px;}"
+            "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
             "QPushButton:hover{background-color:#5c2c88;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         self.btn_compare.setFixedHeight(self.btn_height)
+        self.btn_compare.setFont(self.btn_font)
         self.btn_compare.setEnabled(True)
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
@@ -423,6 +431,7 @@ class CompareSetQt(QtWidgets.QWidget):
         )
         self.btn_cancel.setFixedWidth(80)
         self.btn_cancel.setFixedHeight(self.btn_height)
+        self.btn_cancel.setFont(self.btn_font)
         self.btn_cancel.clicked.connect(self.cancel_compare)
         self.btn_cancel.hide()
         progress_group.addWidget(self.btn_cancel, alignment=QtCore.Qt.AlignCenter)
@@ -431,10 +440,11 @@ class CompareSetQt(QtWidgets.QWidget):
 
         self.btn_view = QtWidgets.QPushButton(self.tr("view_result"))
         self.btn_view.setStyleSheet(
-            "QPushButton{background-color:#471F6F;color:white;padding:6px;border-radius:4px;}"
+            "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
             "QPushButton:hover{background-color:#5c2c88;}"
         )
         self.btn_view.setFixedHeight(self.btn_height)
+        self.btn_view.setFont(self.btn_font)
         self.btn_view.clicked.connect(self.open_result)
         self.btn_view.hide()
         progress_group.addWidget(self.btn_view, alignment=QtCore.Qt.AlignCenter)
@@ -451,10 +461,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self.lbl_version = QtWidgets.QLabel()
         self.lbl_version.setAlignment(QtCore.Qt.AlignRight)
         self.lbl_version.setStyleSheet("color:#666666")
+        self.lbl_version.setFont(self.btn_font)
 
         self.lbl_license = QtWidgets.QLabel()
         self.lbl_license.setAlignment(QtCore.Qt.AlignLeft)
         self.lbl_license.setStyleSheet("color:#666666")
+        self.lbl_license.setFont(self.btn_font)
         self.lbl_license.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         self.lbl_license.setOpenExternalLinks(False)
         self.lbl_license.linkActivated.connect(lambda _: self.show_license())
@@ -791,6 +803,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "QPushButton:hover{background-color:#5c2c88;}"
             )
             btn.setFixedHeight(self.btn_height)
+            btn.setFont(self.btn_font)
             btn.setEnabled(exists and mtime_same)
             btn.clicked.connect(lambda _, e=entry: self.show_details(e))
             row.addWidget(btn)
@@ -805,6 +818,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
         back_btn.setFixedHeight(self.btn_height)
+        back_btn.setFont(self.btn_font)
         back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
         version_lbl = QtWidgets.QLabel(f"v{VERSION}")
         version_lbl.setStyleSheet("color:#666666")
@@ -849,6 +863,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#5c2c88;}"
         )
         view_btn.setFixedHeight(self.btn_height)
+        view_btn.setFont(self.btn_font)
         if exists and mtime_same:
             view_btn.clicked.connect(
                 lambda: QtGui.QDesktopServices.openUrl(
