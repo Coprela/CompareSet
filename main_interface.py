@@ -147,6 +147,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "back": "Back",
                 "update_title": "Update available",
                 "update_msg": "A new version ({}) is available.",
+                "update_download": "New version available for download",
                 "view_details": "View details",
                 "details_title": "Details",
                 "date": "Date:",
@@ -200,6 +201,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "back": "Voltar",
                 "update_title": "Atualiza\u00e7\u00e3o dispon\u00edvel",
                 "update_msg": "Uma nova vers\u00e3o ({}) est\u00e1 dispon\u00edvel.",
+                "update_download": "Nova vers\u00e3o dispon\u00edvel para download",
                 "view_details": "Ver detalhes",
                 "details_title": "Detalhes",
                 "date": "Data:",
@@ -984,14 +986,20 @@ class CompareSetQt(QtWidgets.QWidget):
         except Exception:
             latest = ""
         if latest and latest != VERSION:
-            self.lbl_version.setText(f'<a href="{DOWNLOAD_URL}">v{VERSION}</a>')
+            self.lbl_version.setStyleSheet("color:red")
+            msg = self.tr("update_download")
+            self.lbl_version.setText(f'<a href="{DOWNLOAD_URL}">{msg}</a>')
             self.lbl_version.setTextInteractionFlags(
                 QtCore.Qt.TextBrowserInteraction
             )
             self.lbl_version.setOpenExternalLinks(True)
             self.blink_timer.start(500)
         else:
+            self.blink_timer.stop()
+            self.lbl_version.setVisible(True)
+            self.lbl_version.setStyleSheet("color:#666666")
             self.lbl_version.setText(f"v{VERSION}")
+            self.lbl_version.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
 
 
 if __name__ == "__main__":
