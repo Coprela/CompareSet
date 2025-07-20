@@ -151,6 +151,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "details_title": "Details",
                 "date": "Date:",
                 "output_file": "Output file:",
+                "comparison_success": "Comparison completed successfully!",
+                "file_missing_hint": "File not found. Please regenerate.",
+                "sort_recent": "Most recent",
+                "sort_alpha": "Alphabetical",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -200,6 +204,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "details_title": "Detalhes",
                 "date": "Data:",
                 "output_file": "Arquivo:",
+                "comparison_success": "Comparação realizada com sucesso!",
+                "file_missing_hint": "Arquivo não encontrado. Gere novamente.",
+                "sort_recent": "Mais recente",
+                "sort_alpha": "Ordem alfabética",
             },
         }
         self.old_path = ""
@@ -217,6 +225,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self._blink_state = False
         self._setup_ui()
         self.check_for_updates()
+        self._update_compare_button()
 
     def tr(self, key: str) -> str:
         return self.translations[self.lang].get(key, key)
@@ -244,6 +253,11 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
             self.btn_view.setText(t["view_result"])
+        if hasattr(self, "sort_btn"):
+            if self.history_sort_by_date:
+                self.sort_btn.setText(t["sort_recent"])
+            else:
+                self.sort_btn.setText(t["sort_alpha"])
         self.lbl_version.setText(f"v{VERSION}")
         if hasattr(self, "label_status") and self.last_stats:
             self.label_status.setText(t["stats"].format(*self.last_stats))
@@ -317,6 +331,8 @@ class CompareSetQt(QtWidgets.QWidget):
 
 
         grid = QtWidgets.QGridLayout()
+        grid.setVerticalSpacing(6)
+        grid.setAlignment(QtCore.Qt.AlignCenter)
         layout.addLayout(grid)
 
         self.edit_old = QtWidgets.QLineEdit()
@@ -388,7 +404,7 @@ class CompareSetQt(QtWidgets.QWidget):
         )
         self.btn_compare.setFixedHeight(self.btn_height)
         self.btn_compare.setFont(self.btn_font)
-        self.btn_compare.setEnabled(True)
+        self._update_compare_button()
         self.btn_compare.clicked.connect(self.start_compare)
         layout.addWidget(self.btn_compare)
 
@@ -420,6 +436,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         status_row = QtWidgets.QHBoxLayout()
         status_row.setAlignment(QtCore.Qt.AlignCenter)
+        status_row.setSpacing(8)
         self.spinner = QtWidgets.QLabel()
         self.spinner_base = self._create_spinner_pixmap()
         self.spinner.setPixmap(self.spinner_base)
@@ -494,6 +511,16 @@ class CompareSetQt(QtWidgets.QWidget):
         self.history_page = QtWidgets.QWidget()
         self.history_layout = QtWidgets.QVBoxLayout(self.history_page)
         self.history_layout.setContentsMargins(10, 10, 10, 10)
+        self.history_sort_by_date = True
+        self.sort_btn = QtWidgets.QPushButton()
+        self.sort_btn.setStyleSheet(
+            "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#333333;}"
+            "QPushButton:disabled{background-color:#555555;color:white;}"
+        )
+        self.sort_btn.setFixedHeight(self.btn_height)
+        self.sort_btn.setFont(self.btn_font)
+        self.sort_btn.clicked.connect(self.toggle_history_sort)
         self.stack.addWidget(self.history_page)
         self.stack.setCurrentWidget(self.main_page)
 
@@ -507,6 +534,8 @@ class CompareSetQt(QtWidgets.QWidget):
         if hasattr(self, "btn_view"):
             self.btn_view.hide()
         self.last_stats = None
+        if hasattr(self, "btn_compare"):
+            self._update_compare_button()
 
     def _clear_layout(self, layout: QtWidgets.QLayout):
         while layout.count():
@@ -532,6 +561,22 @@ class CompareSetQt(QtWidgets.QWidget):
         painter.end()
         return pm
 
+    def _update_compare_button(self):
+        filled = bool(self.old_path and self.new_path)
+        if filled:
+            style = (
+                "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+                "QPushButton:hover{background-color:#5c2c88;}"
+                "QPushButton:disabled{background-color:#555555;color:white;}"
+            )
+        else:
+            style = (
+                "QPushButton{background-color:#555555;color:white;padding:4px;border-radius:4px;}"
+                "QPushButton:disabled{background-color:#555555;color:white;}"
+            )
+        self.btn_compare.setStyleSheet(style)
+        self.btn_compare.setEnabled(filled)
+
     # slots
     def select_old(self):
         self.clear_results()
@@ -542,6 +587,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.old_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_old.setText(name)
+        self._update_compare_button()
 
     def select_new(self):
         self.clear_results()
@@ -552,6 +598,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.new_path = path
             name = os.path.splitext(os.path.basename(path))[0]
             self.edit_new.setText(name)
+        self._update_compare_button()
 
     def start_compare(self):
         old = self.old_path
@@ -698,7 +745,9 @@ class CompareSetQt(QtWidgets.QWidget):
             )
         elif status == "success":
             QtWidgets.QMessageBox.information(
-                self, self.tr("success"), self.tr("pdf_saved").format(info)
+                self,
+                self.tr("success"),
+                f"{self.tr('comparison_success')}\n{self.tr('pdf_saved').format(info)}",
             )
             self.view_path = info
             self.btn_view.show()
@@ -707,6 +756,8 @@ class CompareSetQt(QtWidgets.QWidget):
                     "old": os.path.splitext(os.path.basename(self.old_path))[0],
                     "new": os.path.splitext(os.path.basename(self.new_path))[0],
                     "output": info,
+                    "old_path": self.old_path,
+                    "new_path": self.new_path,
                     "mtime": os.path.getmtime(info),
                     "timestamp": time.time(),
                     "stats": (
@@ -782,20 +833,45 @@ class CompareSetQt(QtWidgets.QWidget):
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.set_language(combo.currentData())
 
+    def toggle_history_sort(self):
+        self.history_sort_by_date = not self.history_sort_by_date
+        if self.history_sort_by_date:
+            self.sort_btn.setText(self.tr("sort_recent"))
+        else:
+            self.sort_btn.setText(self.tr("sort_alpha"))
+        self._build_history()
+
     def open_history(self):
         self.clear_results()
-        # rebuild history layout
+        self._build_history()
+        self.stack.setCurrentWidget(self.history_page)
+
+    def _build_history(self):
         while self.history_layout.count():
             item = self.history_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                if item.widget() is self.sort_btn:
+                    item.widget().setParent(None)
+                else:
+                    item.widget().deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
 
-        for entry in reversed(self.history):
+        self.history_layout.addWidget(self.sort_btn, alignment=QtCore.Qt.AlignLeft)
+
+        if self.history_sort_by_date:
+            data = sorted(self.history, key=lambda e: e.get('timestamp', e.get('mtime', 0)), reverse=True)
+        else:
+            data = sorted(self.history, key=lambda e: os.path.basename(e['output']).lower())
+
+        for entry in data:
             row = QtWidgets.QHBoxLayout()
             name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
             name_label = QtWidgets.QLabel(name)
+            if os.path.exists(entry['output']):
+                name_label.setToolTip(entry['output'])
+            else:
+                name_label.setToolTip(self.tr('file_missing_hint'))
             row.addWidget(name_label)
             date_str = time.strftime("%Y-%m-%d / %H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
             date_lbl = QtWidgets.QLabel(date_str)
@@ -816,6 +892,7 @@ class CompareSetQt(QtWidgets.QWidget):
             btn.setStyleSheet(
                 "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
                 "QPushButton:hover{background-color:#5c2c88;}"
+                "QPushButton:disabled{background-color:#555555;color:white;}"
             )
             btn.setFixedHeight(self.btn_height)
             btn.setFont(self.btn_font)
@@ -823,6 +900,7 @@ class CompareSetQt(QtWidgets.QWidget):
             btn.clicked.connect(lambda _, e=entry: self.show_details(e))
             row.addWidget(btn)
             self.history_layout.addLayout(row)
+
         if not self.history:
             self.history_layout.addWidget(QtWidgets.QLabel("-"))
         self.history_layout.addStretch()
@@ -844,7 +922,6 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom.addStretch()
         bottom.addWidget(version_lbl)
         self.history_layout.addLayout(bottom)
-        self.stack.setCurrentWidget(self.history_page)
 
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
