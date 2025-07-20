@@ -31,13 +31,32 @@ def fetch_latest_version(url: str) -> str:
     """Return latest version string from SharePoint using optional NTLM auth."""
     user = os.getenv("SP_USERNAME")
     password = os.getenv("SP_PASSWORD")
+    body = ""
     try:
         if user and password:
             resp = requests.get(url, auth=HttpNtlmAuth(user, password), timeout=5)
         else:
             resp = requests.get(url, timeout=5)
         if resp.ok:
-            return resp.text.strip()
+            body = resp.text.strip()
+    except Exception:
+        body = ""
+
+    # validate response body against version pattern
+    if body:
+        import re
+        if re.match(r"^[0-9]+(?:\.[0-9]+)*(?:-[A-Za-z0-9]+)?$", body):
+            return body
+
+    # fallback to parse version from filename
+    from urllib.parse import urlparse
+    try:
+        filename = os.path.basename(urlparse(url).path)
+        name, _ = os.path.splitext(filename)
+        if name:
+            import re
+            if re.match(r"^[0-9]+(?:\.[0-9]+)*(?:-[A-Za-z0-9]+)?$", name):
+                return name
     except Exception:
         pass
     return ""
@@ -110,6 +129,20 @@ class ComparisonThread(QtCore.QThread):
             self.finished.emit("cancelled", "")
         except Exception as e:
             self.finished.emit("error", str(e))
+
+
+class VersionCheckThread(QtCore.QThread):
+    """Thread that checks for a newer application version."""
+
+    finished = QtCore.Signal(str)
+
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+
+    def run(self):
+        latest = fetch_latest_version(self.url)
+        self.finished.emit(latest)
 
 
 class CompareSetQt(QtWidgets.QWidget):
@@ -246,7 +279,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.blink_timer.timeout.connect(self._blink_version)
         self._blink_state = False
         self._setup_ui()
-        self.check_for_updates()
+        QtCore.QTimer.singleShot(0, self._start_update_check)
         self._update_compare_button()
 
     def tr(self, key: str) -> str:
@@ -965,8 +998,13 @@ class CompareSetQt(QtWidgets.QWidget):
             )
             self.clear_results()
 
-    def check_for_updates(self):
-        latest = fetch_latest_version(VERSION_URL)
+    def _start_update_check(self):
+        """Begin asynchronous check for a newer version."""
+        self._version_thread = VersionCheckThread(VERSION_URL)
+        self._version_thread.finished.connect(self.check_for_updates)
+        self._version_thread.start()
+
+    def check_for_updates(self, latest: str):
         if latest and latest != VERSION:
             self.lbl_version.setStyleSheet("color:#666666")
             self.lbl_version.setText(f"v{VERSION}")
