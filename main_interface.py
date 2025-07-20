@@ -9,7 +9,7 @@ from pdf_diff import comparar_pdfs, CancelledError
 from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
-VERSION = "0.2.0-beta"
+VERSION = "0.2.1"
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
@@ -139,6 +139,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "back": "Back",
                 "update_title": "Update available",
                 "update_msg": "A new version ({}) is available.",
+                "view_details": "View details",
+                "details_title": "Details",
+                "date": "Date:",
+                "output_file": "Output file:",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -184,6 +188,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 "back": "Voltar",
                 "update_title": "Atualiza\u00e7\u00e3o dispon\u00edvel",
                 "update_msg": "Uma nova vers\u00e3o ({}) est\u00e1 dispon\u00edvel.",
+                "view_details": "Ver detalhes",
+                "details_title": "Detalhes",
+                "date": "Data:",
+                "output_file": "Arquivo:",
             },
         }
         self.old_path = ""
@@ -226,7 +234,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
             self.btn_view.setText(t["view_result"])
-        self.lbl_version.setText(f"CompareSet – v{VERSION}")
+        self.lbl_version.setText(f"v{VERSION}")
         if hasattr(self, "label_status") and self.last_stats:
             self.label_status.setText(t["stats"].format(*self.last_stats))
 
@@ -320,6 +328,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
+        self.btn_old.setFixedHeight(self.edit_old.sizeHint().height())
         self.btn_old.setEnabled(True)
         self.btn_old.clicked.connect(self.select_old)
         grid.addWidget(self.edit_old, 0, 0)
@@ -345,6 +354,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
+        self.btn_new.setFixedHeight(self.edit_new.sizeHint().height())
         self.btn_new.setEnabled(True)
         self.btn_new.clicked.connect(self.select_new)
         grid.addWidget(self.edit_new, 1, 0)
@@ -614,8 +624,16 @@ class CompareSetQt(QtWidgets.QWidget):
         self.label_status.setText(f"{msg} {m:02d}:{s:02d}")
 
     def _rotate_spinner(self):
-        transform = QtGui.QTransform().rotate(self.spinner_angle)
-        pm = self.spinner_base.transformed(transform, QtCore.Qt.SmoothTransformation)
+        size = self.spinner_base.size()
+        pm = QtGui.QPixmap(size)
+        pm.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pm)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.translate(size.width() / 2, size.height() / 2)
+        painter.rotate(self.spinner_angle)
+        painter.translate(-size.width() / 2, -size.height() / 2)
+        painter.drawPixmap(0, 0, self.spinner_base)
+        painter.end()
         self.spinner.setPixmap(pm)
         self.spinner_angle = (self.spinner_angle + 30) % 360
 
@@ -658,6 +676,11 @@ class CompareSetQt(QtWidgets.QWidget):
                     "new": os.path.splitext(os.path.basename(self.new_path))[0],
                     "output": info,
                     "mtime": os.path.getmtime(info),
+                    "timestamp": time.time(),
+                    "stats": (
+                        self.thread.elements_checked,
+                        self.thread.diff_count,
+                    ),
                 }
             )
             self.action_history.setVisible(True)
@@ -741,59 +764,28 @@ class CompareSetQt(QtWidgets.QWidget):
 
         for entry in reversed(self.history):
             row = QtWidgets.QHBoxLayout()
-            name_label = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
+            name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
+            name_label = QtWidgets.QLabel(name)
             row.addWidget(name_label)
-            exists = os.path.exists(entry['output'])
-            mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
-            if mtime_same:
-                btn = QtWidgets.QPushButton(self.tr("view_result"))
-                btn.setStyleSheet(
-                    "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
-                    "QPushButton:hover{background-color:#5c2c88;}"
-                )
-                btn.clicked.connect(
-                    lambda _, p=entry['output']: QtGui.QDesktopServices.openUrl(
-                        QtCore.QUrl.fromLocalFile(p)
-                    )
-                )
-                row.addWidget(btn)
-            elif exists:
-                lbl = QtWidgets.QLabel(self.tr("file_replaced"))
-                lbl.setWordWrap(True)
-                lbl.setSizePolicy(
-                    QtWidgets.QSizePolicy.Expanding,
-                    QtWidgets.QSizePolicy.Preferred,
-                )
-                row.addWidget(lbl)
-                btn = QtWidgets.QPushButton(self.tr("view_result"))
-                btn.setStyleSheet(
-                    "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
-                    "QPushButton:hover{background-color:#5c2c88;}"
-                )
-                btn.clicked.connect(
-                    lambda _, p=entry['output']: QtGui.QDesktopServices.openUrl(
-                        QtCore.QUrl.fromLocalFile(p)
-                    )
-                )
-                row.addWidget(btn)
-            else:
-                lbl = QtWidgets.QLabel(self.tr("file_missing"))
-                lbl.setWordWrap(True)
-                lbl.setSizePolicy(
-                    QtWidgets.QSizePolicy.Expanding,
-                    QtWidgets.QSizePolicy.Preferred,
-                )
-                row.addWidget(lbl)
-                btn = QtWidgets.QPushButton(self.tr("unavailable"))
-                btn.setEnabled(False)
-                row.addWidget(btn)
+            date_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
+            date_lbl = QtWidgets.QLabel(date_str)
+            date_lbl.setStyleSheet("color:#666666")
+            row.addWidget(date_lbl)
+            row.addStretch()
+            btn = QtWidgets.QPushButton(self.tr("view_details"))
+            btn.setStyleSheet(
+                "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+                "QPushButton:hover{background-color:#5c2c88;}"
+            )
+            btn.clicked.connect(lambda _, e=entry: self.show_details(e))
+            row.addWidget(btn)
             self.history_layout.addLayout(row)
         if not self.history:
             self.history_layout.addWidget(QtWidgets.QLabel("-"))
         self.history_layout.addStretch()
         back_btn = QtWidgets.QPushButton(self.tr("back"))
         back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
-        version_lbl = QtWidgets.QLabel(f"CompareSet – v{VERSION}")
+        version_lbl = QtWidgets.QLabel(f"v{VERSION}")
         version_lbl.setStyleSheet("color:#666666")
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
@@ -802,6 +794,45 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom.addWidget(version_lbl)
         self.history_layout.addLayout(bottom)
         self.stack.setCurrentWidget(self.history_page)
+
+    def show_details(self, entry: dict):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("details_title"))
+        layout = QtWidgets.QVBoxLayout(dlg)
+
+        title = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
+        layout.addWidget(title)
+
+        stats = entry.get("stats")
+        if stats:
+            layout.addWidget(QtWidgets.QLabel(self.tr("stats").format(*stats)))
+
+        date_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
+        layout.addWidget(QtWidgets.QLabel(f"{self.tr('date')} {date_str}"))
+
+        layout.addWidget(QtWidgets.QLabel(f"{self.tr('output_file')} {os.path.basename(entry['output'])}"))
+
+        exists = os.path.exists(entry['output'])
+        mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
+        if not exists:
+            layout.addWidget(QtWidgets.QLabel(self.tr('file_missing')))
+        elif not mtime_same:
+            layout.addWidget(QtWidgets.QLabel(self.tr('file_replaced')))
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addStretch()
+        view_btn = QtWidgets.QPushButton(self.tr("view_result"))
+        if exists and mtime_same:
+            view_btn.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(entry['output'])))
+        else:
+            view_btn.setEnabled(False)
+        btn_row.addWidget(view_btn)
+        close_btn = QtWidgets.QPushButton(self.tr("back"))
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dlg.exec()
 
     def open_result(self):
         if hasattr(self, "view_path"):
