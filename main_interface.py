@@ -7,6 +7,12 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from pdf_diff import comparar_pdfs, CancelledError
 from pdf_highlighter import gerar_pdf_com_destaques
 
+# application version string
+VERSION = "0.2.0-beta"
+
+# make version easily available to other modules
+__all__ = ["VERSION", "CompareSetQt"]
+
 
 def file_in_use(path: str) -> bool:
     try:
@@ -212,7 +218,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
             self.btn_view.setText(t["view_result"])
-        self.lbl_version.setText("CompareSet – v0.2.0-beta")
+        self.lbl_version.setText(f"CompareSet – v{VERSION}")
         if hasattr(self, "label_status") and self.last_stats:
             self.label_status.setText(t["stats"].format(*self.last_stats))
 
