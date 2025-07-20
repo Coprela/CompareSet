@@ -368,8 +368,10 @@ class CompareSetQt(QtWidgets.QWidget):
         status_row = QtWidgets.QHBoxLayout()
         status_row.setAlignment(QtCore.Qt.AlignCenter)
         self.spinner = QtWidgets.QLabel()
-        self.spinner_base = self.style().standardPixmap(QtWidgets.QStyle.SP_BrowserReload)
+        self.spinner_base = self._create_spinner_pixmap()
         self.spinner.setPixmap(self.spinner_base)
+        self.spinner.setFixedSize(self.spinner_base.size())
+        self.spinner.setScaledContents(True)
         self.spinner.hide()
         status_row.addWidget(self.spinner)
         self.spinner_timer = QtCore.QTimer(self)
@@ -454,6 +456,19 @@ class CompareSetQt(QtWidgets.QWidget):
                 item.widget().deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
+
+    def _create_spinner_pixmap(self) -> QtGui.QPixmap:
+        size = 12
+        pm = QtGui.QPixmap(size, size)
+        pm.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pm)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        pen = QtGui.QPen(self.palette().text().color())
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.drawEllipse(1, 1, size - 2, size - 2)
+        painter.end()
+        return pm
 
     # slots
     def select_old(self):
@@ -578,6 +593,11 @@ class CompareSetQt(QtWidgets.QWidget):
     def _rotate_spinner(self):
         transform = QtGui.QTransform().rotate(self.spinner_angle)
         pm = self.spinner_base.transformed(transform, QtCore.Qt.SmoothTransformation)
+        pm = pm.scaled(
+            self.spinner_base.size(),
+            QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation,
+        )
         self.spinner.setPixmap(pm)
         self.spinner_angle = (self.spinner_angle + 30) % 360
 
