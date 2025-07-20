@@ -1,7 +1,8 @@
 import os
 import time
 import math
-import urllib.request
+import requests
+from requests_ntlm import HttpNtlmAuth
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -11,8 +12,11 @@ from pdf_highlighter import gerar_pdf_com_destaques
 # application version string
 VERSION = "0.2.1-beta"
 # url with the latest version string
-VERSION_URL = (
-    "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/latest_version.txt"
+# URL with the latest version string. Can be overridden by the VERSION_URL
+# environment variable.
+VERSION_URL = os.getenv(
+    "VERSION_URL",
+    "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/latest_version.txt",
 )
 # download page for the application
 DOWNLOAD_URL = (
@@ -21,6 +25,22 @@ DOWNLOAD_URL = (
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
+
+
+def fetch_latest_version(url: str) -> str:
+    """Return latest version string from SharePoint using optional NTLM auth."""
+    user = os.getenv("SP_USERNAME")
+    password = os.getenv("SP_PASSWORD")
+    try:
+        if user and password:
+            resp = requests.get(url, auth=HttpNtlmAuth(user, password), timeout=5)
+        else:
+            resp = requests.get(url, timeout=5)
+        if resp.ok:
+            return resp.text.strip()
+    except Exception:
+        pass
+    return ""
 
 
 def file_in_use(path: str) -> bool:
@@ -979,12 +999,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.clear_results()
 
     def check_for_updates(self):
-        latest = ""
-        try:
-            with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
-                latest = resp.read().decode("utf-8").strip()
-        except Exception:
-            latest = ""
+        latest = fetch_latest_version(VERSION_URL)
         if latest and latest != VERSION:
             self.lbl_version.setStyleSheet("color:red")
             msg = self.tr("update_download")

@@ -49,6 +49,13 @@ URL (defaults to the DigiCert service).
 - Tkinter (bundled with Python) for the classic GUI
 - [PySide6](https://pypi.org/project/PySide6/) for the Qt interface
 
+## Checking for updates
+
+The application checks for a version file hosted on SharePoint. If the site
+requires authentication, provide your credentials using the environment
+variables `SP_USERNAME` and `SP_PASSWORD`. You may also override the location of
+the version file with the `VERSION_URL` variable.
+
 ## Supported page formats
 
 CompareSet works with PDF pages sized according to the ISO A series. Pages
