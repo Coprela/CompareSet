@@ -134,6 +134,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "stats": "Elements checked: {}\nDifferences found: {}",
                 "history": "History",
                 "file_missing": "File not found at saved location",
+                "file_replaced": "File replaced",
                 "unavailable": "Unavailable",
                 "back": "Back",
                 "update_title": "Update available",
@@ -178,6 +179,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "stats": "Elementos verificados: {}\nDiferen\u00e7as encontradas: {}",
                 "history": "Hist\u00f3rico",
                 "file_missing": "Arquivo n\u00e3o encontrado no local de origem",
+                "file_replaced": "Arquivo substitu\u00eddo",
                 "unavailable": "Indispon\u00edvel",
                 "back": "Voltar",
                 "update_title": "Atualiza\u00e7\u00e3o dispon\u00edvel",
@@ -273,13 +275,13 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_improve.setToolTip("")
         self.action_improve.triggered.connect(self.open_improvement_link)
 
-        self.toolbar.addWidget(QtWidgets.QLabel("|") )
+        self.toolbar.addSeparator()
 
         self.action_help = self.toolbar.addAction(help_icon, "")
         self.action_help.setToolTip("")
         self.action_help.triggered.connect(self.open_help)
 
-        self.toolbar.addWidget(QtWidgets.QLabel("|") )
+        self.toolbar.addSeparator()
 
         self.action_settings = self.toolbar.addAction(settings_icon, "")
         self.action_settings.setToolTip("")
@@ -303,7 +305,10 @@ class CompareSetQt(QtWidgets.QWidget):
         # QLineEdit does not implement setTextInteractionFlags; disable
         # editing via the read-only and focus settings instead
         self.edit_old.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-        self.edit_old.setFixedWidth(200)
+        self.edit_old.setMinimumWidth(200)
+        self.edit_old.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
         self.edit_old.setAlignment(QtCore.Qt.AlignCenter)
         self.edit_old.setStyleSheet(
             "QLineEdit{background:#eeeeee;border:1px solid #cccccc;}"
@@ -325,7 +330,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.edit_new.setFocusPolicy(QtCore.Qt.NoFocus)
         # setTextInteractionFlags is not available on QLineEdit
         self.edit_new.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-        self.edit_new.setFixedWidth(200)
+        self.edit_new.setMinimumWidth(200)
+        self.edit_new.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
         self.edit_new.setAlignment(QtCore.Qt.AlignCenter)
         self.edit_new.setStyleSheet(
             "QLineEdit{background:#eeeeee;border:1px solid #cccccc;}"
@@ -476,17 +484,13 @@ class CompareSetQt(QtWidgets.QWidget):
         pm.fill(QtCore.Qt.transparent)
         painter = QtGui.QPainter(pm)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtGui.QColor("#999999"))
-        arrow = QtGui.QPolygonF(
-            [
-                QtCore.QPointF(size / 2, 2),
-                QtCore.QPointF(size - 2, size - 2),
-                QtCore.QPointF(size / 2, size * 0.6),
-                QtCore.QPointF(2, size - 2),
-            ]
-        )
-        painter.drawPolygon(arrow)
+        pen = QtGui.QPen(QtGui.QColor("#999999"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(QtCore.Qt.NoBrush)
+        rect = QtCore.QRectF(2, 2, size - 4, size - 4)
+        # draw a partial circle with a gap to mimic the Windows spinner
+        painter.drawArc(rect, 60 * 16, 300 * 16)
         painter.end()
         return pm
 
@@ -569,8 +573,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
         self.action_history.setEnabled(False)
-        self.action_history.setVisible(False)
-        self.history_sep.setVisible(False)
+        self.history_sep.setVisible(True)
 
         self.thread = ComparisonThread(
             old,
@@ -740,8 +743,28 @@ class CompareSetQt(QtWidgets.QWidget):
             row = QtWidgets.QHBoxLayout()
             name_label = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
             row.addWidget(name_label)
-            valid = os.path.exists(entry['output']) and os.path.getmtime(entry['output']) == entry.get('mtime')
-            if valid:
+            exists = os.path.exists(entry['output'])
+            mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
+            if mtime_same:
+                btn = QtWidgets.QPushButton(self.tr("view_result"))
+                btn.setStyleSheet(
+                    "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
+                    "QPushButton:hover{background-color:#5c2c88;}"
+                )
+                btn.clicked.connect(
+                    lambda _, p=entry['output']: QtGui.QDesktopServices.openUrl(
+                        QtCore.QUrl.fromLocalFile(p)
+                    )
+                )
+                row.addWidget(btn)
+            elif exists:
+                lbl = QtWidgets.QLabel(self.tr("file_replaced"))
+                lbl.setWordWrap(True)
+                lbl.setSizePolicy(
+                    QtWidgets.QSizePolicy.Expanding,
+                    QtWidgets.QSizePolicy.Preferred,
+                )
+                row.addWidget(lbl)
                 btn = QtWidgets.QPushButton(self.tr("view_result"))
                 btn.setStyleSheet(
                     "QPushButton{background-color:#471F6F;color:white;padding:4px;border-radius:4px;}"
@@ -754,7 +777,13 @@ class CompareSetQt(QtWidgets.QWidget):
                 )
                 row.addWidget(btn)
             else:
-                row.addWidget(QtWidgets.QLabel(self.tr("file_missing")))
+                lbl = QtWidgets.QLabel(self.tr("file_missing"))
+                lbl.setWordWrap(True)
+                lbl.setSizePolicy(
+                    QtWidgets.QSizePolicy.Expanding,
+                    QtWidgets.QSizePolicy.Preferred,
+                )
+                row.addWidget(lbl)
                 btn = QtWidgets.QPushButton(self.tr("unavailable"))
                 btn.setEnabled(False)
                 row.addWidget(btn)
