@@ -1,5 +1,6 @@
 import os
 import time
+import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -92,7 +93,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "select_new": "Select new revision",
                 "compare": "Compare Revisions",
                 "license": "License",
-                "improve_label": "Feedback & improvements",
+                "improve_label": "Ideas",
                 "help_label": "Help",
                 "settings_label": "Settings",
                 "no_file": "no file selected",
@@ -246,6 +247,16 @@ class CompareSetQt(QtWidgets.QWidget):
             os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
         )
 
+        history_icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
+        self.action_history = self.toolbar.addAction(history_icon, "")
+        self.action_history.setToolTip("")
+        self.action_history.triggered.connect(self.open_history)
+        self.action_history.setVisible(False)
+
+        self.history_sep = QtWidgets.QLabel("|")
+        self.toolbar.addWidget(self.history_sep)
+        self.history_sep.setVisible(False)
+
         self.action_improve = self.toolbar.addAction(improve_icon, "")
         # disable tooltip popups for cleaner hover behaviour
         self.action_improve.setToolTip("")
@@ -262,15 +273,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_settings = self.toolbar.addAction(settings_icon, "")
         self.action_settings.setToolTip("")
         self.action_settings.triggered.connect(self.open_settings)
-
-        self.history_sep = QtWidgets.QLabel("|")
-        self.toolbar.addWidget(self.history_sep)
-        history_icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
-        self.action_history = self.toolbar.addAction(history_icon, "")
-        self.action_history.setToolTip("")
-        self.action_history.triggered.connect(self.open_history)
-        self.action_history.setVisible(False)
-        self.history_sep.setVisible(False)
 
         # subtle hover effect for toolbar buttons
         self.toolbar.setStyleSheet(
@@ -458,15 +460,24 @@ class CompareSetQt(QtWidgets.QWidget):
                 self._clear_layout(item.layout())
 
     def _create_spinner_pixmap(self) -> QtGui.QPixmap:
-        size = 12
+        size = 20
         pm = QtGui.QPixmap(size, size)
         pm.fill(QtCore.Qt.transparent)
         painter = QtGui.QPainter(pm)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        pen = QtGui.QPen(self.palette().text().color())
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.drawEllipse(1, 1, size - 2, size - 2)
+        color = QtGui.QColor("#999999")
+        painter.setPen(QtCore.Qt.NoPen)
+        center = size / 2
+        radius = center - 2
+        dot_r = 2
+        for i in range(12):
+            angle = math.radians(i * 30)
+            x = center + radius * math.cos(angle) - dot_r
+            y = center + radius * math.sin(angle) - dot_r
+            alpha = int(255 * (i + 1) / 12)
+            color.setAlpha(alpha)
+            painter.setBrush(color)
+            painter.drawEllipse(QtCore.QPointF(x + dot_r, y + dot_r), dot_r, dot_r)
         painter.end()
         return pm
 
