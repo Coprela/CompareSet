@@ -20,6 +20,8 @@ dist/
 
 # Misc
 .DS_Store
+# Environment files
+.env
 # Debug/export files
 *terminal.txt
 pyinstaller
