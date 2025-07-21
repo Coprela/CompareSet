@@ -1,30 +1,17 @@
 import os
-from json import JSONDecodeError
 
-import requests
-from requests.exceptions import RequestException
+from github_json_manager import load_json
 
 
 CURRENT_VERSION = "0.2.1-beta"
 
-# URL with the latest version JSON. Can be overridden by the VERSION_URL
-# environment variable.
-VERSION_URL = os.getenv(
-    "VERSION_URL",
-    "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json",
-)
+LATEST_VERSION_FILE = os.getenv("LATEST_VERSION_FILE", "CompareSet_latest_version.json")
 
 
-def fetch_latest_version(url: str) -> str:
-    """Return the latest version string from *url* or an empty string."""
+def fetch_latest_version(filename: str = LATEST_VERSION_FILE) -> str:
+    """Return the latest version string from the remote repository."""
 
-    try:
-        resp = requests.get(url, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-    except (RequestException, JSONDecodeError):
-        return ""
-
+    data = load_json(filename)
     latest = data.get("version")
     return latest if isinstance(latest, str) else ""
 
@@ -32,7 +19,7 @@ def fetch_latest_version(url: str) -> str:
 def check_for_update() -> str:
     """Return the latest version available or an empty string if unavailable."""
 
-    return fetch_latest_version(VERSION_URL)
+    return fetch_latest_version(LATEST_VERSION_FILE)
 
 
 if __name__ == "__main__":

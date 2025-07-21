@@ -52,26 +52,24 @@ URL (defaults to the DigiCert service).
 
 ## Checking for updates
 
-The application checks for a JSON file on GitHub that lists the latest
-available version. You can override the location of this file using the
-`VERSION_URL` environment variable.
+The application checks the GitHub repository for a JSON file named
+`CompareSet_latest_version.json` that contains the latest available version.
+The name of this file can be overridden with the `LATEST_VERSION_FILE`
+environment variable.
 
 ## User authorization
 
 Before launching the interface the program downloads the list of authorised
-usernames from a JSON file hosted on GitHub. The default location is
-`https://raw.githubusercontent.com/Coprela/Version-tracker/main/allowed_users.json`
-and can be overridden through the `USER_LIST_URL` environment variable. If the
-current operating system user is not present in this list the application shows
-an "Access denied" message and exits.
+usernames from `allowed_users.json` stored in the same GitHub repository. The
+file name can be overridden using the `ALLOWED_USERS_FILE` environment
+variable. If the current operating system user is not present in this list the
+application shows an "Access denied" message and exits.
 
 When the variable `ADMIN_MODE` is set to `1` a "Manage users" button appears in
 the settings dialog. This opens a window that loads the current list from the
-repository and lets administrators add or remove names. On saving the list is
-updated remotely via the GitHub API. By default updates are sent to
-`https://api.github.com/repos/Coprela/Version-tracker/contents/allowed_users.json`.
-The `USER_LIST_WRITE_URL` and `USER_LIST_TOKEN` environment variables can be
-used to specify a different endpoint and authentication token.
+repository and lets administrators add or remove names. On saving, the list is
+updated remotely via the GitHub API using the repository defined in
+`GITHUB_REPO`. Authentication is performed with the `GITHUB_TOKEN` variable.
 
 ## Supported page formats
 
