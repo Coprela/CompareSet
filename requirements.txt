@@ -2,3 +2,6 @@ PyMuPDF
 PySide6
 requests
 python-dotenv
+fastapi
+uvicorn
+cryptography
