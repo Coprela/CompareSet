@@ -13,11 +13,15 @@ vector shapes or words shift without altering content.
 
 1. Clone this repository.
 2. (Optional) Create and activate a virtual environment.
-3. Install the Python dependencies listed in `requirements.txt`:
+3. (Optional) create a `.env` file with values for `GITHUB_REPO`,
+   `GITHUB_TOKEN` and other variables. See `.env.example` for the
+   available options. The application automatically loads this file at
+   startup.
+4. Install the Python dependencies listed in `requirements.txt`:
    ```bash
    pip install -r requirements.txt
    ```
-4. Run the Qt application (requires `PySide6` which is included in the
+5. Run the Qt application (requires `PySide6` which is included in the
    requirements file or can be installed with `pip install PySide6`):
    ```bash
    python main_interface.py
@@ -55,7 +59,7 @@ URL (defaults to the DigiCert service).
 The application checks the GitHub repository for a JSON file named
 `CompareSet_latest_version.json` that contains the latest available version.
 The name of this file can be overridden with the `LATEST_VERSION_FILE`
-environment variable.
+environment variable, loaded either from the environment or a `.env` file.
 
 ## User authorization
 
@@ -71,6 +75,8 @@ the settings dialog. This opens a window that loads the current list from the
 repository and lets administrators add or remove names. On saving, the list is
 updated remotely via the GitHub API using the repository defined in
 `GITHUB_REPO`. Authentication is performed with the `GITHUB_TOKEN` variable.
+These variables are read from the environment or from the optional `.env`
+configuration file.
 
 ## Supported page formats
 
