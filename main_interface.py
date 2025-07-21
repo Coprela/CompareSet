@@ -3,7 +3,7 @@ import time
 import math
 import requests
 
-from version_check import CURRENT_VERSION, check_for_update
+from version_check import CURRENT_VERSION, check_for_update, fetch_latest_version
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -25,20 +25,6 @@ DOWNLOAD_URL = (
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
-
-
-def fetch_latest_version(url: str) -> str:
-    """Return the latest version string from a JSON file on GitHub."""
-    try:
-        resp = requests.get(url, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-        latest = data.get("version")
-        if isinstance(latest, str):
-            return latest
-    except Exception:
-        pass
-    return ""
 
 
 def file_in_use(path: str) -> bool:
