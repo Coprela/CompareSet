@@ -1,9 +1,9 @@
 {
   "users": [
     {
-      "username": "doliveira12",
-      "name": "Daniel Oliveira",
-      "email": "doliveira12@example.com",
+      "username": "teste0",
+      "name": "teste0",
+      "email": "teste0@example.com",
       "active": true,
       "added": 0.0
     },
