@@ -23,7 +23,11 @@ vector shapes or words shift without altering content.
    ```bash
    pip install -r requirements.txt
    ```
-5. Run the Qt application (requires `PySide6` which is included in the
+5. (Optional) Install development tools to run tests and linters:
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+6. Run the Qt application (requires `PySide6` which is included in the
    requirements file or can be installed with `pip install PySide6`):
    ```bash
    python main_interface.py
@@ -31,6 +35,30 @@ vector shapes or words shift without altering content.
    This interface provides improvement/help icons and a language
    switcher. The original `app.py` Tkinter interface is kept for legacy
    use. A Windows build is also available in `dist/CompareSet <VERSION>.exe`.
+
+### Environment variables
+
+The application relies on a few variables that can be defined in a `.env` file
+or directly in your environment:
+
+- `GITHUB_REPO` – repository containing the configuration files
+- `GITHUB_TOKEN` – personal token used to access the repository
+- `GITHUB_API_BASE` – override the GitHub API URL if needed
+- `GITHUB_PATH_PREFIX` – folder path where config files live
+- `ALLOWED_USERS_FILE` – JSON filename with the authorised users
+- `LATEST_VERSION_FILE` – JSON filename containing the latest version
+- `ADMIN_MODE` – set to `1` to enable user management in the GUI
+
+### Development
+
+Run `pre-commit` to apply formatting and lint checks before each commit:
+```bash
+pre-commit run --files <changed files>
+```
+Execute the test suite with:
+```bash
+pytest -q
+```
 
 ## Building an executable
 
