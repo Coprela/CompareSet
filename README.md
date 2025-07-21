@@ -148,6 +148,13 @@ The function also accepts ``ignore_geometry`` which, when set to ``True``,
 compares only textual content and numbers, disregarding vector shapes and
 embedded images.
 
+For scenarios focused solely on vector drawings, the ``comparar_vetores``
+helper provides a streamlined approach. It normalizes coordinates to a
+precision of one decimal place, discards invisible paths (zero width,
+transparent or outside the page) and ignores non-visual attributes like color
+or layer.  Each vector is represented by a simplified hash so that set
+operations quickly reveal which shapes were added or removed.
+
 ## Legacy C++ engine
 
 Previous releases shipped with `CompareSet.Engine.dll`, a compiled C++ library
