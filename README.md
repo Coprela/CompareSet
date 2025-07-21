@@ -111,7 +111,10 @@ gerar_pdf_com_destaques(
 The comparison function automatically runs multiple passes starting from a
 strict IoU threshold of ``1.0`` and gradually decreasing it by ``0.05`` until
 no new differences are detected.  This ensures small positional variations do
-not generate false positives while still highlighting relevant changes.
+not generate false positives while still highlighting relevant changes. The
+``comparar_pdfs`` helper exposes a ``pos_tol`` parameter controlling the
+allowed displacement (in points) before a moved element is considered a change;
+the default value of ``3`` skips shifts that are not visually noticeable.
 
 ## Legacy C++ engine
 
