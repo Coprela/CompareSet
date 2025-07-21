@@ -72,10 +72,14 @@ def gerar_pdf_com_destaques(
 
             if i < len(doc_new):
                 page = doc_new[i]
+                if i < len(doc_old):
+                    base_rect = doc_old[i].rect
+                else:
+                    base_rect = page.rect
                 new_page = final.new_page(
-                    width=page.rect.width, height=page.rect.height
+                    width=base_rect.width, height=base_rect.height
                 )
-                new_page.show_pdf_page(page.rect, doc_new, i)
+                new_page.show_pdf_page(base_rect, doc_new, i)
 
                 # compute transform mapping coordinates from the old PDF to the
                 # current page of the new PDF

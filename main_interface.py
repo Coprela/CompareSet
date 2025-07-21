@@ -13,6 +13,7 @@ from user_check import (
     load_user_records,
     save_user_records,
     is_admin,
+    load_admins,
 )
 
 from version_check import (
@@ -128,8 +129,8 @@ class CompareSetQt(QtWidgets.QWidget):
         super().__init__()
         self.is_admin = is_admin
         self.setWindowTitle("CompareSet")
-        # allow larger window for easier viewing
-        self.setFixedSize(700, 500)
+        # slightly smaller fixed size to fit lower resolutions
+        self.setFixedSize(600, 450)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
         icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
         self.setWindowIcon(QtGui.QIcon(icon_path))
@@ -873,7 +874,7 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg = QtWidgets.QMessageBox(self)
         dlg.setWindowTitle(self.tr("license_title"))
         dlg.setText(text)
-        dlg.setMinimumSize(600, 400)
+        dlg.setMinimumSize(500, 350)
         dlg.exec()
 
     def open_improvement_link(self):
@@ -889,7 +890,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def open_settings(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("settings_title"))
-        dlg.resize(600, 400)
+        dlg.resize(500, 350)
         layout = QtWidgets.QVBoxLayout(dlg)
         lbl = QtWidgets.QLabel(self.tr("language"))
         layout.addWidget(lbl)
@@ -914,7 +915,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def open_user_admin(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("manage_users"))
-        dlg.resize(600, 400)
+        dlg.resize(500, 350)
         layout = QtWidgets.QVBoxLayout(dlg)
         listw = QtWidgets.QListWidget()
         try:
@@ -988,6 +989,11 @@ class CompareSetQt(QtWidgets.QWidget):
 
         data = sorted(self.history, key=lambda e: e.get('timestamp', e.get('mtime', 0)), reverse=True)
 
+        frame = QtWidgets.QFrame()
+        frame.setFrameShape(QtWidgets.QFrame.Box)
+        frame.setStyleSheet("border:1px solid #cccccc")
+        frame_layout = QtWidgets.QVBoxLayout(frame)
+
         for entry in data:
             row = QtWidgets.QHBoxLayout()
             name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
@@ -1022,11 +1028,12 @@ class CompareSetQt(QtWidgets.QWidget):
                 btn.setFont(self.btn_font)
                 btn.clicked.connect(lambda _, e=entry: self.show_details(e))
                 row.addWidget(btn)
-            self.history_layout.addLayout(row)
+            frame_layout.addLayout(row)
 
         if not self.history:
-            self.history_layout.addWidget(QtWidgets.QLabel("-"))
-        self.history_layout.addStretch()
+            frame_layout.addWidget(QtWidgets.QLabel("-"))
+        frame_layout.addStretch()
+        self.history_layout.addWidget(frame)
         back_btn = QtWidgets.QPushButton(self.tr("back"))
         back_btn.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
@@ -1095,12 +1102,15 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom.addStretch()
         self.admin_layout.addLayout(bottom)
 
+        # cache records to avoid reloading on every search keystroke
+        self._user_records = load_user_records()
+        self._admins = load_admins()
         self._populate_admin_table()
         self.search_edit.textChanged.connect(self._populate_admin_table)
         self.sort_combo.currentIndexChanged.connect(self._populate_admin_table)
 
     def _populate_admin_table(self):
-        records = load_user_records()
+        records = list(self._user_records)
         query = self.search_edit.text().lower()
         if self.sort_combo.currentData() == "alpha":
             records.sort(key=lambda r: r.get("username", "").lower())
@@ -1127,7 +1137,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def _add_user_dialog(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("add_user"))
-        dlg.resize(600, 400)
+        dlg.resize(500, 350)
         lay = QtWidgets.QFormLayout(dlg)
         user_edit = QtWidgets.QLineEdit()
         name_edit = QtWidgets.QLineEdit()
@@ -1140,7 +1150,7 @@ class CompareSetQt(QtWidgets.QWidget):
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
-            recs = load_user_records()
+            recs = list(self._user_records)
             new_rec = {
                 "username": user_edit.text().strip(),
                 "name": name_edit.text().strip(),
@@ -1153,6 +1163,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 if new_rec["username"] not in names:
                     recs.append(new_rec)
                     save_user_records(recs)
+                    self._user_records = recs
             self._populate_admin_table()
 
     def _edit_user_dialog(self):
@@ -1160,15 +1171,15 @@ class CompareSetQt(QtWidgets.QWidget):
         if not isinstance(btn, QtWidgets.QPushButton):
             return
         username = btn.property("username")
-        recs = load_user_records()
-        admins = load_admins()
+        recs = list(self._user_records)
+        admins = list(self._admins)
         rec = next((r for r in recs if r.get("username") == username), None)
         if rec is None:
             return
 
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("real_name"))
-        dlg.resize(600, 400)
+        dlg.resize(500, 350)
         form = QtWidgets.QFormLayout(dlg)
 
         user_edit = QtWidgets.QLineEdit(rec.get("username", ""))
@@ -1204,13 +1215,15 @@ class CompareSetQt(QtWidgets.QWidget):
                 admins.remove(rec["username"])
 
             save_user_records(recs, admins)
+            self._user_records = recs
+            self._admins = admins
             self._populate_admin_table()
 
 
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("details_title"))
-        dlg.resize(600, 400)
+        dlg.resize(500, 350)
         layout = QtWidgets.QVBoxLayout(dlg)
 
         title = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
