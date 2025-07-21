@@ -39,6 +39,7 @@ import fitz
 def _extract_bboxes(
     doc: fitz.Document,
     transforms: Optional[List[Tuple[float, float, float, float]]] = None,
+    ignore_geometry: bool = False,
 ) -> List[List[Tuple[float, float, float, float, str]]]:
     """Return list of bboxes per page from drawings and text blocks.
 
@@ -48,6 +49,8 @@ def _extract_bboxes(
         Opened document whose pages will be processed.
     transforms: list of tuples(scale_x, scale_y, trans_x, trans_y), optional
         Transformations applied to each page's coordinates.
+    ignore_geometry: bool, optional
+        When ``True`` skip drawing and image boxes, extracting only text.
     """
     pages: List[List[Tuple[float, float, float, float, str]]] = []
     for i, page in enumerate(doc):
@@ -57,43 +60,44 @@ def _extract_bboxes(
             sx = sy = 1.0
             tx = ty = 0.0
         bboxes = []
-        # Bounding boxes from drawing objects (no associated text)
-        for drawing in page.get_drawings():
-            r = drawing.get("rect")
-            if not r:
-                xs = []
-                ys = []
-                for item in drawing.get("items", []):
-                    for point in item[1:]:
-                        if isinstance(point, (list, tuple)) and len(point) >= 2:
-                            xs.append(point[0])
-                            ys.append(point[1])
-                if xs and ys:
-                    r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
-            if r:
-                x0 = r.x0 * sx + tx
-                y0 = r.y0 * sy + ty
-                x1 = r.x1 * sx + tx
-                y1 = r.y1 * sy + ty
-                if x1 - x0 == 0:
-                    x1 += 0.1
-                if y1 - y0 == 0:
-                    y1 += 0.1
-                bboxes.append((x0, y0, x1, y1, ""))
+        if not ignore_geometry:
+            # Bounding boxes from drawing objects (no associated text)
+            for drawing in page.get_drawings():
+                r = drawing.get("rect")
+                if not r:
+                    xs = []
+                    ys = []
+                    for item in drawing.get("items", []):
+                        for point in item[1:]:
+                            if isinstance(point, (list, tuple)) and len(point) >= 2:
+                                xs.append(point[0])
+                                ys.append(point[1])
+                    if xs and ys:
+                        r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
+                if r:
+                    x0 = r.x0 * sx + tx
+                    y0 = r.y0 * sy + ty
+                    x1 = r.x1 * sx + tx
+                    y1 = r.y1 * sy + ty
+                    if x1 - x0 == 0:
+                        x1 += 0.1
+                    if y1 - y0 == 0:
+                        y1 += 0.1
+                    bboxes.append((x0, y0, x1, y1, ""))
 
-        # Bounding boxes from images
-        for img in page.get_images(full=True):
-            xref = img[0]
-            for r in page.get_image_rects(xref):
-                bboxes.append(
-                    (
-                        r.x0 * sx + tx,
-                        r.y0 * sy + ty,
-                        r.x1 * sx + tx,
-                        r.y1 * sy + ty,
-                        "",
+            # Bounding boxes from images
+            for img in page.get_images(full=True):
+                xref = img[0]
+                for r in page.get_image_rects(xref):
+                    bboxes.append(
+                        (
+                            r.x0 * sx + tx,
+                            r.y0 * sy + ty,
+                            r.x1 * sx + tx,
+                            r.y1 * sy + ty,
+                            "",
+                        )
                     )
-                )
 
         # Bounding boxes from individual words instead of full text blocks
         for word in page.get_text("words"):
@@ -327,6 +331,7 @@ def comparar_pdfs(
     thr: float = 0.9,
     adaptive: bool = False,
     pos_tol: float = 3.0,
+    ignore_geometry: bool = False,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -353,6 +358,9 @@ def comparar_pdfs(
         ignored. Minor size variations (up to ``0.5`` points or roughly
         ``10%%``) are also skipped so that lines with negligible growth are
         not flagged as changes.
+    ignore_geometry : bool, optional
+        If ``True`` compare only text and numeric strings, ignoring drawing
+        and image elements.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
@@ -406,8 +414,8 @@ def comparar_pdfs(
             else:
                 transforms_new.append((1.0, 1.0, 0.0, 0.0))
 
-        old_pages = _extract_bboxes(doc_old)
-        new_pages = _extract_bboxes(doc_new, transforms_new)
+        old_pages = _extract_bboxes(doc_old, ignore_geometry=ignore_geometry)
+        new_pages = _extract_bboxes(doc_new, transforms_new, ignore_geometry)
         max_pages = max(len(old_pages), len(new_pages))
 
         if adaptive:

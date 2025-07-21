@@ -144,6 +144,9 @@ allowed displacement (in points) before a moved element is considered a change;
 the default value of ``3`` skips shifts that are not visually noticeable.
 Elements whose size changes less than ``0.5`` points (or roughly ``10%%``) are
 ignored to avoid highlighting lines that only grow slightly.
+The function also accepts ``ignore_geometry`` which, when set to ``True``,
+compares only textual content and numbers, disregarding vector shapes and
+embedded images.
 
 ## Legacy C++ engine
 
