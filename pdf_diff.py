@@ -189,6 +189,7 @@ def _remove_moved_same_text(
     adicionados: List[Dict],
     dist: float = 3.0,
     size_eps: float = 0.5,
+    rel_size_eps: float = 0.1,
 ) -> Tuple[List[Dict], List[Dict]]:
     """Discard pairs with the same text that only moved slightly.
 
@@ -199,7 +200,9 @@ def _remove_moved_same_text(
     dist : float, optional
         Maximum displacement in points for which moved elements are ignored.
     size_eps : float, optional
-        Tolerance for differences in width or height.
+        Absolute tolerance for differences in width or height.
+    rel_size_eps : float, optional
+        Relative tolerance (as a fraction) for width or height changes.
     """
 
     def _center(b: List[float]) -> Tuple[float, float]:
@@ -220,7 +223,15 @@ def _remove_moved_same_text(
                     rh = r["bbox"][3] - r["bbox"][1]
                     aw = a["bbox"][2] - a["bbox"][0]
                     ah = a["bbox"][3] - a["bbox"][1]
-                    if abs(rw - aw) <= size_eps and abs(rh - ah) <= size_eps:
+                    width_ok = (
+                        abs(rw - aw) <= size_eps
+                        or abs(rw - aw) <= rel_size_eps * max(rw, aw)
+                    )
+                    height_ok = (
+                        abs(rh - ah) <= size_eps
+                        or abs(rh - ah) <= rel_size_eps * max(rh, ah)
+                    )
+                    if width_ok and height_ok:
                         match = i
                         break
         if match is None:
@@ -296,7 +307,9 @@ def comparar_pdfs(
     pos_tol : float, optional
         Maximum displacement in points allowed when elements move without
         altering their content. Boxes shifted less than this distance are
-        ignored.
+        ignored. Minor size variations (up to ``0.5`` points or roughly
+        ``10%%``) are also skipped so that lines with negligible growth are
+        not flagged as changes.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
