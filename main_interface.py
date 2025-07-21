@@ -901,7 +901,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def open_settings(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("settings_title"))
-        dlg.resize(350, 200)
+        dlg.resize(200, 100)
         layout = QtWidgets.QVBoxLayout(dlg)
         lbl = QtWidgets.QLabel(self.tr("language"))
         layout.addWidget(lbl)
@@ -1161,7 +1161,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def _add_user_dialog(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("add_user"))
-        dlg.resize(400, 280)
+        dlg.resize(400, 150)
         lay = QtWidgets.QFormLayout(dlg)
         user_edit = QtWidgets.QLineEdit()
         name_edit = QtWidgets.QLineEdit()
@@ -1203,7 +1203,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("real_name"))
-        dlg.resize(400, 300)
+        dlg.resize(400, 200)
         form = QtWidgets.QFormLayout(dlg)
 
         user_edit = QtWidgets.QLineEdit(rec.get("username", ""))
@@ -1251,7 +1251,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("details_title"))
-        dlg.resize(400, 300)
+        dlg.resize(200, 150)
         layout = QtWidgets.QVBoxLayout(dlg)
 
         title = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
