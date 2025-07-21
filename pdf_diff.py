@@ -187,10 +187,20 @@ def _remove_unchanged(
 def _remove_moved_same_text(
     removidos: List[Dict],
     adicionados: List[Dict],
-    dist: float = 1.0,
+    dist: float = 3.0,
     size_eps: float = 0.5,
 ) -> Tuple[List[Dict], List[Dict]]:
-    """Discard pairs with the same text that only moved slightly."""
+    """Discard pairs with the same text that only moved slightly.
+
+    Parameters
+    ----------
+    removidos, adicionados : list
+        Lists of bounding boxes from :func:`comparar_pdfs`.
+    dist : float, optional
+        Maximum displacement in points for which moved elements are ignored.
+    size_eps : float, optional
+        Tolerance for differences in width or height.
+    """
 
     def _center(b: List[float]) -> Tuple[float, float]:
         return ((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0)
@@ -262,6 +272,7 @@ def comparar_pdfs(
     new_pdf: str,
     thr: float = 0.9,
     adaptive: bool = False,
+    pos_tol: float = 3.0,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -282,6 +293,10 @@ def comparar_pdfs(
         ``1.0`` down to ``thr`` in ``0.05`` steps. Iterations stop as soon as no
         new differences are found. This approach improves precision by
         progressively relaxing the tolerance.
+    pos_tol : float, optional
+        Maximum displacement in points allowed when elements move without
+        altering their content. Boxes shifted less than this distance are
+        ignored.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
@@ -365,7 +380,7 @@ def comparar_pdfs(
                     raise CancelledError()
 
             removidos, adicionados = _remove_unchanged(removidos, adicionados)
-            removidos, adicionados = _remove_moved_same_text(removidos, adicionados)
+            removidos, adicionados = _remove_moved_same_text(removidos, adicionados, dist=pos_tol)
             removidos = _remove_contained(removidos)
             adicionados = _remove_contained(adicionados)
             result = {
