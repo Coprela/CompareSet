@@ -1025,12 +1025,23 @@ class CompareSetQt(QtWidgets.QWidget):
 
 
 if __name__ == "__main__":
-    check_for_update()
+    latest = check_for_update()
     # enable high DPI scaling so icons look crisp on high-resolution screens
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
     app = QtWidgets.QApplication([])
     win = CompareSetQt()
+
+    if latest:
+        QtCore.QTimer.singleShot(
+            0,
+            lambda: QtWidgets.QMessageBox.information(
+                win,
+                win.tr("update_title"),
+                win.tr("update_msg").format(latest),
+            ),
+        )
+
     win.show()
     app.exec()
