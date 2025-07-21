@@ -24,7 +24,7 @@ vector shapes or words shift without altering content.
    ```
    This interface provides improvement/help icons and a language
    switcher. The original `app.py` Tkinter interface is kept for legacy
-   use. A Windows build is also available in `dist/CompareSet.exe`.
+   use. A Windows build is also available in `dist/CompareSet <VERSION>.exe`.
 
 ## Building an executable
 
@@ -36,7 +36,8 @@ pip install pyinstaller
 python build_package.py
 ```
 
-The resulting binary will be placed in the `dist` directory.  If the
+The resulting binary `CompareSet <VERSION>.exe` will be placed in the `dist`
+directory. If the
 environment variables `SIGNTOOL`, `SIGN_CERT` and `SIGN_PASS` are
 defined, the script also attempts to sign the generated executable using
 Microsoft's `signtool`.  Set `SIGN_TIMESTAMP` to override the timestamp
