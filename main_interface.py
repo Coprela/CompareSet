@@ -2,8 +2,9 @@ import os
 import time
 import math
 import requests
+from requests_ntlm import HttpNtlmAuth
 
-from version_check import CURRENT_VERSION, check_for_update, fetch_latest_version
+from version_check import CURRENT_VERSION, check_for_update
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -12,11 +13,12 @@ from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
 VERSION = CURRENT_VERSION
-# URL with the latest version JSON. Can be overridden by the VERSION_URL
+# url with the latest version string
+# URL with the latest version string. Can be overridden by the VERSION_URL
 # environment variable.
 VERSION_URL = os.getenv(
     "VERSION_URL",
-    "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json",
+    "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/latest_version.txt",
 )
 # download page for the application
 DOWNLOAD_URL = (
@@ -25,6 +27,41 @@ DOWNLOAD_URL = (
 
 # make version easily available to other modules
 __all__ = ["VERSION", "CompareSetQt"]
+
+
+def fetch_latest_version(url: str) -> str:
+    """Return latest version string from SharePoint using optional NTLM auth."""
+    user = os.getenv("SP_USERNAME")
+    password = os.getenv("SP_PASSWORD")
+    body = ""
+    try:
+        if user and password:
+            resp = requests.get(url, auth=HttpNtlmAuth(user, password), timeout=5)
+        else:
+            resp = requests.get(url, timeout=5)
+        if resp.ok:
+            body = resp.text.strip()
+    except Exception:
+        body = ""
+
+    # validate response body against version pattern
+    if body:
+        import re
+        if re.match(r"^[0-9]+(?:\.[0-9]+)*(?:-[A-Za-z0-9]+)?$", body):
+            return body
+
+    # fallback to parse version from filename
+    from urllib.parse import urlparse
+    try:
+        filename = os.path.basename(urlparse(url).path)
+        name, _ = os.path.splitext(filename)
+        if name:
+            import re
+            if re.match(r"^[0-9]+(?:\.[0-9]+)*(?:-[A-Za-z0-9]+)?$", name):
+                return name
+    except Exception:
+        pass
+    return ""
 
 
 def file_in_use(path: str) -> bool:
@@ -166,7 +203,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "update_title": "Update available",
                 "update_msg": "A new version ({}) is available.",
                 "update_download": "New version available for download",
-                "update_available": "New version available",
                 "view_details": "View details",
                 "details_title": "Details",
                 "date": "Date:",
@@ -221,7 +257,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "update_title": "Atualiza\u00e7\u00e3o dispon\u00edvel",
                 "update_msg": "Uma nova vers\u00e3o ({}) est\u00e1 dispon\u00edvel.",
                 "update_download": "Nova vers\u00e3o dispon\u00edvel para download",
-                "update_available": "Nova vers\u00e3o dispon\u00edvel",
                 "view_details": "Ver detalhes",
                 "details_title": "Detalhes",
                 "date": "Data:",
@@ -511,8 +546,8 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
-        bottom.addStretch()
         bottom.addWidget(self.lbl_update)
+        bottom.addStretch()
         bottom.addWidget(self.lbl_version)
         layout.addLayout(bottom)
 
@@ -975,9 +1010,10 @@ class CompareSetQt(QtWidgets.QWidget):
         if latest and latest != VERSION:
             self.lbl_version.setStyleSheet("color:#666666")
             self.lbl_version.setText(f"v{VERSION}")
-            msg = self.tr("update_available")
-            self.lbl_update.setText(msg)
-            self.lbl_update.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+            msg = self.tr("update_download")
+            self.lbl_update.setText(f'<a href="{DOWNLOAD_URL}">{msg}</a>')
+            self.lbl_update.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            self.lbl_update.setOpenExternalLinks(True)
             self.lbl_update.show()
             self.blink_timer.start(500)
         else:
