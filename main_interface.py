@@ -185,6 +185,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "manage_users": "Manage users",
                 "add_user": "Add user",
                 "remove_user": "Remove user",
+                "user_save_failed": "Failed to update user list",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -243,6 +244,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "manage_users": "Gerenciar usuários",
                 "add_user": "Adicionar usuário",
                 "remove_user": "Remover usuário",
+                "user_save_failed": "Erro ao atualizar lista de usuários",
             },
         }
         self.old_path = ""
@@ -908,7 +910,10 @@ class CompareSetQt(QtWidgets.QWidget):
 
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             users = [listw.item(i).text() for i in range(listw.count())]
-            save_users(users)
+            if not save_users(users):
+                QtWidgets.QMessageBox.critical(
+                    self, self.tr("error"), self.tr("user_save_failed")
+                )
 
     def open_history(self):
         self.clear_results()
