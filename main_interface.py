@@ -2,7 +2,6 @@ import os
 import time
 import math
 import requests
-from requests_ntlm import HttpNtlmAuth
 
 from version_check import CURRENT_VERSION, check_for_update
 
@@ -13,12 +12,11 @@ from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
 VERSION = CURRENT_VERSION
-# url with the latest version string
-# URL with the latest version string. Can be overridden by the VERSION_URL
+# URL with the latest version JSON. Can be overridden by the VERSION_URL
 # environment variable.
 VERSION_URL = os.getenv(
     "VERSION_URL",
-    "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/latest_version.txt",
+    "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json",
 )
 # download page for the application
 DOWNLOAD_URL = (
@@ -30,35 +28,14 @@ __all__ = ["VERSION", "CompareSetQt"]
 
 
 def fetch_latest_version(url: str) -> str:
-    """Return latest version string from SharePoint using optional NTLM auth."""
-    user = os.getenv("SP_USERNAME")
-    password = os.getenv("SP_PASSWORD")
-    body = ""
+    """Return the latest version string from a JSON file on GitHub."""
     try:
-        if user and password:
-            resp = requests.get(url, auth=HttpNtlmAuth(user, password), timeout=5)
-        else:
-            resp = requests.get(url, timeout=5)
-        if resp.ok:
-            body = resp.text.strip()
-    except Exception:
-        body = ""
-
-    # validate response body against version pattern
-    if body:
-        import re
-        if re.match(r"^[0-9]+(?:\.[0-9]+)*(?:-[A-Za-z0-9]+)?$", body):
-            return body
-
-    # fallback to parse version from filename
-    from urllib.parse import urlparse
-    try:
-        filename = os.path.basename(urlparse(url).path)
-        name, _ = os.path.splitext(filename)
-        if name:
-            import re
-            if re.match(r"^[0-9]+(?:\.[0-9]+)*(?:-[A-Za-z0-9]+)?$", name):
-                return name
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        latest = data.get("version")
+        if isinstance(latest, str):
+            return latest
     except Exception:
         pass
     return ""
