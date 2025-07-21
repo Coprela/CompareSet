@@ -5,7 +5,12 @@ import getpass
 
 from user_check import load_users, save_users
 
-from version_check import CURRENT_VERSION, check_for_update, fetch_latest_version
+from version_check import (
+    CURRENT_VERSION,
+    check_for_update,
+    fetch_latest_version,
+    LATEST_VERSION_FILE,
+)
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -14,12 +19,8 @@ from pdf_highlighter import gerar_pdf_com_destaques
 
 # application version string
 VERSION = CURRENT_VERSION
-# URL with the latest version JSON. Can be overridden by the VERSION_URL
-# environment variable.
-VERSION_URL = os.getenv(
-    "VERSION_URL",
-    "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json",
-)
+# File name containing the latest version information
+VERSION_FILE = os.getenv("LATEST_VERSION_FILE", LATEST_VERSION_FILE)
 # download page for the application
 DOWNLOAD_URL = (
     "https://digicorner.sharepoint.com/sites/ddt/DDTFUE/Softwares/CompareSet/"
@@ -103,12 +104,12 @@ class VersionCheckThread(QtCore.QThread):
 
     finished = QtCore.Signal(str)
 
-    def __init__(self, url: str):
+    def __init__(self, filename: str):
         super().__init__()
-        self.url = url
+        self.filename = filename
 
     def run(self):
-        latest = fetch_latest_version(self.url)
+        latest = fetch_latest_version(self.filename)
         self.finished.emit(latest)
 
 
@@ -1028,7 +1029,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def _start_update_check(self):
         """Begin asynchronous check for a newer version."""
-        self._version_thread = VersionCheckThread(VERSION_URL)
+        self._version_thread = VersionCheckThread(VERSION_FILE)
         self._version_thread.finished.connect(self.check_for_updates)
         self._version_thread.start()
 
