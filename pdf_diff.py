@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Set
 
 # common ISO sizes in millimetres (width, height)
 STANDARD_PAGE_SIZES_MM = {
@@ -154,6 +154,87 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
         new_page.show_pdf_page(new_page.rect, doc, i)
     doc.close()
     return cleaned
+
+
+def _round(value: float, digits: int = 1) -> float:
+    """Round coordinates to a visually safe precision."""
+    return round(float(value), digits)
+
+
+def _drawing_visible(drawing: Dict, page_rect: fitz.Rect) -> bool:
+    """Return True if the drawing produces visible output."""
+    width = drawing.get("width") or drawing.get("linewidth", 1)
+    stroke_opacity = drawing.get("stroke_opacity", 1.0)
+    fill_opacity = drawing.get("fill_opacity", 1.0)
+    if width == 0:
+        return False
+    if stroke_opacity == 0 and fill_opacity == 0:
+        return False
+    r = drawing.get("rect")
+    if r and not fitz.Rect(r).intersects(page_rect):
+        return False
+    return True
+
+
+def _item_points(item: Tuple) -> List[Tuple[float, float]]:
+    """Return all coordinate pairs found in a drawing item."""
+    pts = []
+    for p in item[1:]:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            pts.append((float(p[0]), float(p[1])))
+    return pts
+
+
+def _hash_item(op: str, pts: List[Tuple[float, float]], digits: int) -> str:
+    rounded = [f"{_round(x, digits):.1f}:{_round(y, digits):.1f}" for x, y in pts]
+    return op + ":" + ":".join(rounded)
+
+
+def _extract_vector_hashes(
+    doc: fitz.Document, digits: int = 1
+) -> Tuple[Set[str], Dict[str, Dict]]:
+    """Extract visible vector hashes from all pages of a document."""
+    hashes: Set[str] = set()
+    info: Dict[str, Dict] = {}
+    for page_number, page in enumerate(doc):
+        rect = page.rect
+        for drawing in page.get_drawings():
+            if not _drawing_visible(drawing, rect):
+                continue
+            for item in drawing.get("items", []):
+                op = str(item[0])
+                pts = _item_points(item)
+                if not pts:
+                    continue
+                key = _hash_item(op, pts, digits)
+                hashes.add(key)
+                if key not in info:
+                    info[key] = {
+                        "pagina": page_number,
+                        "tipo": op,
+                        "coords": [( _round(x, digits), _round(y, digits) ) for x, y in pts],
+                    }
+    return hashes, info
+
+
+def comparar_vetores(
+    old_pdf: str,
+    new_pdf: str,
+    digits: int = 1,
+) -> Dict[str, List[Dict]]:
+    """Compare vector drawings between two PDFs ignoring non-visual details."""
+    with _load_pdf_without_signatures(old_pdf) as doc_old, _load_pdf_without_signatures(
+        new_pdf
+    ) as doc_new:
+        old_hashes, old_info = _extract_vector_hashes(doc_old, digits)
+        new_hashes, new_info = _extract_vector_hashes(doc_new, digits)
+
+    removed_keys = old_hashes - new_hashes
+    added_keys = new_hashes - old_hashes
+
+    removidos = [old_info[k] for k in removed_keys]
+    adicionados = [new_info[k] for k in added_keys]
+    return {"removidos": removidos, "adicionados": adicionados}
 
 
 def _compare_page(
