@@ -1,7 +1,9 @@
 import os
 import time
 import math
-import requests
+import getpass
+
+from user_check import load_users, save_users
 
 from version_check import CURRENT_VERSION, check_for_update, fetch_latest_version
 
@@ -175,6 +177,9 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_missing_hint": "File not found. Please regenerate.",
                 "sort_recent": "Most recent",
                 "sort_alpha": "Alphabetical",
+                "manage_users": "Manage users",
+                "add_user": "Add user",
+                "remove_user": "Remove user",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -230,6 +235,9 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_missing_hint": "Arquivo não encontrado. Gere novamente.",
                 "sort_recent": "Mais recente",
                 "sort_alpha": "Ordem alfabética",
+                "manage_users": "Gerenciar usuários",
+                "add_user": "Adicionar usuário",
+                "remove_user": "Remover usuário",
             },
         }
         self.old_path = ""
@@ -833,11 +841,64 @@ class CompareSetQt(QtWidgets.QWidget):
         license_link.linkActivated.connect(lambda _: self.show_license())
         layout.addWidget(license_link)
 
+        if os.getenv("ADMIN_MODE") == "1":
+            manage_btn = QtWidgets.QPushButton(self.tr("manage_users"))
+            manage_btn.clicked.connect(self.open_user_admin)
+            layout.addWidget(manage_btn)
+
         btn = QtWidgets.QPushButton("OK")
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.set_language(combo.currentData())
+
+    def open_user_admin(self):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("manage_users"))
+        layout = QtWidgets.QVBoxLayout(dlg)
+        listw = QtWidgets.QListWidget()
+        for u in load_users():
+            listw.addItem(u)
+        layout.addWidget(listw)
+
+        edit = QtWidgets.QLineEdit()
+        edit.setPlaceholderText(self.tr("add_user"))
+        layout.addWidget(edit)
+
+        buttons = QtWidgets.QHBoxLayout()
+        add_btn = QtWidgets.QPushButton(self.tr("add_user"))
+        rm_btn = QtWidgets.QPushButton(self.tr("remove_user"))
+        buttons.addWidget(add_btn)
+        buttons.addWidget(rm_btn)
+        layout.addLayout(buttons)
+
+        def add_user():
+            name = edit.text().strip()
+            if not name:
+                return
+            for i in range(listw.count()):
+                if listw.item(i).text() == name:
+                    return
+            listw.addItem(name)
+            edit.clear()
+
+        def remove_user():
+            for item in listw.selectedItems():
+                listw.takeItem(listw.row(item))
+
+        add_btn.clicked.connect(add_user)
+        rm_btn.clicked.connect(remove_user)
+
+        box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
+        layout.addWidget(box)
+        box.accepted.connect(dlg.accept)
+        box.rejected.connect(dlg.reject)
+
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            users = [listw.item(i).text() for i in range(listw.count())]
+            save_users(users)
 
     def open_history(self):
         self.clear_results()
@@ -995,6 +1056,19 @@ if __name__ == "__main__":
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
     app = QtWidgets.QApplication([])
+
+    user = getpass.getuser()
+    if user not in load_users():
+        lang = "pt" if os.getenv("LANG", "").startswith("pt") else "en"
+        if lang == "pt":
+            title = "Acesso negado"
+            msg = "Acesso n\u00e3o liberado. Usu\u00e1rio sem cadastro."
+        else:
+            title = "Access denied"
+            msg = "Access not allowed. User not registered."
+        QtWidgets.QMessageBox.critical(None, title, msg)
+        raise SystemExit(1)
+
     win = CompareSetQt()
     win.show()
     app.exec()
