@@ -1,171 +1,41 @@
 # CompareSet
 
-CompareSet is a graphical tool for comparing two PDF revisions. It highlights
-vector differences between documents, producing a new PDF that shows additions
-and removals. All drawing primitives such as lines and shapes, embedded images
-and the words that compose the text are analysed. This finer granularity avoids
-marking whole paragraphs when only a few words changed. A small positional
-tolerance is applied so that minor shifts do not count as changes. Elements
-with the same text that merely move are ignored, preventing highlights when
-vector shapes or words shift without altering content.
+CompareSet is a tool for comparing vector-based PDF drawings. The project uses a
+`src` layout for maintainability and includes a simple GUI built with PySide6.
 
-## Setup
+## Quick start
 
-1. Clone this repository.
-2. (Optional) Create and activate a virtual environment.
-3. Provide the GitHub settings required to fetch remote configuration.
-   The recommended approach is setting `GITHUB_REPO` and `GITHUB_TOKEN`
-   as environment variables (optionally via a `.env` file).  See
-   `.env.example` for the available options.  Alternatively you may edit
-   `github_json_manager.py` and place your token in the
-   `DEFAULT_GITHUB_TOKEN` constant, though this is less secure.
-4. Install the Python dependencies listed in `requirements.txt`:
-   ```bash
-   pip install -r requirements.txt
-   ```
-5. Run the Qt application (requires `PySide6` which is included in the
-   requirements file or can be installed with `pip install PySide6`):
-   ```bash
-   python main_interface.py
-   ```
-   This interface provides improvement/help icons and a language
-   switcher. The original `app.py` Tkinter interface is kept for legacy
-   use. A Windows build is also available in `dist/CompareSet <VERSION>.exe`.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m compareset.ui.main_window
+```
 
-## Building an executable
+## Project layout
 
-To create a standalone executable from the project, install
-[PyInstaller](https://www.pyinstaller.org/) and run the packaging script:
+```
+src/compareset/       - Library code
+    core/             - Comparison engine
+    ui/               - Graphical interface
+    utils/            - Helper utilities
+    i18n/             - Localization files
+    config/           - Default application settings
+assets/               - Icons and other static resources
+tests/                - Pytest suite
+```
+
+## Environment
+
+Configuration is loaded from environment variables. Copy `.env.example` to `.env`
+and adjust as needed. Using [python-dotenv](https://pypi.org/project/python-dotenv/)
+prevents secrets from being committed.
+
+## Packaging
+
+To create a standalone executable you can use [PyInstaller](https://www.pyinstaller.org/):
 
 ```bash
 pip install pyinstaller
-python build_package.py
+pyinstaller --onefile -n compareset src/compareset/ui/main_window.py
 ```
-
-The resulting binary `CompareSet <VERSION>.exe` will be placed in the `dist`
-directory. If the
-environment variables `SIGNTOOL`, `SIGN_CERT` and `SIGN_PASS` are
-defined, the script also attempts to sign the generated executable using
-Microsoft's `signtool`.  Set `SIGN_TIMESTAMP` to override the timestamp
-URL (defaults to the DigiCert service).
-
-## Dependencies
-
-- Python 3.8 or later
-- [PyMuPDF](https://pypi.org/project/PyMuPDF/) for PDF operations
-- Tkinter (bundled with Python) for the classic GUI
-- [PySide6](https://pypi.org/project/PySide6/) for the Qt interface
-
-## Checking for updates
-
-The application checks the GitHub repository for a JSON file named
-`CompareSet_latest_version.json` that contains the latest available version.
-The name of this file can be overridden with the `LATEST_VERSION_FILE`
-environment variable, loaded either from the environment or a `.env` file.
-
-## User authorization
-
-Before launching the interface the program **always** downloads the list of
-authorised usernames from `allowed_users.json` stored in the GitHub
-repository. The file name can be overridden with the `ALLOWED_USERS_FILE`
-environment variable. The application will not start if this file cannot be
-fetched. When the current operating system user is not present in the list the
-interface displays an "Access denied" message and exits.
-
-When the variable `ADMIN_MODE` is set to `1` a "Manage users" button appears in
-the settings dialog. This opens a window that loads the current list from the
-repository and lets administrators add or remove names. On saving, the list is
-updated remotely via the GitHub API using the repository defined in
-`GITHUB_REPO`. Authentication is performed with the `GITHUB_TOKEN` variable.
-These variables are read from the environment or from the optional `.env`
-configuration file. If preferred, you can hardcode the token in
-`github_json_manager.DEFAULT_GITHUB_TOKEN` and skip defining the
-environment variable.
-
-## Supported page formats
-
-CompareSet works with PDF pages sized according to the ISO A series. Pages
-from **A0** down to **A4** are handled during comparison.
-Pages whose dimensions differ by less than **1 mm** are treated as equal
-size so no scaling is applied.
-
-## Using the GUI
-
-1. Launch the program using `python main_interface.py`. The window shows a custom icon from `Images/Icon - CompareSet.ico`.
-2. Click **Selecionar revisão antiga** (red button) and choose the old PDF.
-3. Click **Selecionar nova revisão** (green button) and choose the new PDF.
-4. Press the purple **Comparar Revisões** button and select where to save the output PDF.
-5. Any digital signatures present in the chosen PDFs are stripped before
-   comparison so that signed documents can be processed normally.
-6. The generated file will contain two pages highlighting removals and
-   additions.
-7. A countdown timer shows the estimated time remaining so you know if the
-   program is still working or if something went wrong.
-8. After the PDF is created you are asked if you want to open it with your default viewer.
-
-The icons used by the GUI are located in the `Images` folder.
-
-### Qt interface
-
-The Qt version includes improvement and help icons aligned to the top-right of the window. A drop-down next to them lets you switch between **EN** and **PTBR**.
-Ensure `PySide6` is installed (e.g. `pip install PySide6`) and run:
-
-```bash
-python main_interface.py
-```
-The classic `app.py` Tkinter interface remains available for legacy users.
-
-## PDF highlighting function
-
-The helper function `gerar_pdf_com_destaques` can also be used programmatically.
-It accepts optional `color_add` and `color_remove` parameters. Highlight
-opacity is always fixed at `0.3`:
-
-```python
-from pdf_highlighter import gerar_pdf_com_destaques
-
-gerar_pdf_com_destaques(
-    "old.pdf",
-    "new.pdf",
-    removidos,
-    adicionados,
-    "out.pdf",
-    color_add=(0, 0.8, 0),
-    color_remove=(1, 0, 0),
-)
-```
-
-The comparison function automatically runs multiple passes starting from a
-strict IoU threshold of ``1.0`` and gradually decreasing it by ``0.05`` until
-no new differences are detected.  This ensures small positional variations do
-not generate false positives while still highlighting relevant changes. The
-``comparar_pdfs`` helper exposes a ``pos_tol`` parameter controlling the
-allowed displacement (in points) before a moved element is considered a change;
-the default value of ``3`` skips shifts that are not visually noticeable.
-Elements whose size changes less than ``0.5`` points (or roughly ``10%%``) are
-ignored to avoid highlighting lines that only grow slightly.
-The function also accepts ``ignore_geometry`` which, when set to ``True``,
-compares only textual content and numbers, disregarding vector shapes and
-embedded images.
-
-For scenarios focused solely on vector drawings, the ``comparar_vetores``
-helper provides a streamlined approach. It normalizes coordinates to a
-precision of one decimal place, discards invisible paths (zero width,
-transparent or outside the page) and ignores non-visual attributes like color
-or layer.  Each vector is represented by a simplified hash so that set
-operations quickly reveal which shapes were added or removed.
-
-## Legacy C++ engine
-
-Previous releases shipped with `CompareSet.Engine.dll`, a compiled C++ library
-used for PDF comparison. The current codebase implements this logic purely in
-Python, so the DLL is not required. Should you still depend on the legacy
-engine, build it separately and place the resulting DLL next to the Python
-scripts.
-
-## License
-
-This project is distributed under a proprietary license. See `LICENSE`,
-`LICENSE_EN.txt` or `LICENSE_PT.txt` for the full terms. The GUI includes a
-**Licen\u00e7a** button that opens a dialog displaying the
-full license text.
