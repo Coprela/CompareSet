@@ -51,10 +51,9 @@ URL (defaults to the DigiCert service).
 
 ## Checking for updates
 
-The application checks for a version file hosted on SharePoint. If the site
-requires authentication, provide your credentials using the environment
-variables `SP_USERNAME` and `SP_PASSWORD`. You may also override the location of
-the version file with the `VERSION_URL` variable.
+The application checks for a JSON file on GitHub that lists the latest
+available version. You can override the location of this file using the
+`VERSION_URL` environment variable.
 
 ## Supported page formats
 
