@@ -13,6 +13,8 @@ ALLOWED_USERS_FILE = os.getenv("ALLOWED_USERS_FILE", "allowed_users.json")
 def load_users() -> List[str]:
     """Return the list of allowed users from the remote repository."""
     data = load_json(ALLOWED_USERS_FILE)
+    if not data:
+        raise RuntimeError("Unable to fetch user list from GitHub")
     users = data.get("users", [])
     if isinstance(users, list):
         return [str(u) for u in users]

@@ -59,11 +59,12 @@ environment variable.
 
 ## User authorization
 
-Before launching the interface the program downloads the list of authorised
-usernames from `allowed_users.json` stored in the same GitHub repository. The
-file name can be overridden using the `ALLOWED_USERS_FILE` environment
-variable. If the current operating system user is not present in this list the
-application shows an "Access denied" message and exits.
+Before launching the interface the program **always** downloads the list of
+authorised usernames from `allowed_users.json` stored in the GitHub
+repository. The file name can be overridden with the `ALLOWED_USERS_FILE`
+environment variable. The application will not start if this file cannot be
+fetched. When the current operating system user is not present in the list the
+interface displays an "Access denied" message and exits.
 
 When the variable `ADMIN_MODE` is set to `1` a "Manage users" button appears in
 the settings dialog. This opens a window that loads the current list from the
