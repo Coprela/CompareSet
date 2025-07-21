@@ -79,6 +79,7 @@ class ComparisonThread(QtCore.QThread):
                 self.old_pdf,
                 self.new_pdf,
                 adaptive=True,
+                ignore_geometry=True,
                 progress_callback=lambda p: self.progress.emit(p / 2),
                 cancel_callback=self.is_cancelled,
             )
@@ -130,7 +131,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.is_admin = is_admin
         self.setWindowTitle("CompareSet")
         # slightly smaller fixed size to fit lower resolutions
-        self.setFixedSize(600, 450)
+        self.setFixedSize(550, 400)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
         icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
         self.setWindowIcon(QtGui.QIcon(icon_path))
@@ -203,6 +204,9 @@ class CompareSetQt(QtWidgets.QWidget):
                 "status": "Status",
                 "active": "Active",
                 "removed": "Removed",
+                "admin_role": "Admin",
+                "added_on": "Added on:",
+                "coming_soon": "Coming soon",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -271,6 +275,9 @@ class CompareSetQt(QtWidgets.QWidget):
                 "status": "Status",
                 "active": "Ativo",
                 "removed": "Removido",
+                "admin_role": "Administrador",
+                "added_on": "Cadastrado em:",
+                "coming_soon": "Em breve",
             },
         }
         self.old_path = ""
@@ -885,12 +892,16 @@ class CompareSetQt(QtWidgets.QWidget):
         )
 
     def open_help(self):
-        QtWidgets.QMessageBox.information(self, "Help", "Em breve")
+        QtWidgets.QMessageBox.information(
+            self,
+            self.tr("help_label"),
+            self.tr("coming_soon"),
+        )
 
     def open_settings(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("settings_title"))
-        dlg.resize(500, 350)
+        dlg.resize(350, 200)
         layout = QtWidgets.QVBoxLayout(dlg)
         lbl = QtWidgets.QLabel(self.tr("language"))
         layout.addWidget(lbl)
@@ -915,7 +926,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def open_user_admin(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("manage_users"))
-        dlg.resize(500, 350)
+        dlg.resize(400, 300)
         layout = QtWidgets.QVBoxLayout(dlg)
         listw = QtWidgets.QListWidget()
         try:
@@ -989,35 +1000,41 @@ class CompareSetQt(QtWidgets.QWidget):
 
         data = sorted(self.history, key=lambda e: e.get('timestamp', e.get('mtime', 0)), reverse=True)
 
-        frame = QtWidgets.QFrame()
-        frame.setFrameShape(QtWidgets.QFrame.Box)
-        frame.setStyleSheet("border:1px solid #cccccc")
-        frame_layout = QtWidgets.QVBoxLayout(frame)
-
-        for entry in data:
-            row = QtWidgets.QHBoxLayout()
+        table = QtWidgets.QTableWidget()
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels([
+            self.tr("output_file"),
+            self.tr("date"),
+            self.tr("status"),
+            "",
+        ])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        table.setRowCount(len(data))
+        for row, entry in enumerate(data):
             name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
-            name_label = QtWidgets.QLabel(name)
+            item = QtWidgets.QTableWidgetItem(name)
             if os.path.exists(entry['output']):
-                name_label.setToolTip(entry['output'])
+                item.setToolTip(entry['output'])
             else:
-                name_label.setToolTip(self.tr('file_missing_hint'))
-            row.addWidget(name_label)
-            date_str = time.strftime("%Y-%m-%d / %H:%M", time.localtime(entry.get('timestamp', entry.get('mtime', 0))))
-            date_lbl = QtWidgets.QLabel(date_str)
-            date_lbl.setStyleSheet("color:#666666")
-            row.addWidget(date_lbl)
+                item.setToolTip(self.tr('file_missing_hint'))
+            table.setItem(row, 0, item)
+            date_str = time.strftime(
+                "%Y-%m-%d / %H:%M",
+                time.localtime(entry.get('timestamp', entry.get('mtime', 0)))
+            )
+            date_item = QtWidgets.QTableWidgetItem(date_str)
+            date_item.setForeground(QtGui.QColor("#666666"))
+            table.setItem(row, 1, date_item)
             exists = os.path.exists(entry['output'])
             mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
             if not exists:
-                status_lbl = QtWidgets.QLabel(self.tr('file_missing'))
-                status_lbl.setStyleSheet("color:#666666")
-                row.addWidget(status_lbl)
+                status = self.tr('file_missing')
             elif not mtime_same:
-                status_lbl = QtWidgets.QLabel(self.tr('file_replaced'))
-                status_lbl.setStyleSheet("color:#666666")
-                row.addWidget(status_lbl)
-            row.addStretch()
+                status = self.tr('file_replaced')
+            else:
+                status = ""
+            table.setItem(row, 2, QtWidgets.QTableWidgetItem(status))
             if exists and mtime_same:
                 btn = QtWidgets.QPushButton(self.tr("view_details"))
                 btn.setStyleSheet(
@@ -1027,13 +1044,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 btn.setFixedHeight(self.btn_height)
                 btn.setFont(self.btn_font)
                 btn.clicked.connect(lambda _, e=entry: self.show_details(e))
-                row.addWidget(btn)
-            frame_layout.addLayout(row)
-
-        if not self.history:
-            frame_layout.addWidget(QtWidgets.QLabel("-"))
-        frame_layout.addStretch()
-        self.history_layout.addWidget(frame)
+                table.setCellWidget(row, 3, btn)
+        if not data:
+            table.setRowCount(1)
+            table.setItem(0, 0, QtWidgets.QTableWidgetItem("-"))
+        self.history_layout.addWidget(table)
         back_btn = QtWidgets.QPushButton(self.tr("back"))
         back_btn.setStyleSheet(
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
@@ -1043,14 +1058,11 @@ class CompareSetQt(QtWidgets.QWidget):
         back_btn.setFixedHeight(self.btn_height)
         back_btn.setFont(self.btn_font)
         back_btn.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
-        version_lbl = QtWidgets.QLabel(f"v{VERSION}")
-        version_lbl.setStyleSheet("color:#666666")
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
         bottom.addWidget(back_btn)
         bottom.addStretch()
-        bottom.addWidget(version_lbl)
         self.history_layout.addLayout(bottom)
 
     def _build_admin_page(self):
@@ -1086,6 +1098,10 @@ class CompareSetQt(QtWidgets.QWidget):
             ]
         )
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setColumnWidth(4, 24)
+        self.table.horizontalHeader().setSectionResizeMode(
+            4, QtWidgets.QHeaderView.Fixed
+        )
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.admin_layout.addWidget(self.table)
 
@@ -1118,7 +1134,14 @@ class CompareSetQt(QtWidgets.QWidget):
             records.sort(key=lambda r: r.get("added", 0), reverse=True)
         filtered = [r for r in records if query in r.get("username", "").lower()]
         self.table.setRowCount(len(filtered))
-        pencil = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
+        icons_dir = os.path.join(os.path.dirname(__file__), "Images")
+        pencil_path = os.path.join(icons_dir, "Icon - Pencil.png")
+        if os.path.exists(pencil_path):
+            pencil = QtGui.QIcon(pencil_path)
+        else:
+            pencil = self.style().standardIcon(
+                QtWidgets.QStyle.SP_FileDialogDetailedView
+            )
         for row, rec in enumerate(filtered):
             for col, key in enumerate(["username", "name", "email"]):
                 item = QtWidgets.QTableWidgetItem(rec.get(key, ""))
@@ -1130,6 +1153,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.table.setItem(row, 3, item)
             btn = QtWidgets.QPushButton()
             btn.setIcon(pencil)
+            btn.setIconSize(QtCore.QSize(16, 16))
             btn.setProperty("username", rec.get("username"))
             btn.clicked.connect(self._edit_user_dialog)
             self.table.setCellWidget(row, 4, btn)
@@ -1137,7 +1161,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def _add_user_dialog(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("add_user"))
-        dlg.resize(500, 350)
+        dlg.resize(400, 280)
         lay = QtWidgets.QFormLayout(dlg)
         user_edit = QtWidgets.QLineEdit()
         name_edit = QtWidgets.QLineEdit()
@@ -1179,7 +1203,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("real_name"))
-        dlg.resize(500, 350)
+        dlg.resize(400, 300)
         form = QtWidgets.QFormLayout(dlg)
 
         user_edit = QtWidgets.QLineEdit(rec.get("username", ""))
@@ -1187,14 +1211,18 @@ class CompareSetQt(QtWidgets.QWidget):
         email_edit = QtWidgets.QLineEdit(rec.get("email", ""))
         active_chk = QtWidgets.QCheckBox(self.tr("active"))
         active_chk.setChecked(rec.get("active", True))
-        admin_chk = QtWidgets.QCheckBox("Admin")
+        admin_chk = QtWidgets.QCheckBox(self.tr("admin_role"))
         admin_chk.setChecked(username in admins)
 
         form.addRow(self.tr("username"), user_edit)
         form.addRow(self.tr("real_name"), name_edit)
         form.addRow(self.tr("email"), email_edit)
+        date_str = time.strftime(
+            "%Y-%m-%d %H:%M", time.localtime(rec.get("added", 0))
+        )
+        form.addRow(self.tr("added_on"), QtWidgets.QLabel(date_str))
         form.addRow(self.tr("status"), active_chk)
-        form.addRow("Admin", admin_chk)
+        form.addRow(self.tr("admin_role"), admin_chk)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -1223,7 +1251,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("details_title"))
-        dlg.resize(500, 350)
+        dlg.resize(400, 300)
         layout = QtWidgets.QVBoxLayout(dlg)
 
         title = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
