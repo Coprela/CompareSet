@@ -2,14 +2,16 @@ import os
 import subprocess
 
 import PyInstaller.__main__
+from version_check import CURRENT_VERSION
 
 sep = ";" if os.name == "nt" else ":"
 
 # Build the executable starting from the Qt interface entry script.
+app_name = f"CompareSet {CURRENT_VERSION}"
 PyInstaller.__main__.run(
     [
         "main_interface.py",
-        "--name=CompareSet",
+        f"--name={app_name}",
         "--onefile",
         "--windowed",
         f"--add-data=Images{os.sep}Icon - Improvement.png{sep}Images",
@@ -63,5 +65,6 @@ def _sign_executable(path: str) -> None:
         print(f"Signature step failed: {exc}")
 
 
-exe_path = os.path.join("dist", "CompareSet.exe")
+exe_name = app_name + (".exe" if os.name == "nt" else "")
+exe_path = os.path.join("dist", exe_name)
 _sign_executable(exe_path)
