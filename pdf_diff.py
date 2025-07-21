@@ -163,7 +163,10 @@ def _compare_page(
 
 
 def _remove_unchanged(
-    removidos: List[Dict], adicionados: List[Dict], eps: float = 0.01
+    removidos: List[Dict],
+    adicionados: List[Dict],
+    eps: float = 0.01,
+    iou_thr: float = 0.995,
 ) -> Tuple[List[Dict], List[Dict]]:
     """Filter out pairs of boxes that are effectively identical."""
 
@@ -176,11 +179,27 @@ def _remove_unchanged(
     removed_keys = {_key(r) for r in removidos}
     added_keys = {_key(a) for a in adicionados}
     duplicates = removed_keys & added_keys
-    if not duplicates:
-        return removidos, adicionados
 
-    rem_filtered = [r for r in removidos if _key(r) not in duplicates]
-    add_filtered = [a for a in adicionados if _key(a) not in duplicates]
+    rem_filtered: List[Dict] = []
+    used_add = set()
+    for r in removidos:
+        key = _key(r)
+        found = False
+        for idx, a in enumerate(adicionados):
+            if idx in used_add:
+                continue
+            if _key(a) == key or (
+                r["pagina"] == a["pagina"]
+                and r.get("texto", "").strip() == a.get("texto", "").strip()
+                and _iou(tuple(r["bbox"]), tuple(a["bbox"])) >= iou_thr
+            ):
+                used_add.add(idx)
+                found = True
+                break
+        if not found:
+            rem_filtered.append(r)
+
+    add_filtered = [a for i, a in enumerate(adicionados) if i not in used_add]
     return rem_filtered, add_filtered
 
 

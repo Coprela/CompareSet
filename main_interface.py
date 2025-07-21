@@ -361,9 +361,14 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_history.triggered.connect(self.open_history)
         self.action_history.setVisible(False)
 
-        admin_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
+        admin_path = os.path.join(
+            os.path.dirname(__file__), "Images", "Icon - Administration.png"
         )
+        if not os.path.exists(admin_path):
+            admin_path = os.path.join(
+                os.path.dirname(__file__), "Images", "Icon - Gear.png"
+            )
+        admin_icon = QtGui.QIcon(admin_path)
         self.action_admin = self.toolbar.addAction(admin_icon, "")
         self.action_admin.setToolTip("")
         self.action_admin.triggered.connect(self.open_admin_page)
@@ -428,7 +433,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton:hover{background-color:#333333;}"
             "QPushButton:disabled{background-color:#555555;color:white;}"
         )
-        self.btn_height = int(self.edit_old.sizeHint().height() * 1.5)
+        self.btn_height = int(self.edit_old.sizeHint().height() * 1.2)
         self.edit_old.setFixedHeight(self.btn_height)
         self.btn_font = self.edit_old.font()
         self.edit_old.setFont(self.btn_font)
@@ -567,6 +572,10 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
+        self.license_link = QtWidgets.QLabel(f'<a href="#">{self.tr("license")}</a>')
+        self.license_link.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        self.license_link.linkActivated.connect(lambda _: self.show_license())
+        bottom.addWidget(self.license_link)
         bottom.addStretch()
         bottom.addWidget(self.lbl_update)
         bottom.addWidget(self.lbl_version)
@@ -875,9 +884,7 @@ class CompareSetQt(QtWidgets.QWidget):
         )
 
     def open_help(self):
-        QtWidgets.QMessageBox.information(
-            self, self.tr("help_tooltip"), self.tr("help_tooltip")
-        )
+        QtWidgets.QMessageBox.information(self, "Help", "Em breve")
 
     def open_settings(self):
         dlg = QtWidgets.QDialog(self)
@@ -892,10 +899,6 @@ class CompareSetQt(QtWidgets.QWidget):
         combo.setCurrentIndex(0 if self.lang == "en" else 1)
         layout.addWidget(combo)
 
-        license_link = QtWidgets.QLabel(f'<a href="#">{self.tr("license")}</a>')
-        license_link.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        license_link.linkActivated.connect(lambda _: self.show_license())
-        layout.addWidget(license_link)
 
         if os.getenv("ADMIN_MODE") == "1":
             manage_btn = QtWidgets.QPushButton(self.tr("manage_users"))
@@ -1076,6 +1079,7 @@ class CompareSetQt(QtWidgets.QWidget):
             ]
         )
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.admin_layout.addWidget(self.table)
 
         btn_back = QtWidgets.QPushButton(self.tr("back"))
@@ -1104,17 +1108,20 @@ class CompareSetQt(QtWidgets.QWidget):
             records.sort(key=lambda r: r.get("added", 0), reverse=True)
         filtered = [r for r in records if query in r.get("username", "").lower()]
         self.table.setRowCount(len(filtered))
+        pencil = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
         for row, rec in enumerate(filtered):
-            self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(rec.get("username", "")))
-            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(rec.get("name", "")))
-            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(rec.get("email", "")))
+            for col, key in enumerate(["username", "name", "email"]):
+                item = QtWidgets.QTableWidgetItem(rec.get(key, ""))
+                self.table.setItem(row, col, item)
             status = self.tr("active") if rec.get("active", True) else self.tr("removed")
             item = QtWidgets.QTableWidgetItem(status)
+            color = QtGui.QColor("#b1f2b1" if rec.get("active", True) else "#f8b2b2")
+            item.setBackground(color)
             self.table.setItem(row, 3, item)
-            text = self.tr("remove_user") if rec.get("active", True) else self.tr("restore_user")
-            btn = QtWidgets.QPushButton(text)
+            btn = QtWidgets.QPushButton()
+            btn.setIcon(pencil)
             btn.setProperty("username", rec.get("username"))
-            btn.clicked.connect(self._toggle_user)
+            btn.clicked.connect(self._edit_user_dialog)
             self.table.setCellWidget(row, 4, btn)
 
     def _add_user_dialog(self):
@@ -1148,18 +1155,57 @@ class CompareSetQt(QtWidgets.QWidget):
                     save_user_records(recs)
             self._populate_admin_table()
 
-    def _toggle_user(self):
+    def _edit_user_dialog(self):
         btn = self.sender()
         if not isinstance(btn, QtWidgets.QPushButton):
             return
         username = btn.property("username")
         recs = load_user_records()
-        for rec in recs:
-            if rec.get("username") == username:
-                rec["active"] = not rec.get("active", True)
-                break
-        save_user_records(recs)
-        self._populate_admin_table()
+        admins = load_admins()
+        rec = next((r for r in recs if r.get("username") == username), None)
+        if rec is None:
+            return
+
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("real_name"))
+        dlg.resize(600, 400)
+        form = QtWidgets.QFormLayout(dlg)
+
+        user_edit = QtWidgets.QLineEdit(rec.get("username", ""))
+        name_edit = QtWidgets.QLineEdit(rec.get("name", ""))
+        email_edit = QtWidgets.QLineEdit(rec.get("email", ""))
+        active_chk = QtWidgets.QCheckBox(self.tr("active"))
+        active_chk.setChecked(rec.get("active", True))
+        admin_chk = QtWidgets.QCheckBox("Admin")
+        admin_chk.setChecked(username in admins)
+
+        form.addRow(self.tr("username"), user_edit)
+        form.addRow(self.tr("real_name"), name_edit)
+        form.addRow(self.tr("email"), email_edit)
+        form.addRow(self.tr("status"), active_chk)
+        form.addRow("Admin", admin_chk)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
+        form.addRow(buttons)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            rec["username"] = user_edit.text().strip()
+            rec["name"] = name_edit.text().strip()
+            rec["email"] = email_edit.text().strip()
+            rec["active"] = active_chk.isChecked()
+
+            if admin_chk.isChecked() and rec["username"] not in admins:
+                admins.append(rec["username"])
+            elif not admin_chk.isChecked() and rec["username"] in admins:
+                admins.remove(rec["username"])
+
+            save_user_records(recs, admins)
+            self._populate_admin_table()
+
 
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)

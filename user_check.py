@@ -115,6 +115,15 @@ def is_admin(username: str) -> bool:
     return isinstance(admins, list) and username in admins
 
 
+def load_admins() -> List[str]:
+    """Return the list of administrator usernames."""
+    data = _load_data()
+    admins = data.get("admins", [])
+    if not isinstance(admins, list):
+        return []
+    return [str(a) for a in admins]
+
+
 def save_user_records(users: List[Dict[str, Any]], admins: List[str] | None = None) -> bool:
     """Persist *users* and optionally *admins* to GitHub."""
     data = {
