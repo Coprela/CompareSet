@@ -3,6 +3,10 @@ import time
 import math
 import getpass
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from user_check import load_users, save_users
 
 from version_check import (
