@@ -1,36 +1,54 @@
-import threading
 import requests
 from requests.exceptions import RequestException
 from json import JSONDecodeError
 
 CURRENT_VERSION = "0.2.1-beta"
-VERSION_URL = (
-    "https://raw.githubusercontent.com/Coprela/Version-tracker/main/"
-    "CompareSet_latest_version.json"
-)
+
+# ✅ URL corrigida (sem /refs/heads/)
+VERSION_URL = "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json"
+
+DEBUG = True
 
 
 def fetch_latest_version(url: str) -> str:
-    """Return the latest version string from the given JSON URL."""
     try:
         response = requests.get(url, timeout=5)
         response.raise_for_status()
-        data = response.json()
+
+        try:
+            data = response.json()
+        except JSONDecodeError as e:
+            if DEBUG:
+                print(f"[ERRO] JSON inválido: {e}")
+                print("[DEBUG] Conteúdo bruto recebido:")
+                print(response.text)
+            return ""
+
         latest = data.get("version")
         if isinstance(latest, str):
             return latest
-    except (RequestException, JSONDecodeError, ValueError, KeyError):
-        pass
+        else:
+            if DEBUG:
+                print("[ERRO] Campo 'version' ausente ou não é string.")
+    except RequestException as e:
+        if DEBUG:
+            print(f"[ERRO] Falha na requisição HTTP: {e}")
+    except Exception as e:
+        if DEBUG:
+            print(f"[ERRO] Erro inesperado: {e}")
     return ""
 
 
-def check_for_update() -> None:
-    """Check GitHub for a new CompareSet version in a background thread."""
-
-    def _task():
-        latest = fetch_latest_version(VERSION_URL)
-        if latest and latest != CURRENT_VERSION:
+def check_for_update():
+    latest = fetch_latest_version(VERSION_URL)
+    if latest:
+        if latest != CURRENT_VERSION:
             print(f"Nova versão disponível: {latest}")
+        else:
+            print("Você já está usando a versão mais recente.")
+    else:
+        print("[ALERTA] Não foi possível obter a versão mais recente.")
 
-    threading.Thread(target=_task, daemon=True).start()
 
+if __name__ == "__main__":
+    check_for_update()
