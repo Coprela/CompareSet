@@ -11,7 +11,7 @@
       "username": "example",
       "name": "Example User",
       "email": "example@example.com",
-      "active": false,
+      "active": true,
       "added": 0.0
     }
   ],
