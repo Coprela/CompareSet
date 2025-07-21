@@ -41,8 +41,12 @@ def _sign_executable(path: str) -> None:
     password = os.environ.get("SIGN_PASS")
     timestamp = os.environ.get("SIGN_TIMESTAMP", "http://timestamp.digicert.com")
 
-    if os.name != "nt" or not (signtool and cert_file and password):
-        return
+    if os.name != "nt":
+        raise RuntimeError("Executable signing requires Windows.")
+    if not (signtool and cert_file and password):
+        raise RuntimeError(
+            "SIGNTOOL, SIGN_CERT and SIGN_PASS must be defined to sign the executable."
+        )
 
     cmd = [
         signtool,
@@ -60,7 +64,7 @@ def _sign_executable(path: str) -> None:
         subprocess.run(cmd, check=True)
         print("Executable signed.")
     except Exception as exc:
-        print(f"Signature step failed: {exc}")
+        raise RuntimeError(f"Signature step failed: {exc}") from exc
 
 
 exe_path = os.path.join("dist", "CompareSet.exe")
