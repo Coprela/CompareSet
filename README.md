@@ -56,6 +56,23 @@ The application checks for a JSON file on GitHub that lists the latest
 available version. You can override the location of this file using the
 `VERSION_URL` environment variable.
 
+## User authorization
+
+Before launching the interface the program downloads the list of authorised
+usernames from a JSON file hosted on GitHub. The default location is
+`https://raw.githubusercontent.com/Coprela/Version-tracker/main/allowed_users.json`
+and can be overridden through the `USER_LIST_URL` environment variable. If the
+current operating system user is not present in this list the application shows
+an "Access denied" message and exits.
+
+When the variable `ADMIN_MODE` is set to `1` a "Manage users" button appears in
+the settings dialog. This opens a window that loads the current list from the
+repository and lets administrators add or remove names. On saving the list is
+updated remotely via the GitHub API. By default updates are sent to
+`https://api.github.com/repos/Coprela/Version-tracker/contents/allowed_users.json`.
+The `USER_LIST_WRITE_URL` and `USER_LIST_TOKEN` environment variables can be
+used to specify a different endpoint and authentication token.
+
 ## Supported page formats
 
 CompareSet works with PDF pages sized according to the ISO A series. Pages
