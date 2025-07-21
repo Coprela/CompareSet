@@ -858,7 +858,12 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg.setWindowTitle(self.tr("manage_users"))
         layout = QtWidgets.QVBoxLayout(dlg)
         listw = QtWidgets.QListWidget()
-        for u in load_users():
+        try:
+            user_list = load_users()
+        except RuntimeError as e:
+            QtWidgets.QMessageBox.critical(self, "Error", str(e))
+            return
+        for u in user_list:
             listw.addItem(u)
         layout.addWidget(listw)
 
@@ -1059,7 +1064,13 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication([])
 
     user = getpass.getuser()
-    if user not in load_users():
+    try:
+        users = load_users()
+    except RuntimeError as e:
+        QtWidgets.QMessageBox.critical(None, "Error", str(e))
+        raise SystemExit(1)
+
+    if user not in users:
         lang = "pt" if os.getenv("LANG", "").startswith("pt") else "en"
         if lang == "pt":
             title = "Acesso negado"
