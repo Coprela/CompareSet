@@ -76,9 +76,37 @@ def gerar_pdf_com_destaques(
                     width=page.rect.width, height=page.rect.height
                 )
                 new_page.show_pdf_page(page.rect, doc_new, i)
+
+                # compute transform mapping coordinates from the old PDF to the
+                # current page of the new PDF
+                if i < len(doc_old):
+                    rect_old = doc_old[i].rect
+                else:
+                    rect_old = page.rect
+                rect_new = page.rect
+                width_diff = abs(rect_old.width - rect_new.width)
+                height_diff = abs(rect_old.height - rect_new.height)
+                tolerance_pt = 72 / 25.4
+                if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
+                    s = 1.0
+                    tx = ty = 0.0
+                else:
+                    sx = rect_old.width / rect_new.width
+                    sy = rect_old.height / rect_new.height
+                    s = min(sx, sy)
+                    tx = (rect_old.width - rect_new.width * s) / 2.0
+                    ty = (rect_old.height - rect_new.height * s) / 2.0
+
                 for item in adicionados:
                     if item["pagina"] == i:
-                        r = fitz.Rect(item["bbox"])
+                        r_old = fitz.Rect(item["bbox"])
+                        # convert from old PDF coordinates into the new page
+                        r = fitz.Rect(
+                            (r_old.x0 - tx) / s,
+                            (r_old.y0 - ty) / s,
+                            (r_old.x1 - tx) / s,
+                            (r_old.y1 - ty) / s,
+                        )
                         r.x0 -= BBOX_MARGIN
                         r.y0 -= BBOX_MARGIN
                         r.x1 += BBOX_MARGIN
