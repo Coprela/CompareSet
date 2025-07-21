@@ -13,6 +13,13 @@
       "email": "example@example.com",
       "active": false,
       "added": 0.0
+    },
+    {
+      "username": "gtrocado",
+      "name": "",
+      "email": "",
+      "active": true,
+      "added": 1753126157.8544452
     }
   ],
   "admins": [
