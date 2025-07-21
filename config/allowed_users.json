@@ -1,5 +1,4 @@
 {
-  "users": [
-    "admin"
-  ]
+  "users": ["antsilva"],
+  "admins": ["doliveira12"]
 }
