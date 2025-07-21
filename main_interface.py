@@ -128,8 +128,8 @@ class CompareSetQt(QtWidgets.QWidget):
         super().__init__()
         self.is_admin = is_admin
         self.setWindowTitle("CompareSet")
-        # allow slightly taller window for additional spacing
-        self.setFixedSize(500, 360)
+        # allow larger window for easier viewing
+        self.setFixedSize(700, 500)
         icons_dir = os.path.join(os.path.dirname(__file__), "Images")
         icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
         self.setWindowIcon(QtGui.QIcon(icon_path))
@@ -864,6 +864,7 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg = QtWidgets.QMessageBox(self)
         dlg.setWindowTitle(self.tr("license_title"))
         dlg.setText(text)
+        dlg.setMinimumSize(600, 400)
         dlg.exec()
 
     def open_improvement_link(self):
@@ -881,6 +882,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def open_settings(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("settings_title"))
+        dlg.resize(600, 400)
         layout = QtWidgets.QVBoxLayout(dlg)
         lbl = QtWidgets.QLabel(self.tr("language"))
         layout.addWidget(lbl)
@@ -909,6 +911,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def open_user_admin(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("manage_users"))
+        dlg.resize(600, 400)
         layout = QtWidgets.QVBoxLayout(dlg)
         listw = QtWidgets.QListWidget()
         try:
@@ -1117,6 +1120,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def _add_user_dialog(self):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("add_user"))
+        dlg.resize(600, 400)
         lay = QtWidgets.QFormLayout(dlg)
         user_edit = QtWidgets.QLineEdit()
         name_edit = QtWidgets.QLineEdit()
@@ -1160,6 +1164,7 @@ class CompareSetQt(QtWidgets.QWidget):
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("details_title"))
+        dlg.resize(600, 400)
         layout = QtWidgets.QVBoxLayout(dlg)
 
         title = QtWidgets.QLabel(f"{entry['old']} \u2192 {entry['new']}")
