@@ -1,54 +1,45 @@
+import os
+from json import JSONDecodeError
+
 import requests
 from requests.exceptions import RequestException
-from json import JSONDecodeError
+
 
 CURRENT_VERSION = "0.2.1-beta"
 
-# ✅ URL corrigida (sem /refs/heads/)
-VERSION_URL = "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json"
-
-DEBUG = True
+# URL with the latest version JSON. Can be overridden by the VERSION_URL
+# environment variable.
+VERSION_URL = os.getenv(
+    "VERSION_URL",
+    "https://raw.githubusercontent.com/Coprela/Version-tracker/main/CompareSet_latest_version.json",
+)
 
 
 def fetch_latest_version(url: str) -> str:
+    """Return the latest version string from *url* or an empty string."""
+
     try:
-        response = requests.get(url, timeout=5)
-        response.raise_for_status()
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+    except (RequestException, JSONDecodeError):
+        return ""
 
-        try:
-            data = response.json()
-        except JSONDecodeError as e:
-            if DEBUG:
-                print(f"[ERRO] JSON inválido: {e}")
-                print("[DEBUG] Conteúdo bruto recebido:")
-                print(response.text)
-            return ""
-
-        latest = data.get("version")
-        if isinstance(latest, str):
-            return latest
-        else:
-            if DEBUG:
-                print("[ERRO] Campo 'version' ausente ou não é string.")
-    except RequestException as e:
-        if DEBUG:
-            print(f"[ERRO] Falha na requisição HTTP: {e}")
-    except Exception as e:
-        if DEBUG:
-            print(f"[ERRO] Erro inesperado: {e}")
-    return ""
+    latest = data.get("version")
+    return latest if isinstance(latest, str) else ""
 
 
-def check_for_update():
-    latest = fetch_latest_version(VERSION_URL)
-    if latest:
-        if latest != CURRENT_VERSION:
-            print(f"Nova versão disponível: {latest}")
-        else:
-            print("Você já está usando a versão mais recente.")
-    else:
-        print("[ALERTA] Não foi possível obter a versão mais recente.")
+def check_for_update() -> str:
+    """Return the latest version available or an empty string if unavailable."""
+
+    return fetch_latest_version(VERSION_URL)
 
 
 if __name__ == "__main__":
-    check_for_update()
+    latest = check_for_update()
+    if latest and latest != CURRENT_VERSION:
+        print(f"New version available: {latest}")
+    elif latest:
+        print("Using the latest version.")
+    else:
+        print("Could not retrieve latest version.")

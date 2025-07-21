@@ -166,6 +166,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "update_title": "Update available",
                 "update_msg": "A new version ({}) is available.",
                 "update_download": "New version available for download",
+                "update_available": "New version available",
                 "view_details": "View details",
                 "details_title": "Details",
                 "date": "Date:",
@@ -220,6 +221,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "update_title": "Atualiza\u00e7\u00e3o dispon\u00edvel",
                 "update_msg": "Uma nova vers\u00e3o ({}) est\u00e1 dispon\u00edvel.",
                 "update_download": "Nova vers\u00e3o dispon\u00edvel para download",
+                "update_available": "Nova vers\u00e3o dispon\u00edvel",
                 "view_details": "Ver detalhes",
                 "details_title": "Detalhes",
                 "date": "Data:",
@@ -509,8 +511,8 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
-        bottom.addWidget(self.lbl_update)
         bottom.addStretch()
+        bottom.addWidget(self.lbl_update)
         bottom.addWidget(self.lbl_version)
         layout.addLayout(bottom)
 
@@ -973,10 +975,9 @@ class CompareSetQt(QtWidgets.QWidget):
         if latest and latest != VERSION:
             self.lbl_version.setStyleSheet("color:#666666")
             self.lbl_version.setText(f"v{VERSION}")
-            msg = self.tr("update_download")
-            self.lbl_update.setText(f'<a href="{DOWNLOAD_URL}">{msg}</a>')
-            self.lbl_update.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-            self.lbl_update.setOpenExternalLinks(True)
+            msg = self.tr("update_available")
+            self.lbl_update.setText(msg)
+            self.lbl_update.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
             self.lbl_update.show()
             self.blink_timer.start(500)
         else:
