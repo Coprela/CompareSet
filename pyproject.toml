@@ -1,0 +1,9 @@
+[project]
+name = "compareset"
+version = "0.1.0"
+description = "Vector-based PDF comparison tool"
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["src"]
