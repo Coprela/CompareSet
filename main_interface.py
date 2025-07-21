@@ -7,7 +7,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from user_check import load_users, save_users
+from user_check import (
+    load_users,
+    save_users,
+    load_user_records,
+    save_user_records,
+    is_admin,
+)
 
 from version_check import (
     CURRENT_VERSION,
@@ -118,8 +124,9 @@ class VersionCheckThread(QtCore.QThread):
 
 
 class CompareSetQt(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, is_admin: bool = False):
         super().__init__()
+        self.is_admin = is_admin
         self.setWindowTitle("CompareSet")
         # allow slightly taller window for additional spacing
         self.setFixedSize(500, 360)
@@ -185,7 +192,16 @@ class CompareSetQt(QtWidgets.QWidget):
                 "manage_users": "Manage users",
                 "add_user": "Add user",
                 "remove_user": "Remove user",
+                "restore_user": "Restore user",
                 "user_save_failed": "Failed to update user list",
+                "admin": "Administration",
+                "search_users": "Search users",
+                "username": "Username",
+                "real_name": "Name",
+                "email": "Email",
+                "status": "Status",
+                "active": "Active",
+                "removed": "Removed",
             },
             "pt": {
                 "select_old": "Selecionar revis\u00e3o antiga",
@@ -244,7 +260,16 @@ class CompareSetQt(QtWidgets.QWidget):
                 "manage_users": "Gerenciar usuários",
                 "add_user": "Adicionar usuário",
                 "remove_user": "Remover usuário",
+                "restore_user": "Restaurar usuário",
                 "user_save_failed": "Erro ao atualizar lista de usuários",
+                "admin": "Administração",
+                "search_users": "Pesquisar usuários",
+                "username": "Usuário",
+                "real_name": "Nome",
+                "email": "Email",
+                "status": "Status",
+                "active": "Ativo",
+                "removed": "Removido",
             },
         }
         self.old_path = ""
@@ -261,6 +286,9 @@ class CompareSetQt(QtWidgets.QWidget):
         self.blink_timer.timeout.connect(self._blink_version)
         self._blink_state = False
         self._setup_ui()
+        if self.is_admin:
+            self.action_admin.setVisible(True)
+            self.admin_sep.setVisible(True)
         QtCore.QTimer.singleShot(0, self._start_update_check)
         self._update_compare_button()
 
@@ -280,10 +308,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_help.setToolTip(t["help_tooltip"])
         self.action_settings.setToolTip(t["settings_tooltip"])
         self.action_history.setToolTip("")
+        self.action_admin.setToolTip("")
         self.action_improve.setText(t["improve_label"])
         self.action_help.setText(t["help_label"])
         self.action_settings.setText(t["settings_label"])
         self.action_history.setText(t["history"])
+        self.action_admin.setText(t["admin"])
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
@@ -330,6 +360,17 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_history.setToolTip("")
         self.action_history.triggered.connect(self.open_history)
         self.action_history.setVisible(False)
+
+        admin_icon = QtGui.QIcon(
+            os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
+        )
+        self.action_admin = self.toolbar.addAction(admin_icon, "")
+        self.action_admin.setToolTip("")
+        self.action_admin.triggered.connect(self.open_admin_page)
+        self.action_admin.setVisible(False)
+
+        self.admin_sep = self.toolbar.addSeparator()
+        self.admin_sep.setVisible(False)
 
         self.history_sep = self.toolbar.addSeparator()
         self.history_sep.setVisible(False)
@@ -536,6 +577,10 @@ class CompareSetQt(QtWidgets.QWidget):
         self.history_layout = QtWidgets.QVBoxLayout(self.history_page)
         self.history_layout.setContentsMargins(10, 10, 10, 10)
         self.stack.addWidget(self.history_page)
+        self.admin_page = QtWidgets.QWidget()
+        self.admin_layout = QtWidgets.QVBoxLayout(self.admin_page)
+        self.admin_layout.setContentsMargins(10, 10, 10, 10)
+        self.stack.addWidget(self.admin_page)
         self.stack.setCurrentWidget(self.main_page)
 
         self.set_language(self.lang)
@@ -671,6 +716,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_help.setEnabled(False)
         self.action_settings.setEnabled(False)
         self.action_history.setEnabled(False)
+        self.action_admin.setEnabled(False)
         self.history_sep.setVisible(True)
 
         self.thread = ComparisonThread(
@@ -746,6 +792,7 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_help.setEnabled(True)
         self.action_settings.setEnabled(True)
         self.action_history.setEnabled(True)
+        self.action_admin.setEnabled(True)
         self.btn_cancel.hide()
         self._progress_stack.setCurrentIndex(1)
         self.spinner_timer.stop()
@@ -920,6 +967,11 @@ class CompareSetQt(QtWidgets.QWidget):
         self._build_history()
         self.stack.setCurrentWidget(self.history_page)
 
+    def open_admin_page(self):
+        self.clear_results()
+        self._build_admin_page()
+        self.stack.setCurrentWidget(self.admin_page)
+
     def _build_history(self):
         while self.history_layout.count():
             item = self.history_layout.takeAt(0)
@@ -987,6 +1039,123 @@ class CompareSetQt(QtWidgets.QWidget):
         bottom.addStretch()
         bottom.addWidget(version_lbl)
         self.history_layout.addLayout(bottom)
+
+    def _build_admin_page(self):
+        while self.admin_layout.count():
+            item = self.admin_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
+
+        search_row = QtWidgets.QHBoxLayout()
+        self.search_edit = QtWidgets.QLineEdit()
+        self.search_edit.setPlaceholderText(self.tr("search_users"))
+        search_row.addWidget(self.search_edit)
+        self.sort_combo = QtWidgets.QComboBox()
+        self.sort_combo.addItem(self.tr("sort_recent"), "recent")
+        self.sort_combo.addItem(self.tr("sort_alpha"), "alpha")
+        search_row.addWidget(self.sort_combo)
+        add_btn = QtWidgets.QPushButton(self.tr("add_user"))
+        add_btn.clicked.connect(self._add_user_dialog)
+        search_row.addWidget(add_btn)
+        self.admin_layout.addLayout(search_row)
+
+        self.table = QtWidgets.QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(
+            [
+                self.tr("username"),
+                self.tr("real_name"),
+                self.tr("email"),
+                self.tr("status"),
+                "",
+            ]
+        )
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.admin_layout.addWidget(self.table)
+
+        btn_back = QtWidgets.QPushButton(self.tr("back"))
+        btn_back.setFixedHeight(self.btn_height)
+        btn_back.setFont(self.btn_font)
+        btn_back.setStyleSheet(
+            "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
+            "QPushButton:hover{background-color:#333333;}"
+        )
+        btn_back.clicked.connect(lambda: self.stack.setCurrentWidget(self.main_page))
+        bottom = QtWidgets.QHBoxLayout()
+        bottom.addWidget(btn_back)
+        bottom.addStretch()
+        self.admin_layout.addLayout(bottom)
+
+        self._populate_admin_table()
+        self.search_edit.textChanged.connect(self._populate_admin_table)
+        self.sort_combo.currentIndexChanged.connect(self._populate_admin_table)
+
+    def _populate_admin_table(self):
+        records = load_user_records()
+        query = self.search_edit.text().lower()
+        if self.sort_combo.currentData() == "alpha":
+            records.sort(key=lambda r: r.get("username", "").lower())
+        else:
+            records.sort(key=lambda r: r.get("added", 0), reverse=True)
+        filtered = [r for r in records if query in r.get("username", "").lower()]
+        self.table.setRowCount(len(filtered))
+        for row, rec in enumerate(filtered):
+            self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(rec.get("username", "")))
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(rec.get("name", "")))
+            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(rec.get("email", "")))
+            status = self.tr("active") if rec.get("active", True) else self.tr("removed")
+            item = QtWidgets.QTableWidgetItem(status)
+            self.table.setItem(row, 3, item)
+            text = self.tr("remove_user") if rec.get("active", True) else self.tr("restore_user")
+            btn = QtWidgets.QPushButton(text)
+            btn.setProperty("username", rec.get("username"))
+            btn.clicked.connect(self._toggle_user)
+            self.table.setCellWidget(row, 4, btn)
+
+    def _add_user_dialog(self):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(self.tr("add_user"))
+        lay = QtWidgets.QFormLayout(dlg)
+        user_edit = QtWidgets.QLineEdit()
+        name_edit = QtWidgets.QLineEdit()
+        email_edit = QtWidgets.QLineEdit()
+        lay.addRow(self.tr("username"), user_edit)
+        lay.addRow(self.tr("real_name"), name_edit)
+        lay.addRow(self.tr("email"), email_edit)
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        lay.addWidget(buttons)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        if dlg.exec() == QtWidgets.QDialog.Accepted:
+            recs = load_user_records()
+            new_rec = {
+                "username": user_edit.text().strip(),
+                "name": name_edit.text().strip(),
+                "email": email_edit.text().strip(),
+                "active": True,
+                "added": time.time(),
+            }
+            if new_rec["username"]:
+                names = [r["username"] for r in recs]
+                if new_rec["username"] not in names:
+                    recs.append(new_rec)
+                    save_user_records(recs)
+            self._populate_admin_table()
+
+    def _toggle_user(self):
+        btn = self.sender()
+        if not isinstance(btn, QtWidgets.QPushButton):
+            return
+        username = btn.property("username")
+        recs = load_user_records()
+        for rec in recs:
+            if rec.get("username") == username:
+                rec["active"] = not rec.get("active", True)
+                break
+        save_user_records(recs)
+        self._populate_admin_table()
 
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
@@ -1090,6 +1259,6 @@ if __name__ == "__main__":
         QtWidgets.QMessageBox.critical(None, title, msg)
         raise SystemExit(1)
 
-    win = CompareSetQt()
+    win = CompareSetQt(is_admin(user))
     win.show()
     app.exec()

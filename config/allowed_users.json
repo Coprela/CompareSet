@@ -1,4 +1,19 @@
 {
-  "users": ["",""],
-  "admins": ["doliveira12",""]
+  "users": [
+    {
+      "username": "doliveira12",
+      "name": "Daniel Oliveira",
+      "email": "doliveira12@example.com",
+      "active": true,
+      "added": 0
+    },
+    {
+      "username": "example",
+      "name": "Example User",
+      "email": "example@example.com",
+      "active": false,
+      "added": 0
+    }
+  ],
+  "admins": ["doliveira12"]
 }
