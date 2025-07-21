@@ -7,7 +7,11 @@ from typing import Any, Dict
 import requests
 
 GITHUB_REPO = os.getenv("GITHUB_REPO", "Coprela/CompareSet")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+# Optional token hardcoded for convenience. Leave empty to rely solely on
+# the ``GITHUB_TOKEN`` environment variable. This is less secure than
+# setting the variable externally.
+DEFAULT_GITHUB_TOKEN = ""
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", DEFAULT_GITHUB_TOKEN)
 GITHUB_API_BASE = os.getenv("GITHUB_API_BASE", "https://api.github.com")
 GITHUB_PATH_PREFIX = os.getenv("GITHUB_PATH_PREFIX", "config")
 

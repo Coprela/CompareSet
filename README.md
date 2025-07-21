@@ -13,10 +13,12 @@ vector shapes or words shift without altering content.
 
 1. Clone this repository.
 2. (Optional) Create and activate a virtual environment.
-3. (Optional) create a `.env` file with values for `GITHUB_REPO`,
-   `GITHUB_TOKEN` and other variables. See `.env.example` for the
-   available options. The application automatically loads this file at
-   startup.
+3. Provide the GitHub settings required to fetch remote configuration.
+   The recommended approach is setting `GITHUB_REPO` and `GITHUB_TOKEN`
+   as environment variables (optionally via a `.env` file).  See
+   `.env.example` for the available options.  Alternatively you may edit
+   `github_json_manager.py` and place your token in the
+   `DEFAULT_GITHUB_TOKEN` constant, though this is less secure.
 4. Install the Python dependencies listed in `requirements.txt`:
    ```bash
    pip install -r requirements.txt
@@ -76,7 +78,9 @@ repository and lets administrators add or remove names. On saving, the list is
 updated remotely via the GitHub API using the repository defined in
 `GITHUB_REPO`. Authentication is performed with the `GITHUB_TOKEN` variable.
 These variables are read from the environment or from the optional `.env`
-configuration file.
+configuration file. If preferred, you can hardcode the token in
+`github_json_manager.DEFAULT_GITHUB_TOKEN` and skip defining the
+environment variable.
 
 ## Supported page formats
 
