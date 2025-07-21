@@ -2,6 +2,30 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
 
+# common ISO sizes in millimetres (width, height)
+STANDARD_PAGE_SIZES_MM = {
+    "A0": (841, 1189),
+    "A1": (594, 841),
+    "A2": (420, 594),
+    "A3": (297, 420),
+    "A4": (210, 297),
+    "A5": (148, 210),
+    "A6": (105, 148),
+    "A7": (74, 105),
+}
+
+def _get_standard_label(width_pt: float, height_pt: float, tol_mm: float = 2) -> str:
+    """Return the ISO size label for a page or an empty string."""
+    mm_per_pt = 25.4 / 72
+    w_mm = width_pt * mm_per_pt
+    h_mm = height_pt * mm_per_pt
+    for label, (w, h) in STANDARD_PAGE_SIZES_MM.items():
+        if abs(w_mm - w) <= tol_mm and abs(h_mm - h) <= tol_mm:
+            return label
+        if abs(w_mm - h) <= tol_mm and abs(h_mm - w) <= tol_mm:
+            return label
+    return ""
+
 
 class CancelledError(Exception):
     """Raised when a comparison operation is cancelled."""
@@ -163,7 +187,10 @@ def _compare_page(
 
 
 def _remove_unchanged(
-    removidos: List[Dict], adicionados: List[Dict], eps: float = 0.01
+    removidos: List[Dict],
+    adicionados: List[Dict],
+    eps: float = 0.01,
+    iou_thr: float = 0.995,
 ) -> Tuple[List[Dict], List[Dict]]:
     """Filter out pairs of boxes that are effectively identical."""
 
@@ -176,11 +203,27 @@ def _remove_unchanged(
     removed_keys = {_key(r) for r in removidos}
     added_keys = {_key(a) for a in adicionados}
     duplicates = removed_keys & added_keys
-    if not duplicates:
-        return removidos, adicionados
 
-    rem_filtered = [r for r in removidos if _key(r) not in duplicates]
-    add_filtered = [a for a in adicionados if _key(a) not in duplicates]
+    rem_filtered: List[Dict] = []
+    used_add = set()
+    for r in removidos:
+        key = _key(r)
+        found = False
+        for idx, a in enumerate(adicionados):
+            if idx in used_add:
+                continue
+            if _key(a) == key or (
+                r["pagina"] == a["pagina"]
+                and r.get("texto", "").strip() == a.get("texto", "").strip()
+                and _iou(tuple(r["bbox"]), tuple(a["bbox"])) >= iou_thr
+            ):
+                used_add.add(idx)
+                found = True
+                break
+        if not found:
+            rem_filtered.append(r)
+
+    add_filtered = [a for i, a in enumerate(adicionados) if i not in used_add]
     return rem_filtered, add_filtered
 
 
@@ -324,6 +367,19 @@ def comparar_pdfs(
     with _load_pdf_without_signatures(old_pdf) as doc_old, _load_pdf_without_signatures(
         new_pdf
     ) as doc_new:
+
+        # warn when page dimensions are not standard ISO sizes
+        for label, doc, name in [("old", doc_old, old_pdf), ("new", doc_new, new_pdf)]:
+            warn_pages = [
+                str(i + 1)
+                for i, page in enumerate(doc)
+                if not _get_standard_label(page.rect.width, page.rect.height)
+            ]
+            if warn_pages:
+                pages = ", ".join(warn_pages)
+                print(
+                    f"Warning: {name} ({label}) has non-standard page sizes on page(s): {pages}"
+                )
 
         tolerance_pt = 72 / 25.4  # roughly one millimetre
 

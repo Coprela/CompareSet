@@ -18,6 +18,7 @@ PyInstaller.__main__.run(
         f"--add-data=Images{os.sep}Icon - Question Mark Help.png{sep}Images",
         f"--add-data=Images{os.sep}Icon - Gear.png{sep}Images",
         f"--add-data=Images{os.sep}Icon - History.png{sep}Images",
+        f"--add-data=Images{os.sep}Icon - Administration.png{sep}Images",
         # bundle the application icon used by the Qt interface
         f"--add-data=Images{os.sep}Icon - CompareSet.ico{sep}Images",
         f"--add-data=LICENSE{sep}.",
