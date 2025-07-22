@@ -2,9 +2,12 @@ from __future__ import annotations
 import os
 import json
 import base64
+import logging
 from typing import Any, Dict
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 GITHUB_REPO = os.getenv("GITHUB_REPO", "Coprela/CompareSet")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
@@ -40,7 +43,8 @@ def load_json(filename: str) -> Dict[str, Any]:
         resp = requests.get(url, headers=_headers(raw=True), timeout=5)
         resp.raise_for_status()
         return resp.json()
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to load %s: %s", filename, exc)
         return {}
 
 
@@ -52,7 +56,8 @@ def _get_sha(filename: str) -> str | None:
         resp.raise_for_status()
         data = resp.json()
         return data.get("sha")
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to read SHA for %s: %s", filename, exc)
         return None
 
 
@@ -73,5 +78,6 @@ def save_json(filename: str, data: Dict[str, Any], commit_message: str = "Atuali
         resp = requests.put(url, headers=_headers(), json=payload, timeout=5)
         resp.raise_for_status()
         return True
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to save %s: %s", filename, exc)
         return False

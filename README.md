@@ -40,6 +40,17 @@ with **Contents: Read and Write** permission for the repository. Using
 [python-dotenv](https://pypi.org/project/python-dotenv/) prevents secrets from
 being committed.
 
+| Variable | Purpose |
+|----------|---------|
+| `GITHUB_REPO` | Repository used to fetch remote configuration |
+| `GITHUB_TOKEN` | Personal access token for the repository |
+| `GITHUB_API_BASE` | Base URL for the GitHub API |
+| `GITHUB_PATH_PREFIX` | Path inside the repo for config files |
+| `LATEST_VERSION_FILE` | JSON file with the latest version information |
+| `ALLOWED_USERS_FILE` | Remote user list file |
+| `ADMIN_MODE` | Set to `1` to enable admin features |
+| `LANG` | Force interface language (`pt` or `en`) |
+
 
 ## Packaging
 
@@ -51,3 +62,8 @@ PyArmor and PyInstaller then run the packaging script:
 pip install pyarmor pyinstaller
 python build_package.py
 ```
+
+## Contributing
+
+Run the test suite with `pytest` to verify changes. PyMuPDF must be installed
+for the tests to run. Without it the suite will be skipped.

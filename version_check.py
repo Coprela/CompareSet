@@ -1,9 +1,9 @@
+"""Check for updates using files stored on GitHub."""
+
 import os
 
 from github_json_manager import load_json
-
-
-CURRENT_VERSION = "0.2.1-beta"
+from compareset import __version__ as CURRENT_VERSION
 
 LATEST_VERSION_FILE = os.getenv("LATEST_VERSION_FILE", "CompareSet_latest_version.json")
 
