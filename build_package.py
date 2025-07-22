@@ -14,17 +14,17 @@ PyInstaller.__main__.run(
         f"--name={app_name}",
         "--onefile",
         "--windowed",
-        f"--add-data=Images{os.sep}Icon - Improvement.png{sep}Images",
-        f"--add-data=Images{os.sep}Icon - Question Mark Help.png{sep}Images",
-        f"--add-data=Images{os.sep}Icon - Gear.png{sep}Images",
-        f"--add-data=Images{os.sep}Icon - History.png{sep}Images",
-        f"--add-data=Images{os.sep}Icon - Administration.png{sep}Images",
+        f"--add-data=assets{os.sep}icons{os.sep}Icon - Improvement.png{sep}assets/icons",
+        f"--add-data=assets{os.sep}icons{os.sep}Icon - Question Mark Help.png{sep}assets/icons",
+        f"--add-data=assets{os.sep}icons{os.sep}Icon - Gear.png{sep}assets/icons",
+        f"--add-data=assets{os.sep}icons{os.sep}Icon - History.png{sep}assets/icons",
+        f"--add-data=assets{os.sep}icons{os.sep}Icon - Administration.png{sep}assets/icons",
         # bundle the application icon used by the Qt interface
-        f"--add-data=Images{os.sep}Icon - CompareSet.ico{sep}Images",
+        f"--add-data=assets{os.sep}icons{os.sep}Icon - CompareSet.ico{sep}assets/icons",
         f"--add-data=LICENSE{sep}.",
         f"--add-data=LICENSE_EN.txt{sep}.",
         f"--add-data=LICENSE_PT.txt{sep}.",
-        f"--icon=Images{os.sep}Icon - CompareSet.ico",
+        f"--icon=assets{os.sep}icons{os.sep}Icon - CompareSet.ico",
     ]
 )
 

@@ -133,7 +133,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.small_size = QtCore.QSize(500, 360)
         self.large_size = QtCore.QSize(700, 500)
         self.setFixedSize(self.small_size)
-        icons_dir = os.path.join(os.path.dirname(__file__), "Images")
+        # application icons were moved to assets/icons in the project root
+        icons_dir = os.path.join(os.path.dirname(__file__), "assets", "icons")
         icon_path = os.path.join(icons_dir, "Icon - CompareSet.ico")
         self.setWindowIcon(QtGui.QIcon(icon_path))
         self.lang = "pt"
@@ -364,33 +365,21 @@ class CompareSetQt(QtWidgets.QWidget):
         self.toolbar.setMovable(False)
         self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
 
-        improve_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - Improvement.png")
-        )
-        help_icon = QtGui.QIcon(
-            os.path.join(
-                os.path.dirname(__file__), "Images", "Icon - Question Mark Help.png"
-            )
-        )
-        settings_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - Gear.png")
-        )
+        icons_dir = os.path.join(os.path.dirname(__file__), "assets", "icons")
 
-        history_icon = QtGui.QIcon(
-            os.path.join(os.path.dirname(__file__), "Images", "Icon - History.png")
-        )
+        improve_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - Improvement.png"))
+        help_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - Question Mark Help.png"))
+        settings_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - Gear.png"))
+
+        history_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - History.png"))
         self.action_history = self.toolbar.addAction(history_icon, "")
         self.action_history.setToolTip("")
         self.action_history.triggered.connect(self.open_history)
         self.action_history.setVisible(False)
 
-        admin_path = os.path.join(
-            os.path.dirname(__file__), "Images", "Icon - Administration.png"
-        )
+        admin_path = os.path.join(icons_dir, "Icon - Administration.png")
         if not os.path.exists(admin_path):
-            admin_path = os.path.join(
-                os.path.dirname(__file__), "Images", "Icon - Gear.png"
-            )
+            admin_path = os.path.join(icons_dir, "Icon - Gear.png")
         admin_icon = QtGui.QIcon(admin_path)
         self.action_admin = self.toolbar.addAction(admin_icon, "")
         self.action_admin.setToolTip("")
@@ -1189,7 +1178,7 @@ class CompareSetQt(QtWidgets.QWidget):
         if self.filter_admin_chk.isChecked():
             filtered = [r for r in filtered if r.get("username") in self._admins]
         self.table.setRowCount(len(filtered))
-        icons_dir = os.path.join(os.path.dirname(__file__), "Images")
+        icons_dir = os.path.join(os.path.dirname(__file__), "assets", "icons")
         pencil_path = os.path.join(icons_dir, "Icon - Pencil.png")
         if os.path.exists(pencil_path):
             pencil = QtGui.QIcon(pencil_path)
