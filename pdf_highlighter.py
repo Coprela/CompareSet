@@ -8,6 +8,7 @@ COLOR_REMOVE_DEFAULT = (1, 0, 0)  # vermelho
 COLOR_ADD_DEFAULT = (0, 0.8, 0)  # verde mais evidente
 OPACITY_DEFAULT = 0.3
 BBOX_MARGIN = 0.5  # increase highlight thickness (points)
+TEXT_SIZE = 8  # default font size for difference labels
 
 
 def gerar_pdf_com_destaques(
@@ -22,6 +23,11 @@ def gerar_pdf_com_destaques(
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> None:
     """Create a PDF highlighting removed and added regions.
+
+    The resulting document contains a single page for each pair of
+    pages in the input PDFs. Old and new pages are drawn on top of
+    each other and differences are indicated by re-drawing the text or
+    bounding box in the specified colors.
 
     Parameters
     ----------
@@ -47,55 +53,74 @@ def gerar_pdf_com_destaques(
         max_pages = max(len(doc_old), len(doc_new_resized))
         for i in range(max_pages):
             if i < len(doc_old):
-                page = doc_old[i]
-                new_page = final.new_page(
-                    width=page.rect.width, height=page.rect.height
-                )
-                new_page.show_pdf_page(page.rect, doc_old, i)
-                for item in removidos:
-                    if item["pagina"] == i:
-                        r = fitz.Rect(item["bbox"])
-                        r.x0 -= BBOX_MARGIN
-                        r.y0 -= BBOX_MARGIN
-                        r.x1 += BBOX_MARGIN
-                        r.y1 += BBOX_MARGIN
-                        new_page.draw_rect(
-                            r,
-                            fill=color_remove,
-                            width=0,
-                            fill_opacity=OPACITY_DEFAULT,
-                        )
-                done += 1
-                if progress_callback:
-                    progress_callback((done / total_steps) * 100)
-                if cancel_callback and cancel_callback():
-                    raise CancelledError()
+                base_page = doc_old[i]
+            else:
+                base_page = doc_new_resized[i]
 
+            new_page = final.new_page(
+                width=base_page.rect.width, height=base_page.rect.height
+            )
+
+            if i < len(doc_old):
+                new_page.show_pdf_page(new_page.rect, doc_old, i)
             if i < len(doc_new_resized):
-                page = doc_new_resized[i]
-                new_page = final.new_page(
-                    width=page.rect.width, height=page.rect.height
-                )
-                new_page.show_pdf_page(page.rect, doc_new_resized, i)
+                new_page.show_pdf_page(new_page.rect, doc_new_resized, i, overlay=True)
 
-                for item in adicionados:
-                    if item["pagina"] == i:
-                        r = fitz.Rect(item["bbox"])
-                        r.x0 -= BBOX_MARGIN
-                        r.y0 -= BBOX_MARGIN
-                        r.x1 += BBOX_MARGIN
-                        r.y1 += BBOX_MARGIN
+            for item in removidos:
+                if item["pagina"] == i:
+                    r = fitz.Rect(item["bbox"])
+                    r.x0 -= BBOX_MARGIN
+                    r.y0 -= BBOX_MARGIN
+                    r.x1 += BBOX_MARGIN
+                    r.y1 += BBOX_MARGIN
+                    texto = str(item.get("texto", "")).strip()
+                    if texto:
+                        new_page.insert_textbox(
+                            r,
+                            texto,
+                            fontsize=TEXT_SIZE,
+                            color=color_remove,
+                            overlay=True,
+                        )
+                    else:
                         new_page.draw_rect(
                             r,
-                            fill=color_add,
-                            width=0,
-                            fill_opacity=OPACITY_DEFAULT,
+                            color=color_remove,
+                            width=0.5,
+                            fill_opacity=0,
+                            overlay=True,
                         )
-                done += 1
-                if progress_callback:
-                    progress_callback((done / total_steps) * 100)
-                if cancel_callback and cancel_callback():
-                    raise CancelledError()
+
+            for item in adicionados:
+                if item["pagina"] == i:
+                    r = fitz.Rect(item["bbox"])
+                    r.x0 -= BBOX_MARGIN
+                    r.y0 -= BBOX_MARGIN
+                    r.x1 += BBOX_MARGIN
+                    r.y1 += BBOX_MARGIN
+                    texto = str(item.get("texto", "")).strip()
+                    if texto:
+                        new_page.insert_textbox(
+                            r,
+                            texto,
+                            fontsize=TEXT_SIZE,
+                            color=color_add,
+                            overlay=True,
+                        )
+                    else:
+                        new_page.draw_rect(
+                            r,
+                            color=color_add,
+                            width=0.5,
+                            fill_opacity=0,
+                            overlay=True,
+                        )
+
+            done += 1
+            if progress_callback:
+                progress_callback((done / total_steps) * 100)
+            if cancel_callback and cancel_callback():
+                raise CancelledError()
 
         final.save(output_pdf)
         doc_new_resized.close()
