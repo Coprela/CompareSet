@@ -1,3 +1,5 @@
+"""Generate annotated PDFs highlighting differences."""
+
 from typing import Callable, Optional
 
 from pdf_diff import CancelledError, _resize_new_pdf

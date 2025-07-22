@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""Utilities for comparing PDF documents."""
 
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -206,11 +207,13 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
         return doc
 
     cleaned = fitz.open()
-    for i, page in enumerate(doc):
-        new_page = cleaned.new_page(width=page.rect.width, height=page.rect.height)
-        new_page.show_pdf_page(new_page.rect, doc, i)
-    doc.close()
-    return cleaned
+    try:
+        for i, page in enumerate(doc):
+            new_page = cleaned.new_page(width=page.rect.width, height=page.rect.height)
+            new_page.show_pdf_page(new_page.rect, doc, i)
+        return cleaned
+    finally:
+        doc.close()
 
 
 def _resize_new_pdf(
