@@ -50,13 +50,25 @@ def _extract_bboxes(
     ----------
     doc: fitz.Document
         Opened document whose pages will be processed.
-    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y, rotation), optional
-        Transformations applied to each page's coordinates. Rotation is given in
-        degrees and defaults to ``0`` when omitted.
+    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y[, rotation]), optional
+        Transformations applied to each page's coordinates. Each tuple must
+        contain four or five numeric values. Rotation is given in degrees and
+        defaults to ``0`` when omitted.
     ignore_geometry: bool, optional
         When ``True`` skip drawing and image boxes, extracting only text.
     """
     pages: List[List[Tuple[float, float, float, float, str]]] = []
+    if transforms is not None:
+        for idx, t in enumerate(transforms):
+            if not isinstance(t, (list, tuple)) or len(t) not in (4, 5):
+                raise ValueError(
+                    "Transform %d must be a sequence of four or five numeric values" % idx
+                )
+            for v in t:
+                if not isinstance(v, (int, float)):
+                    raise TypeError(
+                        "Transform %d contains non-numeric value %r" % (idx, v)
+                    )
     for i, page in enumerate(doc):
         if transforms and i < len(transforms):
             t = transforms[i]
