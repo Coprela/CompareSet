@@ -1,7 +1,7 @@
 import pytest
 
 fitz = pytest.importorskip("fitz")
-from pdf_diff import _extract_bboxes
+from pdf_diff import _extract_bboxes  # noqa: E402
 
 def test_extract_bboxes_invalid_transform_length(tmp_path):
     doc = fitz.open()
