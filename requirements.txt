@@ -1,4 +1,4 @@
-PyMuPDF
+PyMuPDF>=1.22
 PySide6
 requests
 python-dotenv
