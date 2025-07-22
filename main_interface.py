@@ -1,12 +1,11 @@
 import os
 import time
-import getpass
 
 from dotenv import load_dotenv
 
 from user_check import (
-    load_users,
-    save_users,
+    load_emails,
+    save_emails,
     load_user_records,
     save_user_records,
     is_admin,
@@ -198,14 +197,13 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_missing_hint": "File not found. Please regenerate.",
                 "sort_recent": "Most recent",
                 "sort_alpha": "Alphabetical",
-                "manage_users": "Manage users",
-                "add_user": "Add user",
-                "remove_user": "Remove user",
-                "restore_user": "Restore user",
-                "user_save_failed": "Failed to update user list",
+                "manage_users": "Manage e-mails",
+                "add_user": "Add e-mail",
+                "remove_user": "Remove e-mail",
+                "restore_user": "Restore e-mail",
+                "user_save_failed": "Failed to update e-mail list",
                 "admin": "Administration",
-                "search_users": "Search users",
-                "username": "Username",
+                "search_users": "Search e-mails",
                 "real_name": "Name",
                 "email": "Email",
                 "status": "Status",
@@ -276,14 +274,13 @@ class CompareSetQt(QtWidgets.QWidget):
                 "file_missing_hint": "Arquivo não encontrado. Gere novamente.",
                 "sort_recent": "Mais recente",
                 "sort_alpha": "Ordem alfabética",
-                "manage_users": "Gerenciar usuários",
-                "add_user": "Adicionar usuário",
-                "remove_user": "Remover usuário",
-                "restore_user": "Restaurar usuário",
-                "user_save_failed": "Erro ao atualizar lista de usuários",
+                "manage_users": "Gerenciar e-mails",
+                "add_user": "Adicionar e-mail",
+                "remove_user": "Remover e-mail",
+                "restore_user": "Restaurar e-mail",
+                "user_save_failed": "Erro ao atualizar lista de e-mails",
                 "admin": "Administração",
-                "search_users": "Pesquisar usuários",
-                "username": "Usuário",
+                "search_users": "Pesquisar e-mails",
                 "real_name": "Nome",
                 "email": "Email",
                 "status": "Status",
@@ -1010,7 +1007,7 @@ class CompareSetQt(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(dlg)
         listw = QtWidgets.QListWidget()
         try:
-            user_list = load_users()
+            user_list = load_emails()
         except RuntimeError as e:
             QtWidgets.QMessageBox.critical(self, "Error", str(e))
             return
@@ -1055,7 +1052,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             users = [listw.item(i).text() for i in range(listw.count())]
-            if not save_users(users):
+            if not save_emails(users):
                 QtWidgets.QMessageBox.critical(
                     self, self.tr("error"), self.tr("user_save_failed")
                 )
@@ -1180,20 +1177,19 @@ class CompareSetQt(QtWidgets.QWidget):
         self.admin_layout.addLayout(search_row)
 
         self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(5)
+        self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(
             [
-                self.tr("username"),
-                self.tr("real_name"),
                 self.tr("email"),
+                self.tr("real_name"),
                 self.tr("status"),
                 "",
             ]
         )
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setColumnWidth(4, 24)
+        self.table.setColumnWidth(3, 24)
         self.table.horizontalHeader().setSectionResizeMode(
-            4, QtWidgets.QHeaderView.Fixed
+            3, QtWidgets.QHeaderView.Fixed
         )
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
@@ -1228,18 +1224,18 @@ class CompareSetQt(QtWidgets.QWidget):
         records = list(self._user_records)
         query = self.search_edit.text().lower()
         if self.sort_combo.currentData() == "alpha":
-            records.sort(key=lambda r: r.get("username", "").lower())
+            records.sort(key=lambda r: r.get("email", "").lower())
         else:
             records.sort(key=lambda r: r.get("added", 0), reverse=True)
         filtered = [
             r
             for r in records
-            if query in r.get("username", "").lower()
+            if query in r.get("email", "").lower()
             or query in r.get("name", "").lower()
             or query in r.get("email", "").lower()
         ]
         if self.filter_admin_chk.isChecked():
-            filtered = [r for r in filtered if r.get("username") in self._admins]
+            filtered = [r for r in filtered if r.get("email") in self._admins]
         self.table.setRowCount(len(filtered))
         icons_dir = os.path.join(os.path.dirname(__file__), "assets", "icons")
         pencil_path = os.path.join(icons_dir, "Icon - Pencil.png")
@@ -1250,10 +1246,10 @@ class CompareSetQt(QtWidgets.QWidget):
                 QtWidgets.QStyle.SP_FileDialogDetailedView
             )
         for row, rec in enumerate(filtered):
-            for col, key in enumerate(["username", "name", "email"]):
+            for col, key in enumerate(["email", "name"]):
                 item = QtWidgets.QTableWidgetItem(rec.get(key, ""))
                 self.table.setItem(row, col, item)
-            if rec.get("username") in self._admins:
+            if rec.get("email") in self._admins:
                 status = self.tr("admin_role")
                 item = QtWidgets.QTableWidgetItem(status)
                 item.setForeground(QtGui.QColor("blue"))
@@ -1262,13 +1258,13 @@ class CompareSetQt(QtWidgets.QWidget):
                 item = QtWidgets.QTableWidgetItem(status)
                 color = QtGui.QColor("#b1f2b1" if rec.get("active", True) else "#f8b2b2")
                 item.setBackground(color)
-            self.table.setItem(row, 3, item)
+            self.table.setItem(row, 2, item)
             btn = QtWidgets.QPushButton()
             btn.setIcon(pencil)
             btn.setIconSize(QtCore.QSize(16, 16))
-            btn.setProperty("username", rec.get("username"))
+            btn.setProperty("email", rec.get("email"))
             btn.clicked.connect(self._edit_user_dialog)
-            self.table.setCellWidget(row, 4, btn)
+            self.table.setCellWidget(row, 3, btn)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         self.table.resizeColumnsToContents()
@@ -1280,12 +1276,10 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg.setWindowTitle(self.tr("add_user"))
         dlg.resize(400, 150)
         lay = QtWidgets.QFormLayout(dlg)
-        user_edit = QtWidgets.QLineEdit()
-        name_edit = QtWidgets.QLineEdit()
         email_edit = QtWidgets.QLineEdit()
-        lay.addRow(self.tr("username"), user_edit)
-        lay.addRow(self.tr("real_name"), name_edit)
+        name_edit = QtWidgets.QLineEdit()
         lay.addRow(self.tr("email"), email_edit)
+        lay.addRow(self.tr("real_name"), name_edit)
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
         lay.addWidget(buttons)
         buttons.accepted.connect(dlg.accept)
@@ -1293,15 +1287,14 @@ class CompareSetQt(QtWidgets.QWidget):
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             recs = list(self._user_records)
             new_rec = {
-                "username": user_edit.text().strip(),
-                "name": name_edit.text().strip(),
                 "email": email_edit.text().strip(),
+                "name": name_edit.text().strip(),
                 "active": True,
                 "added": time.time(),
             }
-            if new_rec["username"]:
-                names = [r["username"] for r in recs]
-                if new_rec["username"] not in names:
+            if new_rec["email"]:
+                emails = [r["email"] for r in recs]
+                if new_rec["email"] not in emails:
                     recs.append(new_rec)
                     save_user_records(recs)
                     self._user_records = recs
@@ -1311,10 +1304,9 @@ class CompareSetQt(QtWidgets.QWidget):
         btn = self.sender()
         if not isinstance(btn, QtWidgets.QPushButton):
             return
-        username = btn.property("username")
         recs = list(self._user_records)
         admins = list(self._admins)
-        rec = next((r for r in recs if r.get("username") == username), None)
+        rec = next((r for r in recs if r.get("email") == btn.property("email")), None)
         if rec is None:
             return
 
@@ -1323,17 +1315,15 @@ class CompareSetQt(QtWidgets.QWidget):
         dlg.resize(400, 200)
         form = QtWidgets.QFormLayout(dlg)
 
-        user_edit = QtWidgets.QLineEdit(rec.get("username", ""))
-        name_edit = QtWidgets.QLineEdit(rec.get("name", ""))
         email_edit = QtWidgets.QLineEdit(rec.get("email", ""))
+        name_edit = QtWidgets.QLineEdit(rec.get("name", ""))
         active_chk = QtWidgets.QCheckBox(self.tr("active"))
         active_chk.setChecked(rec.get("active", True))
         admin_chk = QtWidgets.QCheckBox(self.tr("admin_role"))
-        admin_chk.setChecked(username in admins)
+        admin_chk.setChecked(rec.get("email") in admins)
 
-        form.addRow(self.tr("username"), user_edit)
-        form.addRow(self.tr("real_name"), name_edit)
         form.addRow(self.tr("email"), email_edit)
+        form.addRow(self.tr("real_name"), name_edit)
         date_str = self._format_datetime(rec.get("added", 0))
         form.addRow(self.tr("added_on"), QtWidgets.QLabel(date_str))
         form.addRow(self.tr("status"), active_chk)
@@ -1347,15 +1337,14 @@ class CompareSetQt(QtWidgets.QWidget):
         buttons.rejected.connect(dlg.reject)
 
         if dlg.exec() == QtWidgets.QDialog.Accepted:
-            rec["username"] = user_edit.text().strip()
-            rec["name"] = name_edit.text().strip()
             rec["email"] = email_edit.text().strip()
+            rec["name"] = name_edit.text().strip()
             rec["active"] = active_chk.isChecked()
 
-            if admin_chk.isChecked() and rec["username"] not in admins:
-                admins.append(rec["username"])
-            elif not admin_chk.isChecked() and rec["username"] in admins:
-                admins.remove(rec["username"])
+            if admin_chk.isChecked() and rec["email"] not in admins:
+                admins.append(rec["email"])
+            elif not admin_chk.isChecked() and rec.get("email") in admins:
+                admins.remove(rec.get("email"))
 
             save_user_records(recs, admins)
             self._user_records = recs
@@ -1448,24 +1437,26 @@ if __name__ == "__main__":
 
     app = QtWidgets.QApplication([])
 
-    user = getpass.getuser()
+    email, ok = QtWidgets.QInputDialog.getText(None, "Email", "Enter your e-mail:")
+    if not ok or not email:
+        raise SystemExit(0)
     try:
-        users = load_users()
+        users = load_emails()
     except RuntimeError as e:
         QtWidgets.QMessageBox.critical(None, "Error", str(e))
         raise SystemExit(1)
 
-    if user not in users:
+    if email not in users:
         lang = "pt" if os.getenv("LANG", "").startswith("pt") else "en"
         if lang == "pt":
             title = "Acesso negado"
-            msg = "Acesso n\u00e3o liberado. Usu\u00e1rio sem cadastro."
+            msg = "Acesso n\u00e3o liberado. E-mail n\u00e3o encontrado."
         else:
             title = "Access denied"
-            msg = "Access not allowed. User not registered."
+            msg = "Access not allowed. E-mail not registered."
         QtWidgets.QMessageBox.critical(None, title, msg)
         raise SystemExit(1)
 
-    win = CompareSetQt(is_admin(user))
+    win = CompareSetQt(is_admin(email))
     win.show()
     app.exec()
