@@ -57,11 +57,15 @@ class ComparisonThread(QtCore.QThread):
         old_pdf: str,
         new_pdf: str,
         output_pdf: str,
+        ignore_geometry: bool,
+        ignore_text: bool,
     ):
         super().__init__()
         self.old_pdf = old_pdf
         self.new_pdf = new_pdf
         self.output_pdf = output_pdf
+        self.ignore_geometry = ignore_geometry
+        self.ignore_text = ignore_text
         self._cancelled = False
         self.elements_checked = 0
         self.diff_count = 0
@@ -78,7 +82,8 @@ class ComparisonThread(QtCore.QThread):
                 self.old_pdf,
                 self.new_pdf,
                 adaptive=True,
-                ignore_geometry=True,
+                ignore_geometry=self.ignore_geometry,
+                ignore_text=self.ignore_text,
                 progress_callback=lambda p: self.progress.emit(p / 2),
                 cancel_callback=self.is_cancelled,
             )
@@ -210,6 +215,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "added_on": "Added on:",
                 "swap": "Swap",
                 "swap_tooltip": "Swap selected PDFs",
+                "elements_label": "Select elements to compare:",
+                "text_option": "Text",
+                "text_tip": "Compares changes in words, numbers, and annotations.",
+                "geom_option": "Geometric elements",
+                "geom_tip": "Compares changes in visual elements such as lines, shapes, charts, and vectors.",
                 "coming_soon": "Coming soon",
             },
             "pt": {
@@ -283,6 +293,11 @@ class CompareSetQt(QtWidgets.QWidget):
                 "added_on": "Cadastrado em:",
                 "swap": "Inverter seleção",
                 "swap_tooltip": "Inverter arquivos selecionados",
+                "elements_label": "Selecionar elementos para comparar:",
+                "text_option": "Texto",
+                "text_tip": "Compara alterações em palavras, números e anotações.",
+                "geom_option": "Elementos geométricos",
+                "geom_tip": "Compara alterações em elementos visuais como linhas, formas, gráficos e vetores.",
                 "coming_soon": "Em breve",
             },
         }
@@ -338,6 +353,12 @@ class CompareSetQt(QtWidgets.QWidget):
             self.btn_swap.setToolTip(t["swap_tooltip"])
         if hasattr(self, "filter_admin_chk"):
             self.filter_admin_chk.setText(t["admin_role"])
+        if hasattr(self, "elements_label"):
+            self.elements_label.setText(t["elements_label"])
+            self.text_chk.setText(t["text_option"])
+            self.text_chk.setToolTip(t["text_tip"])
+            self.geom_chk.setText(t["geom_option"])
+            self.geom_chk.setToolTip(t["geom_tip"])
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
@@ -495,6 +516,21 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_swap.setFont(self.btn_font)
         self.btn_swap.clicked.connect(self.swap_selection)
         grid.addWidget(self.btn_swap, 2, 0, 1, 2, alignment=QtCore.Qt.AlignCenter)
+
+        self.elements_label = QtWidgets.QLabel()
+        layout.addWidget(self.elements_label)
+        elements_row = QtWidgets.QHBoxLayout()
+        elements_row.setSpacing(10)
+        elements_row.setAlignment(QtCore.Qt.AlignCenter)
+        self.text_chk = QtWidgets.QCheckBox()
+        self.text_chk.setChecked(True)
+        self.geom_chk = QtWidgets.QCheckBox()
+        self.geom_chk.setChecked(True)
+        self.text_chk.stateChanged.connect(self._enforce_element_selection)
+        self.geom_chk.stateChanged.connect(self._enforce_element_selection)
+        elements_row.addWidget(self.text_chk)
+        elements_row.addWidget(self.geom_chk)
+        layout.addLayout(elements_row)
 
         self.btn_compare = QtWidgets.QPushButton()
         self.btn_compare.setStyleSheet(
@@ -668,6 +704,12 @@ class CompareSetQt(QtWidgets.QWidget):
         self.btn_compare.setStyleSheet(style)
         self.btn_compare.setEnabled(filled)
 
+    def _enforce_element_selection(self):
+        if not self.text_chk.isChecked() and not self.geom_chk.isChecked():
+            sender = self.sender()
+            if isinstance(sender, QtWidgets.QCheckBox):
+                sender.setChecked(True)
+
     # slots
     def select_old(self):
         self.clear_results()
@@ -759,10 +801,15 @@ class CompareSetQt(QtWidgets.QWidget):
         self.action_admin.setEnabled(False)
         self.history_sep.setVisible(True)
 
+        ignore_geometry = not self.geom_chk.isChecked()
+        ignore_text = not self.text_chk.isChecked()
+
         self.thread = ComparisonThread(
             old,
             new,
             out,
+            ignore_geometry,
+            ignore_text,
         )
         self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)
