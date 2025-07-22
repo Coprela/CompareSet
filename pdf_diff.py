@@ -34,9 +34,14 @@ class CancelledError(Exception):
 
     pass
 
+
+def _page_orientation(rect: fitz.Rect) -> str:
+    """Return ``'landscape'`` or ``'portrait'`` for a page rectangle."""
+    return "landscape" if rect.width > rect.height else "portrait"
+
 def _extract_bboxes(
     doc: fitz.Document,
-    transforms: Optional[List[Tuple[float, float, float, float]]] = None,
+    transforms: Optional[List[Tuple[float, float, float, float, float]]] = None,
     ignore_geometry: bool = False,
 ) -> List[List[Tuple[float, float, float, float, str]]]:
     """Return list of bboxes per page from drawings and text blocks.
@@ -45,19 +50,29 @@ def _extract_bboxes(
     ----------
     doc: fitz.Document
         Opened document whose pages will be processed.
-    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y), optional
-        Transformations applied to each page's coordinates.
+    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y, rotation), optional
+        Transformations applied to each page's coordinates. Rotation is given in
+        degrees and defaults to ``0`` when omitted.
     ignore_geometry: bool, optional
         When ``True`` skip drawing and image boxes, extracting only text.
     """
     pages: List[List[Tuple[float, float, float, float, str]]] = []
     for i, page in enumerate(doc):
         if transforms and i < len(transforms):
-            sx, sy, tx, ty = transforms[i]
+            t = transforms[i]
+            if len(t) == 5:
+                sx, sy, tx, ty, rot = t
+            else:
+                sx, sy, tx, ty = t
+                rot = 0.0
         else:
             sx = sy = 1.0
             tx = ty = 0.0
+            rot = 0.0
         bboxes = []
+        matrix = fitz.Matrix(sx, sy)
+        if rot:
+            matrix = matrix.preRotate(rot)
         if not ignore_geometry:
             # Bounding boxes from drawing objects (no associated text)
             for drawing in page.get_drawings():
@@ -73,10 +88,11 @@ def _extract_bboxes(
                     if xs and ys:
                         r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
                 if r:
-                    x0 = r.x0 * sx + tx
-                    y0 = r.y0 * sy + ty
-                    x1 = r.x1 * sx + tx
-                    y1 = r.y1 * sy + ty
+                    r = matrix * r
+                    x0 = r.x0 + tx
+                    y0 = r.y0 + ty
+                    x1 = r.x1 + tx
+                    y1 = r.y1 + ty
                     if x1 - x0 == 0:
                         x1 += 0.1
                     if y1 - y0 == 0:
@@ -87,12 +103,13 @@ def _extract_bboxes(
             for img in page.get_images(full=True):
                 xref = img[0]
                 for r in page.get_image_rects(xref):
+                    r_t = matrix * r
                     bboxes.append(
                         (
-                            r.x0 * sx + tx,
-                            r.y0 * sy + ty,
-                            r.x1 * sx + tx,
-                            r.y1 * sy + ty,
+                            r_t.x0 + tx,
+                            r_t.y0 + ty,
+                            r_t.x1 + tx,
+                            r_t.y1 + ty,
                             "",
                         )
                     )
@@ -101,12 +118,14 @@ def _extract_bboxes(
         for word in page.get_text("words"):
             if len(word) >= 5:
                 x0, y0, x1, y1, text = word[:5]
+                r = fitz.Rect(float(x0), float(y0), float(x1), float(y1))
+                r = matrix * r
                 bboxes.append(
                     (
-                        float(x0) * sx + tx,
-                        float(y0) * sy + ty,
-                        float(x1) * sx + tx,
-                        float(y1) * sy + ty,
+                        r.x0 + tx,
+                        r.y0 + ty,
+                        r.x1 + tx,
+                        r.y1 + ty,
                         str(text).strip(),
                     )
                 )
@@ -333,6 +352,7 @@ def comparar_pdfs(
     adaptive: bool = False,
     pos_tol: float = 3.0,
     ignore_geometry: bool = False,
+    auto_orient: bool = True,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -362,6 +382,9 @@ def comparar_pdfs(
     ignore_geometry : bool, optional
         If ``True`` compare only text and numeric strings, ignoring drawing
         and image elements.
+    auto_orient : bool, optional
+        When ``True`` automatically rotate pages so old and new PDFs share the
+        same orientation before comparison.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
@@ -399,24 +422,30 @@ def comparar_pdfs(
                 rect_old = doc_old[i].rect
             else:
                 rect_old = doc_new[i].rect
+
             rect_new = doc_new[i].rect
+            rotate = 0.0
+            if auto_orient and _page_orientation(rect_old) != _page_orientation(rect_new):
+                rotate = 90.0
+                rect_new = fitz.Rect(0, 0, rect_new.height, rect_new.width)
+
             width_diff = abs(rect_old.width - rect_new.width)
             height_diff = abs(rect_old.height - rect_new.height)
             if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
                 # pages are effectively the same size
-                transforms_new.append((1.0, 1.0, 0.0, 0.0))
+                transforms_new.append((1.0, 1.0, 0.0, 0.0, rotate))
             elif rect_old.width != rect_new.width or rect_old.height != rect_new.height:
                 sx = rect_old.width / rect_new.width
                 sy = rect_old.height / rect_new.height
                 s = min(sx, sy)
                 tx = (rect_old.width - rect_new.width * s) / 2.0
                 ty = (rect_old.height - rect_new.height * s) / 2.0
-                transforms_new.append((s, s, tx, ty))
+                transforms_new.append((s, s, tx, ty, rotate))
             else:
-                transforms_new.append((1.0, 1.0, 0.0, 0.0))
+                transforms_new.append((1.0, 1.0, 0.0, 0.0, rotate))
 
         old_pages = _extract_bboxes(doc_old, ignore_geometry=ignore_geometry)
-        new_pages = _extract_bboxes(doc_new, transforms_new, ignore_geometry)
+        new_pages = _extract_bboxes(doc_new, transforms_new, ignore_geometry=ignore_geometry)
         max_pages = max(len(old_pages), len(new_pages))
 
         if adaptive:
