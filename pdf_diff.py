@@ -104,6 +104,8 @@ def _extract_bboxes(
                     if xs and ys:
                         r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
                 if r:
+                    if not isinstance(r, fitz.Rect):
+                        r = fitz.Rect(r)
                     r = matrix * r
                     x0 = r.x0 + tx
                     y0 = r.y0 + ty
@@ -119,6 +121,8 @@ def _extract_bboxes(
             for img in page.get_images(full=True):
                 xref = img[0]
                 for r in page.get_image_rects(xref):
+                    if not isinstance(r, fitz.Rect):
+                        r = fitz.Rect(r)
                     r_t = matrix * r
                     bboxes.append(
                         (
