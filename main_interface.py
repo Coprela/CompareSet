@@ -328,6 +328,14 @@ class CompareSetQt(QtWidgets.QWidget):
         fmt = "%m-%d-%Y - %H:%M" if self.lang == "en" else "%d-%m-%Y - %H:%M"
         return time.strftime(fmt, time.localtime(ts))
 
+    def _set_fixed_size_centered(self, size: QtCore.QSize):
+        """Resize the window keeping its center position."""
+        center = self.frameGeometry().center()
+        self.setFixedSize(size)
+        geo = self.frameGeometry()
+        geo.moveCenter(center)
+        self.move(geo.topLeft())
+
     def set_language(self, lang: str):
         if lang in self.translations:
             self.lang = lang
@@ -1056,13 +1064,13 @@ class CompareSetQt(QtWidgets.QWidget):
         self.clear_results()
         self._build_history()
         self.stack.setCurrentWidget(self.history_page)
-        self.setFixedSize(self.large_size)
+        self._set_fixed_size_centered(self.large_size)
 
     def open_admin_page(self):
         self.clear_results()
         self._build_admin_page()
         self.stack.setCurrentWidget(self.admin_page)
-        self.setFixedSize(self.large_size)
+        self._set_fixed_size_centered(self.large_size)
 
     def _build_history(self):
         while self.history_layout.count():
@@ -1137,7 +1145,7 @@ class CompareSetQt(QtWidgets.QWidget):
         )
         back_btn.setFixedHeight(self.btn_height)
         back_btn.setFont(self.btn_font)
-        back_btn.clicked.connect(lambda: (self.stack.setCurrentWidget(self.main_page), self.setFixedSize(self.small_size)))
+        back_btn.clicked.connect(lambda: (self.stack.setCurrentWidget(self.main_page), self._set_fixed_size_centered(self.small_size)))
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
@@ -1194,7 +1202,7 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
             "QPushButton:hover{background-color:#333333;}"
         )
-        btn_back.clicked.connect(lambda: (self.stack.setCurrentWidget(self.main_page), self.setFixedSize(self.small_size)))
+        btn_back.clicked.connect(lambda: (self.stack.setCurrentWidget(self.main_page), self._set_fixed_size_centered(self.small_size)))
         bottom = QtWidgets.QHBoxLayout()
         bottom.addWidget(btn_back)
         bottom.addStretch()
