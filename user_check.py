@@ -7,6 +7,7 @@ remote JSON file contains two keys:
     List of dictionaries with the following structure::
 
         {
+            "username": "jdoe",
             "name": "John Doe",
             "email": "jdoe@example.com",
             "active": true,
@@ -17,8 +18,11 @@ remote JSON file contains two keys:
     entries are kept even when deactivated so the history is preserved.
 
 ``admins``
-    List of e-mail addresses with administrative privileges.  Admins always
-    have access regardless of the ``active`` state in ``users``.
+    List of usernames with administrative privileges.  Admins always have
+    access regardless of the ``active`` state in ``users``.
+
+Only the ``username`` field is used to grant access; the remaining fields are
+purely informational.
 """
 
 from __future__ import annotations
@@ -56,6 +60,7 @@ def load_user_records() -> List[Dict[str, Any]]:
             continue
         cleaned.append(
             {
+                "username": str(u.get("username", "")),
                 "name": str(u.get("name", "")),
                 "email": str(u.get("email", "")),
                 "active": bool(u.get("active", True)),
@@ -65,53 +70,53 @@ def load_user_records() -> List[Dict[str, Any]]:
     return cleaned
 
 
-def load_emails() -> List[str]:
-    """Return the list of e-mail addresses with access."""
+def load_users() -> List[str]:
+    """Return the list of usernames with access."""
     data = _load_data()
     users = load_user_records()
-    allowed = [u["email"] for u in users if u.get("active", True)]
+    allowed = [u["username"] for u in users if u.get("active", True)]
     admins = data.get("admins", [])
     if isinstance(admins, list):
         allowed.extend(str(a) for a in admins)
-    # filter empty strings and deduplicate
-    return sorted(set(e for e in allowed if e))
+    return sorted(set(allowed))
 
 
-def save_emails(emails: List[str]) -> bool:
-    """Save *emails* to the GitHub repository. Returns ``True`` on success."""
+def save_users(users: List[str]) -> bool:
+    """Save *users* to the GitHub repository. Returns ``True`` on success."""
     existing = _load_data()
     records = load_user_records()
     now = time.time()
-    email_map = {u.get("email", ""): u for u in records}
-    for address in emails:
-        if address not in email_map:
-            email_map[address] = {
+    usernames = {u["username"]: u for u in records}
+    for name in users:
+        if name not in usernames:
+            usernames[name] = {
+                "username": name,
                 "name": "",
-                "email": address,
+                "email": "",
                 "active": True,
                 "added": now,
             }
         else:
-            email_map[address]["active"] = True
-    for rec in email_map.values():
-        if rec.get("email") not in emails:
+            usernames[name]["active"] = True
+    for rec in usernames.values():
+        if rec["username"] not in users:
             rec["active"] = False
     data = {
-        "users": sorted(email_map.values(), key=lambda r: r.get("added", 0)),
+        "users": sorted(usernames.values(), key=lambda r: r.get("added", 0)),
         "admins": existing.get("admins", []),
     }
     return save_json(ALLOWED_USERS_FILE, data, "Atualiza\u00e7\u00e3o da lista de usu\u00e1rios")
 
 
-def is_admin(email: str) -> bool:
-    """Return ``True`` if *email* has administrative privileges."""
+def is_admin(username: str) -> bool:
+    """Return ``True`` if *username* has administrative privileges."""
     data = _load_data()
     admins = data.get("admins", [])
-    return isinstance(admins, list) and email in admins
+    return isinstance(admins, list) and username in admins
 
 
 def load_admins() -> List[str]:
-    """Return the list of administrator e-mails."""
+    """Return the list of administrator usernames."""
     data = _load_data()
     admins = data.get("admins", [])
     if not isinstance(admins, list):
