@@ -16,6 +16,7 @@ STANDARD_PAGE_SIZES_MM = {
     "A7": (74, 105),
 }
 
+
 def _get_standard_label(width_pt: float, height_pt: float, tol_mm: float = 2) -> str:
     """Return the ISO size label for a page or an empty string."""
     mm_per_pt = 25.4 / 72
@@ -39,6 +40,7 @@ def _page_orientation(rect: fitz.Rect) -> str:
     """Return ``'landscape'`` or ``'portrait'`` for a page rectangle."""
     return "landscape" if rect.width > rect.height else "portrait"
 
+
 def _extract_bboxes(
     doc: fitz.Document,
     transforms: Optional[List[Tuple[float, float, float, float, float]]] = None,
@@ -51,10 +53,13 @@ def _extract_bboxes(
     ----------
     doc: fitz.Document
         Opened document whose pages will be processed.
-    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y[, rotation]), optional
+    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y[, rotation])
+        or (a, b, c, d, e, f), optional
         Transformations applied to each page's coordinates. Each tuple must
-        contain four or five numeric values. Rotation is given in degrees and
-        defaults to ``0`` when omitted.
+        contain four, five or six numeric values. Rotation is given in degrees
+        and defaults to ``0`` when omitted. When six values are supplied they
+        are interpreted as the full transformation matrix ``(a, b, c, d, e, f)``
+        accepted by :class:`fitz.Matrix` and used as-is.
     ignore_geometry: bool, optional
         When ``True`` skip drawing and image boxes, extracting only text.
     ignore_text: bool, optional
@@ -64,9 +69,10 @@ def _extract_bboxes(
     pages: List[List[Tuple[float, float, float, float, str]]] = []
     if transforms is not None:
         for idx, t in enumerate(transforms):
-            if not isinstance(t, (list, tuple)) or len(t) not in (4, 5):
+            if not isinstance(t, (list, tuple)) or len(t) not in (4, 5, 6):
                 raise ValueError(
-                    "Transform %d must be a sequence of four or five numeric values" % idx
+                    "Transform %d must be a sequence of four, five or six numeric values"
+                    % idx
                 )
             for v in t:
                 if not isinstance(v, (int, float)):
@@ -76,19 +82,24 @@ def _extract_bboxes(
     for i, page in enumerate(doc):
         if transforms and i < len(transforms):
             t = transforms[i]
-            if len(t) == 5:
+            if len(t) == 6:
+                matrix = fitz.Matrix(*t)
+                tx = ty = 0.0
+                rot = None
+            elif len(t) == 5:
                 sx, sy, tx, ty, rot = t
-            else:
+                matrix = fitz.Matrix(sx, sy)
+            else:  # len == 4
                 sx, sy, tx, ty = t
                 rot = 0.0
+                matrix = fitz.Matrix(sx, sy)
         else:
-            sx = sy = 1.0
             tx = ty = 0.0
-            rot = 0.0
-        bboxes = []
-        matrix = fitz.Matrix(sx, sy)
-        if rot:
+            rot = None
+            matrix = fitz.Matrix(1.0, 1.0)
+        if rot is not None and rot:
             matrix = matrix.preRotate(rot)
+        bboxes = []
         if not ignore_geometry:
             # Bounding boxes from drawing objects (no associated text)
             for drawing in page.get_drawings():
@@ -210,7 +221,9 @@ def _resize_new_pdf(
         page = doc_new[i]
         src_rect = page.rect
         rotate = 0.0
-        if auto_orient and _page_orientation(target_rect) != _page_orientation(src_rect):
+        if auto_orient and _page_orientation(target_rect) != _page_orientation(
+            src_rect
+        ):
             rotate = 90.0
             src_rect = fitz.Rect(0, 0, src_rect.height, src_rect.width)
 
@@ -230,8 +243,6 @@ def _resize_new_pdf(
 def _round(value: float, digits: int = 1) -> float:
     """Round coordinates to a visually safe precision."""
     return round(float(value), digits)
-
-
 
 
 def _compare_page(
@@ -344,14 +355,12 @@ def _remove_moved_same_text(
                     rh = r["bbox"][3] - r["bbox"][1]
                     aw = a["bbox"][2] - a["bbox"][0]
                     ah = a["bbox"][3] - a["bbox"][1]
-                    width_ok = (
-                        abs(rw - aw) <= size_eps
-                        or abs(rw - aw) <= rel_size_eps * max(rw, aw)
-                    )
-                    height_ok = (
-                        abs(rh - ah) <= size_eps
-                        or abs(rh - ah) <= rel_size_eps * max(rh, ah)
-                    )
+                    width_ok = abs(rw - aw) <= size_eps or abs(
+                        rw - aw
+                    ) <= rel_size_eps * max(rw, aw)
+                    height_ok = abs(rh - ah) <= size_eps or abs(
+                        rh - ah
+                    ) <= rel_size_eps * max(rh, ah)
                     if width_ok and height_ok:
                         match = i
                         break
@@ -382,21 +391,16 @@ def _remove_contained(boxes: List[Dict], eps: float = 0.01) -> List[Dict]:
             if i == j:
                 continue
             if _contains(other["bbox"], box["bbox"]):
-                if (
-                    (other["bbox"][2] - other["bbox"][0])
-                    * (other["bbox"][3] - other["bbox"][1])
-                    <=
-                    (box["bbox"][2] - box["bbox"][0])
-                    * (box["bbox"][3] - box["bbox"][1])
+                if (other["bbox"][2] - other["bbox"][0]) * (
+                    other["bbox"][3] - other["bbox"][1]
+                ) <= (box["bbox"][2] - box["bbox"][0]) * (
+                    box["bbox"][3] - box["bbox"][1]
                 ):
                     contained = True
                     break
         if not contained:
             filtered.append(box)
     return filtered
-
-
-
 
 
 def comparar_pdfs(
@@ -470,7 +474,6 @@ def comparar_pdfs(
                     f"Warning: {name} ({label}) has non-standard page sizes on page(s): {pages}"
                 )
 
-
         # scale new PDF pages to match the size of the old PDF
         doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
 
@@ -512,10 +515,12 @@ def comparar_pdfs(
                     result["verificados"] += len(old_boxes) + len(new_boxes)
                 rem, add = _compare_page(old_boxes, new_boxes, thr_val)
                 removidos.extend(
-                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]} for b in rem
+                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]}
+                    for b in rem
                 )
                 adicionados.extend(
-                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]} for b in add
+                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]}
+                    for b in add
                 )
                 if progress_callback:
                     done = j * max_pages + page_num + 1
@@ -525,7 +530,9 @@ def comparar_pdfs(
                     raise CancelledError()
 
             removidos, adicionados = _remove_unchanged(removidos, adicionados)
-            removidos, adicionados = _remove_moved_same_text(removidos, adicionados, dist=pos_tol)
+            removidos, adicionados = _remove_moved_same_text(
+                removidos, adicionados, dist=pos_tol
+            )
             removidos = _remove_contained(removidos)
             adicionados = _remove_contained(adicionados)
             result = {
