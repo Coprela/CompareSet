@@ -13,13 +13,14 @@
       "added": 0.0
     },
     {
-      "name": "",
-      "email": "",
-      "active": false,
+      "name": "Glaucio Paixao",
+      "email": "glaucio.paixao@technipfmc.com",
+      "active": true,
       "added": 1753126157.8544452
     }
   ],
   "admins": [
-    "daniel.oliveira3@technipfmc.com"
+    "daniel.oliveira3@technipfmc.com",
+    "glaucio.paixao@technipfmc.com"
   ]
 }
