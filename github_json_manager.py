@@ -8,6 +8,8 @@ import webbrowser
 
 from cryptography.fernet import Fernet
 
+from cryptography.fernet import Fernet
+
 import requests
 
 GITHUB_REPO = os.getenv("GITHUB_REPO", "Coprela/CompareSet")

@@ -2,7 +2,6 @@ import os
 from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException, Header
-
 from github_json_manager import load_json, save_json
 
 API_TOKEN = os.getenv("SERVER_API_TOKEN")
@@ -19,7 +18,7 @@ def _check_token(token: Optional[str]):
 
 @app.get("/usuarios")
 def get_usuarios(x_token: Optional[str] = Header(None)):
-    """Retorna o conteudo do usuarios.json."""
+    """Retorna o conteúdo do usuarios.json."""
     _check_token(x_token)
     data = load_json(JSON_FILENAME)
     if not data:
@@ -29,12 +28,12 @@ def get_usuarios(x_token: Optional[str] = Header(None)):
 
 @app.post("/usuarios")
 def update_usuarios(payload: Dict[str, Any], x_token: Optional[str] = Header(None)):
-    """Atualiza o usuarios.json com o conteudo fornecido."""
+    """Atualiza o usuarios.json com o conteúdo fornecido."""
     _check_token(x_token)
     data = payload.get("data")
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="Payload must include 'data' dict")
-    msg = payload.get("message", "Atualizacao via servidor")
+    msg = payload.get("message", "Atualização via CompareSet Server")
     success = save_json(JSON_FILENAME, data, commit_message=msg)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save JSON")
@@ -43,5 +42,4 @@ def update_usuarios(payload: Dict[str, Any], x_token: Optional[str] = Header(Non
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("server:app", host="0.0.0.0", port=SERVER_PORT)
