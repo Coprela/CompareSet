@@ -190,6 +190,39 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
     return cleaned
 
 
+def _resize_new_pdf(
+    doc_old: fitz.Document, doc_new: fitz.Document, auto_orient: bool
+) -> fitz.Document:
+    """Return ``doc_new`` scaled to match ``doc_old`` page dimensions."""
+
+    resized = fitz.open()
+    max_pages = len(doc_new)
+    for i in range(max_pages):
+        if i < len(doc_old):
+            target_rect = doc_old[i].rect
+        else:
+            target_rect = doc_new[i].rect
+
+        page = doc_new[i]
+        src_rect = page.rect
+        rotate = 0.0
+        if auto_orient and _page_orientation(target_rect) != _page_orientation(src_rect):
+            rotate = 90.0
+            src_rect = fitz.Rect(0, 0, src_rect.height, src_rect.width)
+
+        sx = target_rect.width / src_rect.width
+        sy = target_rect.height / src_rect.height
+        s = min(sx, sy)
+        tx = (target_rect.width - src_rect.width * s) / 2.0
+        ty = (target_rect.height - src_rect.height * s) / 2.0
+
+        new_page = resized.new_page(width=target_rect.width, height=target_rect.height)
+        dest = fitz.Rect(tx, ty, tx + src_rect.width * s, ty + src_rect.height * s)
+        new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
+
+    return resized
+
+
 def _round(value: float, digits: int = 1) -> float:
     """Round coordinates to a visually safe precision."""
     return round(float(value), digits)
@@ -433,36 +466,9 @@ def comparar_pdfs(
                     f"Warning: {name} ({label}) has non-standard page sizes on page(s): {pages}"
                 )
 
-        tolerance_pt = 72 / 25.4  # roughly one millimetre
 
-        # compute transforms mapping new pages onto old pages
-        transforms_new = []
-        for i in range(len(doc_new)):
-            if i < len(doc_old):
-                rect_old = doc_old[i].rect
-            else:
-                rect_old = doc_new[i].rect
-
-            rect_new = doc_new[i].rect
-            rotate = 0.0
-            if auto_orient and _page_orientation(rect_old) != _page_orientation(rect_new):
-                rotate = 90.0
-                rect_new = fitz.Rect(0, 0, rect_new.height, rect_new.width)
-
-            width_diff = abs(rect_old.width - rect_new.width)
-            height_diff = abs(rect_old.height - rect_new.height)
-            if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
-                # pages are effectively the same size
-                transforms_new.append((1.0, 1.0, 0.0, 0.0, rotate))
-            elif rect_old.width != rect_new.width or rect_old.height != rect_new.height:
-                sx = rect_old.width / rect_new.width
-                sy = rect_old.height / rect_new.height
-                s = min(sx, sy)
-                tx = (rect_old.width - rect_new.width * s) / 2.0
-                ty = (rect_old.height - rect_new.height * s) / 2.0
-                transforms_new.append((s, s, tx, ty, rotate))
-            else:
-                transforms_new.append((1.0, 1.0, 0.0, 0.0, rotate))
+        # scale new PDF pages to match the size of the old PDF
+        doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
 
         old_pages = _extract_bboxes(
             doc_old,
@@ -470,8 +476,7 @@ def comparar_pdfs(
             ignore_text=ignore_text,
         )
         new_pages = _extract_bboxes(
-            doc_new,
-            transforms_new,
+            doc_new_resized,
             ignore_geometry=ignore_geometry,
             ignore_text=ignore_text,
         )
@@ -536,5 +541,7 @@ def comparar_pdfs(
             previous = current
             if not removidos and not adicionados:
                 break
+
+        doc_new_resized.close()
 
     return result
