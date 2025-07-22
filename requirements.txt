@@ -2,3 +2,4 @@ PyMuPDF
 PySide6
 requests
 python-dotenv
+pyarmor
