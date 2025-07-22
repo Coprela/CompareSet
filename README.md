@@ -31,6 +31,21 @@ Configuration is loaded from environment variables. Copy `.env.example` to `.env
 and adjust as needed. Using [python-dotenv](https://pypi.org/project/python-dotenv/)
 prevents secrets from being committed.
 
+### OAuth authentication
+
+If no `GITHUB_TOKEN` is provided, CompareSet can authenticate via GitHub's device
+flow at startup. Set `GITHUB_CLIENT_ID` to your OAuth App client ID and define
+`GITHUB_OAUTH_SCOPES` (default: `repo`). When launching the application you will
+be prompted to open a verification URL and enter the displayed code. The
+resulting token is stored only in memory for that session.
+
+### Local server
+
+For convenience a small FastAPI server (`server.py`) can proxy access to
+`usuarios.json`. It runs on `localhost` using port `SERVER_PORT` (default 5020).
+Set `SERVER_API_TOKEN` to restrict access to clients that send the matching
+header value.
+
 ## Packaging
 
 To create a standalone executable you can use [PyInstaller](https://www.pyinstaller.org/):
