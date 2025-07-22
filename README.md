@@ -32,12 +32,6 @@ with **Contents: Read and Write** permission for the repository. Using
 [python-dotenv](https://pypi.org/project/python-dotenv/) prevents secrets from
 being committed.
 
-### Local server
-
-For convenience a small FastAPI server (`server.py`) can proxy access to
-`usuarios.json`. It runs on `localhost` using port `SERVER_PORT` (default 5020).
-Set `SERVER_API_TOKEN` to restrict access to clients that send the matching
-header value.
 
 ## Packaging
 
