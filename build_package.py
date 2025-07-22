@@ -1,16 +1,38 @@
 import os
+import shutil
 import subprocess
 
 import PyInstaller.__main__
 from version_check import CURRENT_VERSION
 
+
 sep = ";" if os.name == "nt" else ":"
+
+
+def _obfuscate(entry: str) -> str:
+    """Attempt to obfuscate the given script with PyArmor."""
+    out_dir = "obf"
+    try:
+        subprocess.run([
+            "pyarmor",
+            "obfuscate",
+            "-O",
+            out_dir,
+            entry,
+        ], check=True)
+        return os.path.join(out_dir, entry)
+    except Exception as exc:
+        print(f"PyArmor not available ({exc}); building without obfuscation.")
+        return entry
 
 # Build the executable starting from the Qt interface entry script.
 app_name = f"CompareSet {CURRENT_VERSION}"
+
+entry_script = _obfuscate("main_interface.py")
+
 PyInstaller.__main__.run(
     [
-        "main_interface.py",
+        entry_script,
         f"--name={app_name}",
         "--onefile",
         "--windowed",
@@ -27,6 +49,9 @@ PyInstaller.__main__.run(
         f"--icon=assets{os.sep}icons{os.sep}Icon - CompareSet.ico",
     ]
 )
+
+if entry_script != "main_interface.py":
+    shutil.rmtree(os.path.dirname(entry_script), ignore_errors=True)
 
 
 def _sign_executable(path: str) -> None:

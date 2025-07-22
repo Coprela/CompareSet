@@ -3,6 +3,11 @@
 CompareSet is a tool for comparing vector-based PDF drawings. The project uses a
 `src` layout for maintainability and includes a simple GUI built with PySide6.
 
+## About
+
+CompareSet was created for the DDT-FUE department at TechnipFMC and is intended
+for use in authorized corporate environments.
+
 ## Quick start
 
 ```bash
@@ -35,9 +40,11 @@ being committed.
 
 ## Packaging
 
-To create a standalone executable you can use [PyInstaller](https://www.pyinstaller.org/):
+For extra protection against reverse engineering, the build script attempts to
+obfuscate sources with [PyArmor](https://pyarmor.readthedocs.io/). Install
+PyArmor and PyInstaller then run the packaging script:
 
 ```bash
-pip install pyinstaller
-pyinstaller --onefile -n compareset src/compareset/ui/main_window.py
+pip install pyarmor pyinstaller
+python build_package.py
 ```
