@@ -43,6 +43,7 @@ def _extract_bboxes(
     doc: fitz.Document,
     transforms: Optional[List[Tuple[float, float, float, float, float]]] = None,
     ignore_geometry: bool = False,
+    ignore_text: bool = False,
 ) -> List[List[Tuple[float, float, float, float, str]]]:
     """Return list of bboxes per page from drawings and text blocks.
 
@@ -56,6 +57,9 @@ def _extract_bboxes(
         defaults to ``0`` when omitted.
     ignore_geometry: bool, optional
         When ``True`` skip drawing and image boxes, extracting only text.
+    ignore_text: bool, optional
+        When ``True`` skip text extraction, returning only drawing and image
+        boxes.
     """
     pages: List[List[Tuple[float, float, float, float, str]]] = []
     if transforms is not None:
@@ -127,20 +131,21 @@ def _extract_bboxes(
                     )
 
         # Bounding boxes from individual words instead of full text blocks
-        for word in page.get_text("words"):
-            if len(word) >= 5:
-                x0, y0, x1, y1, text = word[:5]
-                r = fitz.Rect(float(x0), float(y0), float(x1), float(y1))
-                r = matrix * r
-                bboxes.append(
-                    (
-                        r.x0 + tx,
-                        r.y0 + ty,
-                        r.x1 + tx,
-                        r.y1 + ty,
-                        str(text).strip(),
+        if not ignore_text:
+            for word in page.get_text("words"):
+                if len(word) >= 5:
+                    x0, y0, x1, y1, text = word[:5]
+                    r = fitz.Rect(float(x0), float(y0), float(x1), float(y1))
+                    r = matrix * r
+                    bboxes.append(
+                        (
+                            r.x0 + tx,
+                            r.y0 + ty,
+                            r.x1 + tx,
+                            r.y1 + ty,
+                            str(text).strip(),
+                        )
                     )
-                )
 
         pages.append(bboxes)
     return pages
@@ -364,6 +369,7 @@ def comparar_pdfs(
     adaptive: bool = False,
     pos_tol: float = 3.0,
     ignore_geometry: bool = False,
+    ignore_text: bool = False,
     auto_orient: bool = True,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
@@ -394,6 +400,8 @@ def comparar_pdfs(
     ignore_geometry : bool, optional
         If ``True`` compare only text and numeric strings, ignoring drawing
         and image elements.
+    ignore_text : bool, optional
+        If ``True`` compare only drawing and image elements, ignoring words.
     auto_orient : bool, optional
         When ``True`` automatically rotate pages so old and new PDFs share the
         same orientation before comparison.
@@ -456,8 +464,17 @@ def comparar_pdfs(
             else:
                 transforms_new.append((1.0, 1.0, 0.0, 0.0, rotate))
 
-        old_pages = _extract_bboxes(doc_old, ignore_geometry=ignore_geometry)
-        new_pages = _extract_bboxes(doc_new, transforms_new, ignore_geometry=ignore_geometry)
+        old_pages = _extract_bboxes(
+            doc_old,
+            ignore_geometry=ignore_geometry,
+            ignore_text=ignore_text,
+        )
+        new_pages = _extract_bboxes(
+            doc_new,
+            transforms_new,
+            ignore_geometry=ignore_geometry,
+            ignore_text=ignore_text,
+        )
         max_pages = max(len(old_pages), len(new_pages))
 
         if adaptive:
