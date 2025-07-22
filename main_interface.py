@@ -1097,7 +1097,8 @@ class CompareSetQt(QtWidgets.QWidget):
         table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         table.setAlternatingRowColors(True)
         table.setStyleSheet(
-            "QHeaderView::section{border-bottom:1px solid #cccccc;}"
+            "QHeaderView::section{background-color:#000000;color:white;border-bottom:1px solid #cccccc;}"
+            "QTableWidget{alternate-background-color:#f0f0f0;}"
         )
         table.setRowCount(len(data))
         for row, entry in enumerate(data):
@@ -1136,6 +1137,8 @@ class CompareSetQt(QtWidgets.QWidget):
         if not data:
             table.setRowCount(1)
             table.setItem(0, 0, QtWidgets.QTableWidgetItem("-"))
+        table.resizeColumnsToContents()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
         self.history_layout.addWidget(table)
         back_btn = QtWidgets.QPushButton(self.tr("back"))
         back_btn.setStyleSheet(
@@ -1193,6 +1196,11 @@ class CompareSetQt(QtWidgets.QWidget):
             4, QtWidgets.QHeaderView.Fixed
         )
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setStyleSheet(
+            "QHeaderView::section{background-color:#000000;color:white;border-bottom:1px solid #cccccc;}"
+            "QTableWidget{alternate-background-color:#f0f0f0;}"
+        )
         self.admin_layout.addWidget(self.table)
 
         btn_back = QtWidgets.QPushButton(self.tr("back"))
@@ -1261,6 +1269,11 @@ class CompareSetQt(QtWidgets.QWidget):
             btn.setProperty("username", rec.get("username"))
             btn.clicked.connect(self._edit_user_dialog)
             self.table.setCellWidget(row, 4, btn)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        self.table.resizeColumnsToContents()
+        for i in range(self.table.columnCount()):
+            header.setSectionResizeMode(i, QtWidgets.QHeaderView.Fixed)
 
     def _add_user_dialog(self):
         dlg = QtWidgets.QDialog(self)
