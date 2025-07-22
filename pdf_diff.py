@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import fitz
 
@@ -43,7 +43,7 @@ def _page_orientation(rect: fitz.Rect) -> str:
 
 def _extract_bboxes(
     doc: fitz.Document,
-    transforms: Optional[List[Tuple[float, float, float, float, float]]] = None,
+    transforms: Optional[List[Sequence[float]]] = None,
     ignore_geometry: bool = False,
     ignore_text: bool = False,
 ) -> List[List[Tuple[float, float, float, float, str]]]:
@@ -53,7 +53,7 @@ def _extract_bboxes(
     ----------
     doc: fitz.Document
         Opened document whose pages will be processed.
-    transforms: list of tuples(scale_x, scale_y, trans_x, trans_y[, rotation])
+    transforms: list of sequences(scale_x, scale_y, trans_x, trans_y[, rotation])
         or (a, b, c, d, e, f), optional
         Transformations applied to each page's coordinates. Each tuple must
         contain four, five or six numeric values. Rotation is given in degrees
