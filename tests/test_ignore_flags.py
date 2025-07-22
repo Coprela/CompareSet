@@ -1,7 +1,7 @@
 import pytest
 
 fitz = pytest.importorskip("fitz")
-from pdf_diff import _extract_bboxes
+from pdf_diff import _extract_bboxes  # noqa: E402
 
 
 def test_ignore_text_only(tmp_path):
