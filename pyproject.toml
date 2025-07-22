@@ -4,6 +4,13 @@ version = "0.2.1-beta"
 description = "Vector-based PDF comparison tool"
 readme = "README.md"
 requires-python = ">=3.8"
+dependencies = [
+    "PyMuPDF>=1.22",
+    "PySide6",
+    "requests",
+    "python-dotenv",
+    "pyarmor",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

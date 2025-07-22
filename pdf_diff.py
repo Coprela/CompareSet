@@ -4,6 +4,14 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import fitz
 
+try:
+    version_str = fitz.__doc__.split()[1]
+except Exception:
+    version_str = getattr(fitz, "__version__", "0")
+version_tuple = tuple(int(p) for p in version_str.split(".")[:2])
+if version_tuple < (1, 22):
+    raise RuntimeError("PyMuPDF >=1.22 required")
+
 # common ISO sizes in millimetres (width, height)
 STANDARD_PAGE_SIZES_MM = {
     "A0": (841, 1189),

@@ -14,8 +14,11 @@ for use in authorized corporate environments.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+# PyMuPDF 1.22 or newer is required
 python -m compareset.ui.main_window
 ```
+The application depends on [PyMuPDF](https://pypi.org/project/PyMuPDF/) version
+1.22 or newer so that the two-argument ``Matrix`` constructor is available.
 
 ## Project layout
 
