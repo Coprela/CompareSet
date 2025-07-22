@@ -28,16 +28,10 @@ tests/                - Pytest suite
 ## Environment
 
 Configuration is loaded from environment variables. Copy `.env.example` to `.env`
-and adjust as needed. Using [python-dotenv](https://pypi.org/project/python-dotenv/)
-prevents secrets from being committed.
-
-### OAuth authentication
-
-If no `GITHUB_TOKEN` is provided, CompareSet can authenticate via GitHub's device
-flow at startup. Set `GITHUB_CLIENT_ID` to your OAuth App client ID and define
-`GITHUB_OAUTH_SCOPES` (default: `repo`). When launching the application you will
-be prompted to open a verification URL and enter the displayed code. The
-resulting token is stored only in memory for that session.
+and adjust as needed. Set `GITHUB_TOKEN` to a fine-grained personal access token
+with **Contents: Read and Write** permission for the repository. Using
+[python-dotenv](https://pypi.org/project/python-dotenv/) prevents secrets from
+being committed.
 
 ### Local server
 
