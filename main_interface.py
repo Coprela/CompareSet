@@ -1,11 +1,8 @@
 import os
 import time
-import math
 import getpass
 
 from dotenv import load_dotenv
-
-load_dotenv()
 
 from user_check import (
     load_users,
@@ -27,6 +24,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from pdf_diff import comparar_pdfs, CancelledError
 from pdf_highlighter import gerar_pdf_com_destaques
+
+load_dotenv()
 
 # application version string
 VERSION = CURRENT_VERSION

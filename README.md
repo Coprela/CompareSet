@@ -16,7 +16,6 @@ python -m compareset.ui.main_window
 
 ```
 src/compareset/       - Library code
-    core/             - Comparison engine
     ui/               - Graphical interface
     utils/            - Helper utilities
     i18n/             - Localization files
