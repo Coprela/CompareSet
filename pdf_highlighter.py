@@ -1,6 +1,6 @@
 from typing import Callable, Optional
 
-from pdf_diff import CancelledError
+from pdf_diff import CancelledError, _resize_new_pdf
 
 import fitz  # PyMuPDF
 
@@ -40,10 +40,11 @@ def gerar_pdf_com_destaques(
     with fitz.open(pdf_old) as doc_old, fitz.open(
         pdf_new
     ) as doc_new, fitz.open() as final:
-        total_steps = len(doc_old) + len(doc_new)
+        doc_new_resized = _resize_new_pdf(doc_old, doc_new, True)
+        total_steps = len(doc_old) + len(doc_new_resized)
         done = 0
 
-        max_pages = max(len(doc_old), len(doc_new))
+        max_pages = max(len(doc_old), len(doc_new_resized))
         for i in range(max_pages):
             if i < len(doc_old):
                 page = doc_old[i]
@@ -70,47 +71,16 @@ def gerar_pdf_com_destaques(
                 if cancel_callback and cancel_callback():
                     raise CancelledError()
 
-            if i < len(doc_new):
-                page = doc_new[i]
-                if i < len(doc_old):
-                    base_rect = doc_old[i].rect
-                else:
-                    base_rect = page.rect
+            if i < len(doc_new_resized):
+                page = doc_new_resized[i]
                 new_page = final.new_page(
-                    width=base_rect.width, height=base_rect.height
+                    width=page.rect.width, height=page.rect.height
                 )
-                new_page.show_pdf_page(base_rect, doc_new, i)
-
-                # compute transform mapping coordinates from the old PDF to the
-                # current page of the new PDF
-                if i < len(doc_old):
-                    rect_old = doc_old[i].rect
-                else:
-                    rect_old = page.rect
-                rect_new = page.rect
-                width_diff = abs(rect_old.width - rect_new.width)
-                height_diff = abs(rect_old.height - rect_new.height)
-                tolerance_pt = 72 / 25.4
-                if width_diff <= tolerance_pt and height_diff <= tolerance_pt:
-                    s = 1.0
-                    tx = ty = 0.0
-                else:
-                    sx = rect_old.width / rect_new.width
-                    sy = rect_old.height / rect_new.height
-                    s = min(sx, sy)
-                    tx = (rect_old.width - rect_new.width * s) / 2.0
-                    ty = (rect_old.height - rect_new.height * s) / 2.0
+                new_page.show_pdf_page(page.rect, doc_new_resized, i)
 
                 for item in adicionados:
                     if item["pagina"] == i:
-                        r_old = fitz.Rect(item["bbox"])
-                        # convert from old PDF coordinates into the new page
-                        r = fitz.Rect(
-                            (r_old.x0 - tx) / s,
-                            (r_old.y0 - ty) / s,
-                            (r_old.x1 - tx) / s,
-                            (r_old.y1 - ty) / s,
-                        )
+                        r = fitz.Rect(item["bbox"])
                         r.x0 -= BBOX_MARGIN
                         r.y0 -= BBOX_MARGIN
                         r.x1 += BBOX_MARGIN
@@ -128,6 +98,7 @@ def gerar_pdf_com_destaques(
                     raise CancelledError()
 
         final.save(output_pdf)
+        doc_new_resized.close()
         if progress_callback:
             progress_callback(100.0)
         print(f"PDF final com destaques salvo em: {output_pdf}")
