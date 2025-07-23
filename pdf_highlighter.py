@@ -2,6 +2,10 @@
 
 from typing import Callable, Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from pdf_diff import CancelledError, _resize_new_pdf
 
 import fitz  # PyMuPDF
@@ -16,8 +20,8 @@ TEXT_SIZE = 8  # default font size for difference labels
 def gerar_pdf_com_destaques(
     pdf_old: str,
     pdf_new: str,
-    removidos: list,
-    adicionados: list,
+    removidos: list[dict],
+    adicionados: list[dict],
     output_pdf: str,
     color_add: tuple = COLOR_ADD_DEFAULT,
     color_remove: tuple = COLOR_REMOVE_DEFAULT,
@@ -128,5 +132,5 @@ def gerar_pdf_com_destaques(
         doc_new_resized.close()
         if progress_callback:
             progress_callback(100.0)
-        print(f"PDF final com destaques salvo em: {output_pdf}")
+        logger.info("PDF with highlights saved to %s", output_pdf)
         return

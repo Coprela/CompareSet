@@ -1,9 +1,12 @@
 import os
 import shutil
 import subprocess
+import logging
 
 import PyInstaller.__main__
 from version_check import CURRENT_VERSION
+
+logger = logging.getLogger(__name__)
 
 
 sep = ";" if os.name == "nt" else ":"
@@ -13,17 +16,21 @@ def _obfuscate(entry: str) -> str:
     """Attempt to obfuscate the given script with PyArmor."""
     out_dir = "obf"
     try:
-        subprocess.run([
-            "pyarmor",
-            "obfuscate",
-            "-O",
-            out_dir,
-            entry,
-        ], check=True)
+        subprocess.run(
+            [
+                "pyarmor",
+                "obfuscate",
+                "-O",
+                out_dir,
+                entry,
+            ],
+            check=True,
+        )
         return os.path.join(out_dir, entry)
     except Exception as exc:
-        print(f"PyArmor not available ({exc}); building without obfuscation.")
+        logger.info("PyArmor not available (%s); building without obfuscation.", exc)
         return entry
+
 
 # Build the executable starting from the Qt interface entry script.
 app_name = f"CompareSet {CURRENT_VERSION}"
@@ -86,9 +93,9 @@ def _sign_executable(path: str) -> None:
 
     try:
         subprocess.run(cmd, check=True)
-        print("Executable signed.")
+        logger.info("Executable signed.")
     except Exception as exc:
-        print(f"Signature step failed: {exc}")
+        logger.error("Signature step failed: %s", exc)
 
 
 exe_name = app_name + (".exe" if os.name == "nt" else "")

@@ -20,6 +20,8 @@ def ensure_token() -> None:
     global GITHUB_TOKEN
     if not GITHUB_TOKEN:
         GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+        if not GITHUB_TOKEN:
+            logger.warning("GITHUB_TOKEN not set; GitHub operations may fail")
 
 
 def _headers(raw: bool = False) -> Dict[str, str]:
@@ -61,7 +63,11 @@ def _get_sha(filename: str) -> str | None:
         return None
 
 
-def save_json(filename: str, data: Dict[str, Any], commit_message: str = "Atualiza\u00e7\u00e3o via API") -> bool:
+def save_json(
+    filename: str,
+    data: Dict[str, Any],
+    commit_message: str = "Atualiza\u00e7\u00e3o via API",
+) -> bool:
     """Save *data* as JSON to the GitHub repository."""
     ensure_token()
     url = _file_url(filename)

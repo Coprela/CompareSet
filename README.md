@@ -30,7 +30,10 @@ src/compareset/       - Library code
     config/           - Default application settings
 assets/               - Icons and other static resources
 tests/                - Pytest suite
+docs/                 - Additional documentation
 ```
+
+See the `docs/` directory for architectural notes and customization tips.
 
 ## Environment
 
@@ -50,6 +53,10 @@ being committed.
 | `ALLOWED_USERS_FILE` | Remote user list file |
 | `ADMIN_MODE` | Set to `1` to enable admin features |
 | `LANG` | Force interface language (`pt` or `en`) |
+| `SIGNTOOL` | Path to signtool.exe for signing builds |
+| `SIGN_CERT` | Code signing certificate (.pfx) |
+| `SIGN_PASS` | Password for the signing certificate |
+| `SIGN_TIMESTAMP` | Timestamp URL used when signing |
 
 
 ## Packaging
@@ -67,3 +74,11 @@ python build_package.py
 
 Run the test suite with `pytest` to verify changes. PyMuPDF must be installed
 for the tests to run. Without it the suite will be skipped.
+Formatting is enforced with `black` and `flake8`. Type checking uses `mypy`:
+
+```bash
+black .
+flake8
+mypy
+pytest
+```

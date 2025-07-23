@@ -105,7 +105,9 @@ def save_users(users: List[str]) -> bool:
         "users": sorted(usernames.values(), key=lambda r: r.get("added", 0)),
         "admins": existing.get("admins", []),
     }
-    return save_json(ALLOWED_USERS_FILE, data, "Atualiza\u00e7\u00e3o da lista de usu\u00e1rios")
+    return save_json(
+        ALLOWED_USERS_FILE, data, "Atualiza\u00e7\u00e3o da lista de usu\u00e1rios"
+    )
 
 
 def is_admin(username: str) -> bool:
@@ -124,10 +126,14 @@ def load_admins() -> List[str]:
     return [str(a) for a in admins]
 
 
-def save_user_records(users: List[Dict[str, Any]], admins: List[str] | None = None) -> bool:
+def save_user_records(
+    users: List[Dict[str, Any]], admins: List[str] | None = None
+) -> bool:
     """Persist *users* and optionally *admins* to GitHub."""
     data = {
         "users": users,
         "admins": admins if admins is not None else _load_data().get("admins", []),
     }
-    return save_json(ALLOWED_USERS_FILE, data, "Atualiza\u00e7\u00e3o da lista de usu\u00e1rios")
+    return save_json(
+        ALLOWED_USERS_FILE, data, "Atualiza\u00e7\u00e3o da lista de usu\u00e1rios"
+    )

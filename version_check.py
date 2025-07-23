@@ -1,8 +1,11 @@
 """Check for updates using files stored on GitHub."""
 
 import os
+import logging
 
 from github_json_manager import load_json
+
+logger = logging.getLogger(__name__)
 from compareset import __version__ as CURRENT_VERSION
 
 LATEST_VERSION_FILE = os.getenv("LATEST_VERSION_FILE", "CompareSet_latest_version.json")
@@ -25,8 +28,8 @@ def check_for_update() -> str:
 if __name__ == "__main__":
     latest = check_for_update()
     if latest and latest != CURRENT_VERSION:
-        print(f"New version available: {latest}")
+        logger.info("New version available: %s", latest)
     elif latest:
-        print("Using the latest version.")
+        logger.info("Using the latest version.")
     else:
-        print("Could not retrieve latest version.")
+        logger.error("Could not retrieve latest version.")
