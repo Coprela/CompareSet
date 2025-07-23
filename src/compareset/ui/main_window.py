@@ -48,13 +48,17 @@ class MainWindow(QMainWindow):
 
     # slots
     def select_old(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Select old PDF", filter="PDF Files (*.pdf)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select old PDF", filter="PDF Files (*.pdf)"
+        )
         if path:
             self.old_path = path
             self.label_old.setText(path)
 
     def select_new(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Select new PDF", filter="PDF Files (*.pdf)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select new PDF", filter="PDF Files (*.pdf)"
+        )
         if path:
             self.new_path = path
             self.label_new.setText(path)

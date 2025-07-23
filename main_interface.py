@@ -88,7 +88,9 @@ class ComparisonThread(QtCore.QThread):
                 cancel_callback=self.is_cancelled,
             )
             self.elements_checked = dados.get("verificados", 0)
-            self.diff_count = len(dados.get("removidos", [])) + len(dados.get("adicionados", []))
+            self.diff_count = len(dados.get("removidos", [])) + len(
+                dados.get("adicionados", [])
+            )
             if self.is_cancelled():
                 self.finished.emit("cancelled", "")
                 return
@@ -397,7 +399,9 @@ class CompareSetQt(QtWidgets.QWidget):
         icons_dir = os.path.join(os.path.dirname(__file__), "assets", "icons")
 
         improve_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - Improvement.png"))
-        help_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - Question Mark Help.png"))
+        help_icon = QtGui.QIcon(
+            os.path.join(icons_dir, "Icon - Question Mark Help.png")
+        )
         settings_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - Gear.png"))
 
         history_icon = QtGui.QIcon(os.path.join(icons_dir, "Icon - History.png"))
@@ -447,7 +451,6 @@ class CompareSetQt(QtWidgets.QWidget):
         )
 
         top.addWidget(self.toolbar)
-
 
         grid = QtWidgets.QGridLayout()
         grid.setVerticalSpacing(6)
@@ -743,8 +746,16 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def swap_selection(self):
         self.old_path, self.new_path = self.new_path, self.old_path
-        old_name = os.path.splitext(os.path.basename(self.old_path))[0] if self.old_path else ""
-        new_name = os.path.splitext(os.path.basename(self.new_path))[0] if self.new_path else ""
+        old_name = (
+            os.path.splitext(os.path.basename(self.old_path))[0]
+            if self.old_path
+            else ""
+        )
+        new_name = (
+            os.path.splitext(os.path.basename(self.new_path))[0]
+            if self.new_path
+            else ""
+        )
         self.edit_old.setText(old_name)
         self.edit_new.setText(new_name)
         self._update_compare_button()
@@ -822,8 +833,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)
         self.thread.start()
-
-
 
     def cancel_compare(self):
         if self.thread:
@@ -991,7 +1000,6 @@ class CompareSetQt(QtWidgets.QWidget):
         combo.setCurrentIndex(0 if self.lang == "en" else 1)
         layout.addWidget(combo)
 
-
         if os.getenv("ADMIN_MODE") == "1":
             manage_btn = QtWidgets.QPushButton(self.tr("manage_users"))
             manage_btn.clicked.connect(self.open_user_admin)
@@ -1080,16 +1088,22 @@ class CompareSetQt(QtWidgets.QWidget):
             elif item.layout():
                 self._clear_layout(item.layout())
 
-        data = sorted(self.history, key=lambda e: e.get('timestamp', e.get('mtime', 0)), reverse=True)
+        data = sorted(
+            self.history,
+            key=lambda e: e.get("timestamp", e.get("mtime", 0)),
+            reverse=True,
+        )
 
         table = QtWidgets.QTableWidget()
         table.setColumnCount(4)
-        table.setHorizontalHeaderLabels([
-            self.tr("output_file"),
-            self.tr("date"),
-            self.tr("status"),
-            "",
-        ])
+        table.setHorizontalHeaderLabels(
+            [
+                self.tr("output_file"),
+                self.tr("date"),
+                self.tr("status"),
+                "",
+            ]
+        )
         header = table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
@@ -1104,23 +1118,25 @@ class CompareSetQt(QtWidgets.QWidget):
         for row, entry in enumerate(data):
             name = f"{entry['old']} \u2192 {entry['new']} ({os.path.basename(entry['output'])})"
             item = QtWidgets.QTableWidgetItem(name)
-            if os.path.exists(entry['output']):
-                item.setToolTip(entry['output'])
+            if os.path.exists(entry["output"]):
+                item.setToolTip(entry["output"])
             else:
-                item.setToolTip(self.tr('file_missing_hint'))
+                item.setToolTip(self.tr("file_missing_hint"))
             table.setItem(row, 0, item)
             date_str = self._format_datetime(
-                entry.get('timestamp', entry.get('mtime', 0))
+                entry.get("timestamp", entry.get("mtime", 0))
             )
             date_item = QtWidgets.QTableWidgetItem(date_str)
             date_item.setForeground(QtGui.QColor("#666666"))
             table.setItem(row, 1, date_item)
-            exists = os.path.exists(entry['output'])
-            mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
+            exists = os.path.exists(entry["output"])
+            mtime_same = exists and os.path.getmtime(entry["output"]) == entry.get(
+                "mtime"
+            )
             if not exists:
-                status = self.tr('file_missing')
+                status = self.tr("file_missing")
             elif not mtime_same:
-                status = self.tr('file_replaced')
+                status = self.tr("file_replaced")
             else:
                 status = ""
             table.setItem(row, 2, QtWidgets.QTableWidgetItem(status))
@@ -1148,7 +1164,12 @@ class CompareSetQt(QtWidgets.QWidget):
         )
         back_btn.setFixedHeight(self.btn_height)
         back_btn.setFont(self.btn_font)
-        back_btn.clicked.connect(lambda: (self.stack.setCurrentWidget(self.main_page), self._set_fixed_size_centered(self.small_size)))
+        back_btn.clicked.connect(
+            lambda: (
+                self.stack.setCurrentWidget(self.main_page),
+                self._set_fixed_size_centered(self.small_size),
+            )
+        )
         bottom = QtWidgets.QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(4)
@@ -1210,7 +1231,12 @@ class CompareSetQt(QtWidgets.QWidget):
             "QPushButton{background-color:#000000;color:white;padding:4px;border-radius:4px;}"
             "QPushButton:hover{background-color:#333333;}"
         )
-        btn_back.clicked.connect(lambda: (self.stack.setCurrentWidget(self.main_page), self._set_fixed_size_centered(self.small_size)))
+        btn_back.clicked.connect(
+            lambda: (
+                self.stack.setCurrentWidget(self.main_page),
+                self._set_fixed_size_centered(self.small_size),
+            )
+        )
         bottom = QtWidgets.QHBoxLayout()
         bottom.addWidget(btn_back)
         bottom.addStretch()
@@ -1258,9 +1284,13 @@ class CompareSetQt(QtWidgets.QWidget):
                 item = QtWidgets.QTableWidgetItem(status)
                 item.setForeground(QtGui.QColor("blue"))
             else:
-                status = self.tr("active") if rec.get("active", True) else self.tr("removed")
+                status = (
+                    self.tr("active") if rec.get("active", True) else self.tr("removed")
+                )
                 item = QtWidgets.QTableWidgetItem(status)
-                color = QtGui.QColor("#b1f2b1" if rec.get("active", True) else "#f8b2b2")
+                color = QtGui.QColor(
+                    "#b1f2b1" if rec.get("active", True) else "#f8b2b2"
+                )
                 item.setBackground(color)
             self.table.setItem(row, 3, item)
             btn = QtWidgets.QPushButton()
@@ -1286,7 +1316,9 @@ class CompareSetQt(QtWidgets.QWidget):
         lay.addRow(self.tr("username"), user_edit)
         lay.addRow(self.tr("real_name"), name_edit)
         lay.addRow(self.tr("email"), email_edit)
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
         lay.addWidget(buttons)
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
@@ -1362,7 +1394,6 @@ class CompareSetQt(QtWidgets.QWidget):
             self._admins = admins
             self._populate_admin_table()
 
-
     def show_details(self, entry: dict):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(self.tr("details_title"))
@@ -1376,17 +1407,21 @@ class CompareSetQt(QtWidgets.QWidget):
         if stats:
             layout.addWidget(QtWidgets.QLabel(self.tr("stats").format(*stats)))
 
-        date_str = self._format_datetime(entry.get('timestamp', entry.get('mtime', 0)))
+        date_str = self._format_datetime(entry.get("timestamp", entry.get("mtime", 0)))
         layout.addWidget(QtWidgets.QLabel(f"{self.tr('date')} {date_str}"))
 
-        layout.addWidget(QtWidgets.QLabel(f"{self.tr('output_file')} {os.path.basename(entry['output'])}"))
+        layout.addWidget(
+            QtWidgets.QLabel(
+                f"{self.tr('output_file')} {os.path.basename(entry['output'])}"
+            )
+        )
 
-        exists = os.path.exists(entry['output'])
-        mtime_same = exists and os.path.getmtime(entry['output']) == entry.get('mtime')
+        exists = os.path.exists(entry["output"])
+        mtime_same = exists and os.path.getmtime(entry["output"]) == entry.get("mtime")
         if not exists:
-            layout.addWidget(QtWidgets.QLabel(self.tr('file_missing')))
+            layout.addWidget(QtWidgets.QLabel(self.tr("file_missing")))
         elif not mtime_same:
-            layout.addWidget(QtWidgets.QLabel(self.tr('file_replaced')))
+            layout.addWidget(QtWidgets.QLabel(self.tr("file_replaced")))
 
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
@@ -1400,7 +1435,7 @@ class CompareSetQt(QtWidgets.QWidget):
         if exists and mtime_same:
             view_btn.clicked.connect(
                 lambda: QtGui.QDesktopServices.openUrl(
-                    QtCore.QUrl.fromLocalFile(entry['output'])
+                    QtCore.QUrl.fromLocalFile(entry["output"])
                 )
             )
         else:
@@ -1412,9 +1447,7 @@ class CompareSetQt(QtWidgets.QWidget):
 
     def open_result(self):
         if hasattr(self, "view_path"):
-            QtGui.QDesktopServices.openUrl(
-                QtCore.QUrl.fromLocalFile(self.view_path)
-            )
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.view_path))
             self.clear_results()
 
     def _start_update_check(self):

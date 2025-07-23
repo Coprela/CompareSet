@@ -1,9 +1,14 @@
 from __future__ import annotations
+
 """Utilities for comparing PDF documents."""
 
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+import logging
+
 import fitz
+
+logger = logging.getLogger(__name__)
 
 try:
     version_str = fitz.__doc__.split()[1]
@@ -481,8 +486,11 @@ def comparar_pdfs(
             ]
             if warn_pages:
                 pages = ", ".join(warn_pages)
-                print(
-                    f"Warning: {name} ({label}) has non-standard page sizes on page(s): {pages}"
+                logger.warning(
+                    "Warning: %s (%s) has non-standard page sizes on page(s): %s",
+                    name,
+                    label,
+                    pages,
                 )
 
         # scale new PDF pages to match the size of the old PDF

@@ -9,4 +9,3 @@ def read_json(path: Path) -> dict:
 
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
-

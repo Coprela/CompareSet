@@ -1,0 +1,9 @@
+/* Basic color scheme */
+QMainWindow {
+    background-color: #ffffff;
+}
+
+/* Customize buttons */
+QPushButton {
+    padding: 4px 8px;
+}
