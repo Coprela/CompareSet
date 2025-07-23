@@ -1,0 +1,36 @@
+1. Introdução
+Este guia foi elaborado para garantir que o CompareSet funcione corretamente antes de ser empacotado em um executável. Siga as etapas abaixo para realizar os testes locais.
+
+2. Ativando o ambiente virtual
+Abra o PowerShell ou CMD no Windows e navegue até a pasta do projeto. Em seguida, ative o ambiente virtual:
+
+```
+.venv\Scripts\Activate.ps1  # PowerShell
+```
+
+ou
+
+```
+.\.venv\Scripts\activate.bat  # CMD
+```
+
+3. Rodando o sistema diretamente no terminal
+Com o ambiente virtual ativo, execute o aplicativo no terminal com o comando abaixo:
+
+```
+python -m src.compareset.ui.main_window
+```
+
+4. O que observar nos testes
+- Interface carregando normalmente
+- Botões e ícones funcionando
+- Comparação de PDFs funcionando
+- Arquivos gerados corretamente (como `users.json`, `access.log`, etc.)
+- Mensagens de erro no terminal, se houver
+
+5. Corrigindo antes de empacotar
+Caso encontre qualquer problema nos passos acima, corrija o código ou os arquivos de configuração antes de prosseguir para o empacotamento com o PyInstaller.
+
+6. Vantagens de testar antes
+Ao rodar a aplicação diretamente pelo terminal você tem um ciclo de depuração mais rápido, mensagens de erro mais claras e evita empacotar uma versão com problemas.
+
