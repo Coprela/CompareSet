@@ -15,20 +15,41 @@ sep = ";" if os.name == "nt" else ":"
 def _obfuscate(entry: str) -> str:
     """Attempt to obfuscate the given script with PyArmor."""
     out_dir = "obf"
+    cmd = "pyarmor"
+    try:  # detect PyArmor version
+        import pyarmor
+
+        ver = getattr(pyarmor, "__version__", "0")
+        major = int(ver.split(".")[0]) if ver.split(".")[0].isdigit() else 0
+        if major >= 8:
+            logger.warning("PyArmor %s detected; using 'pyarmor-7' command", ver)
+            cmd = "pyarmor-7"
+    except Exception:
+        # PyArmor not installed; will attempt command directly
+        pass
+
     try:
-        subprocess.run(
-            [
-                "pyarmor",
-                "obfuscate",
-                "-O",
-                out_dir,
-                entry,
-            ],
-            check=True,
-        )
-        return os.path.join(out_dir, entry)
+        subprocess.run([
+            cmd,
+            "obfuscate",
+            "-O",
+            out_dir,
+            entry,
+        ], check=True)
+
+        out_file = os.path.join(out_dir, entry)
+        if not os.path.exists(out_file):
+            logger.warning(
+                "Obfuscation failed; %s not found. Building without obfuscation.",
+                out_file,
+            )
+            return entry
+        return out_file
     except Exception as exc:
-        logger.info("PyArmor not available (%s); building without obfuscation.", exc)
+        logger.info(
+            "PyArmor not available (%s); building without obfuscation.",
+            exc,
+        )
         return entry
 
 

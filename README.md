@@ -72,10 +72,10 @@ being committed.
 
 For extra protection against reverse engineering, the build script attempts to
 obfuscate sources with [PyArmor](https://pyarmor.readthedocs.io/). Install
-PyArmor and PyInstaller then run the packaging script:
+PyArmor 7 and PyInstaller then run the packaging script:
 
 ```bash
-pip install pyarmor pyinstaller
+pip install pyinstaller pyarmor==7.6.1
 python build_package.py
 ```
 
