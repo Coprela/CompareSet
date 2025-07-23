@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from PySide6.QtCore import Qt, QFile
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
@@ -19,13 +20,22 @@ def load_svg_icon(path: str, size: int = 16) -> QIcon:
 
 
 def asset_path(*parts: str) -> str:
-    """Return absolute path to an asset, working in dev and installed modes."""
+    """Return absolute path to an asset in all supported environments."""
     base = Path(__file__).resolve()
-    # Check repository layout first (../..../assets)
+
+    # When packaged with PyInstaller the assets are extracted to ``_MEIPASS``.
+    frozen_base = getattr(sys, "_MEIPASS", None)
+    if frozen_base:
+        candidate = Path(frozen_base) / "assets" / Path(*parts)
+        if candidate.exists():
+            return str(candidate)
+
+    # Repository layout (src/compareset/... -> ../../assets)
     candidate = base.parents[3] / "assets" / Path(*parts)
     if candidate.exists():
         return str(candidate)
-    # Fallback to installed package layout (..../assets)
+
+    # Installed package layout (.../site-packages/compareset/... -> ../assets)
     candidate = base.parents[2] / "assets" / Path(*parts)
     return str(candidate)
 
