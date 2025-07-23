@@ -1,4 +1,8 @@
-"""Check for updates using files stored on GitHub."""
+"""Check for updates using files stored on GitHub.
+
+DEPRECATED: retained for the legacy interface. New code should
+retrieve version information through other means.
+"""
 
 import os
 import logging

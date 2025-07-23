@@ -1,4 +1,10 @@
 from __future__ import annotations
+
+"""Helper functions for storing JSON files in a GitHub repository.
+
+DEPRECATED: these utilities are only used by legacy modules and will
+be removed in a future release.
+"""
 import os
 import json
 import base64
