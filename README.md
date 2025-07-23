@@ -15,11 +15,15 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 # PyMuPDF 1.22 or newer is required
-python -m compareset.ui.main_window
+python -m compareset
 ```
 The application depends on [PyMuPDF](https://pypi.org/project/PyMuPDF/) version
 1.22 or newer so that the two-argument ``Matrix`` constructor is available.
 The interface layouts are defined as Qt Designer `.ui` files in `src/compareset/ui` and styled by `assets/style.qss` for a consistent look.
+
+The former monolithic script ``main_interface.py`` is deprecated and kept only
+for reference. Use ``python -m compareset`` or the ``run_app.py`` helper as the
+application entry point.
 
 ## Project layout
 

@@ -35,7 +35,7 @@ def _obfuscate(entry: str) -> str:
 # Build the executable starting from the Qt interface entry script.
 app_name = f"CompareSet {CURRENT_VERSION}"
 
-entry_script = _obfuscate("main_interface.py")
+entry_script = _obfuscate("run_app.py")
 
 PyInstaller.__main__.run(
     [
@@ -57,7 +57,7 @@ PyInstaller.__main__.run(
     ]
 )
 
-if entry_script != "main_interface.py":
+if entry_script != "run_app.py":
     shutil.rmtree(os.path.dirname(entry_script), ignore_errors=True)
 
 
