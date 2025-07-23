@@ -9,13 +9,28 @@ import hmac
 import hashlib
 import secrets
 import uuid
+import sys
+from pathlib import Path
 from typing import Any, Dict, List
 
-USERS_FILE = os.getenv("USERS_FILE", "users.json")
-MASTER_KEY_FILE = os.getenv("MASTER_KEY_FILE", "master.key")
+
+def _app_dir() -> Path:
+    """Return directory close to the executable for storing data."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
+BASE_DIR = _app_dir()
+DATA_DIR = BASE_DIR / os.getenv("COMPARESET_DATA", "data")
+LOG_DIR = BASE_DIR / os.getenv("COMPARESET_LOGS", "logs")
+
+USERS_FILE = os.getenv("USERS_FILE", str(DATA_DIR / "users.json"))
+MASTER_KEY_FILE = os.getenv("MASTER_KEY_FILE", str(BASE_DIR / "master.key"))
 
 
 def _load_data() -> Dict[str, Any]:
+    os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, "r", encoding="utf-8") as f:
             try:
@@ -30,8 +45,13 @@ def _load_data() -> Dict[str, Any]:
 
 
 def _save_data(data: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    try:
+        os.chmod(USERS_FILE, 0o600)
+    except Exception:
+        pass
 
 
 def _pbkdf2(password: str, salt: bytes) -> bytes:
@@ -103,6 +123,10 @@ def verify_login(email: str, password: str, machine_id: str | None = None) -> bo
 
 
 def is_master(token: str) -> bool:
+    plain = os.getenv("MASTER_TOKEN")
+    if plain:
+        return hmac.compare_digest(plain, token)
+
     hashed = os.getenv("MASTER_TOKEN_HASH")
     if not hashed and os.path.exists(MASTER_KEY_FILE):
         with open(MASTER_KEY_FILE, "r", encoding="utf-8") as f:
@@ -119,7 +143,8 @@ def log_access(email: str, machine_id: str, success: bool) -> None:
         "machine": machine_id,
         "success": success,
     }
-    log_file = os.getenv("ACCESS_LOG", "access.log")
+    log_file = os.getenv("ACCESS_LOG", str(LOG_DIR / "access.log"))
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
     try:
         if os.path.exists(log_file):
             with open(log_file, "r", encoding="utf-8") as f:
@@ -131,3 +156,7 @@ def log_access(email: str, machine_id: str, success: bool) -> None:
     logs.append(entry)
     with open(log_file, "w", encoding="utf-8") as f:
         json.dump(logs, f, indent=2)
+    try:
+        os.chmod(log_file, 0o600)
+    except Exception:
+        pass
