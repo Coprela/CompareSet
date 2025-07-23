@@ -19,6 +19,7 @@ python -m compareset.ui.main_window
 ```
 The application depends on [PyMuPDF](https://pypi.org/project/PyMuPDF/) version
 1.22 or newer so that the two-argument ``Matrix`` constructor is available.
+The interface layouts are defined as Qt Designer `.ui` files in `src/compareset/ui` and styled by `assets/style.qss` for a consistent look.
 
 ## Project layout
 

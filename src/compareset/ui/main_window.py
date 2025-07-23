@@ -1,101 +1,68 @@
-"""Graphical user interface entry point."""
+from __future__ import annotations
 
+import os
 from PySide6.QtWidgets import (
-    QApplication,
     QMainWindow,
+    QStackedWidget,
+    QToolBar,
+    QStatusBar,
     QWidget,
-    QVBoxLayout,
-    QLabel,
-    QPushButton,
-    QFileDialog,
-    QMessageBox,
 )
+from PySide6.QtCore import Qt, QPropertyAnimation
 
-from pdf_diff import comparar_pdfs, CancelledError
-from pdf_highlighter import gerar_pdf_com_destaques
+from .utils import load_svg_icon
+from .compare_page import ComparePage
+from .history_page import HistoryPage
+from .admin_page import AdminPage
 
 
 class MainWindow(QMainWindow):
-    """Main application window."""
-
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("CompareSet")
-        central = QWidget()
-        layout = QVBoxLayout(central)
+        self.resize(800, 600)
 
-        self.label_old = QLabel("No old PDF selected")
-        self.label_new = QLabel("No new PDF selected")
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
 
-        btn_old = QPushButton("Select Old PDF")
-        btn_new = QPushButton("Select New PDF")
-        btn_compare = QPushButton("Compare PDFs")
+        self.compare_page = ComparePage()
+        self.history_page = HistoryPage()
+        self.admin_page = AdminPage()
 
-        layout.addWidget(btn_old)
-        layout.addWidget(self.label_old)
-        layout.addWidget(btn_new)
-        layout.addWidget(self.label_new)
-        layout.addWidget(btn_compare)
+        self.stack.addWidget(self.compare_page)
+        self.stack.addWidget(self.history_page)
+        self.stack.addWidget(self.admin_page)
 
-        btn_old.clicked.connect(self.select_old)
-        btn_new.clicked.connect(self.select_new)
-        btn_compare.clicked.connect(self.compare_pdfs)
+        self._create_toolbar()
+        self.setStatusBar(QStatusBar())
 
-        self.old_path = ""
-        self.new_path = ""
+    def _create_toolbar(self) -> None:
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icons')
+        toolbar.addAction(load_svg_icon(os.path.join(icon_dir, 'history.svg')), "History", lambda: self.switch_page(self.history_page)).setToolTip("History")
+        toolbar.addAction(load_svg_icon(os.path.join(icon_dir, 'settings.svg')), "Settings").setToolTip("Settings")
+        toolbar.addAction(load_svg_icon(os.path.join(icon_dir, 'help.svg')), "Help").setToolTip("Help")
+        self.addToolBar(toolbar)
 
-        self.setCentralWidget(central)
-
-    # slots
-    def select_old(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select old PDF", filter="PDF Files (*.pdf)"
-        )
-        if path:
-            self.old_path = path
-            self.label_old.setText(path)
-
-    def select_new(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select new PDF", filter="PDF Files (*.pdf)"
-        )
-        if path:
-            self.new_path = path
-            self.label_new.setText(path)
-
-    def compare_pdfs(self) -> None:
-        if not self.old_path or not self.new_path:
-            QMessageBox.warning(self, "Error", "Select both PDFs for comparison")
-            return
-
-        out, _ = QFileDialog.getSaveFileName(
-            self, "Save comparison PDF", filter="PDF Files (*.pdf)"
-        )
-        if not out:
-            return
-
-        try:
-            result = comparar_pdfs(self.old_path, self.new_path)
-            if not result["removidos"] and not result["adicionados"]:
-                QMessageBox.information(self, "Result", "No differences found")
-                return
-            gerar_pdf_com_destaques(
-                self.old_path,
-                self.new_path,
-                result["removidos"],
-                result["adicionados"],
-                out,
-            )
-            QMessageBox.information(self, "Result", f"Comparison PDF saved to: {out}")
-        except CancelledError:
-            QMessageBox.information(self, "Result", "Operation cancelled")
-        except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+    def switch_page(self, page: QWidget) -> None:
+        self.statusBar().showMessage(page.objectName(), 2000)
+        self.stack.setCurrentWidget(page)
+        anim = QPropertyAnimation(page, b"windowOpacity")
+        anim.setDuration(200)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.start()
 
 
 def main() -> None:
-    """Launch the GUI application."""
+    from PySide6.QtWidgets import QApplication
+
     app = QApplication([])
+    style_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'style.qss')
+    if os.path.exists(style_path):
+        with open(style_path, 'r', encoding='utf-8') as f:
+            app.setStyleSheet(f.read())
     window = MainWindow()
     window.show()
     app.exec()
