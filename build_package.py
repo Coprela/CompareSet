@@ -29,13 +29,16 @@ def _obfuscate(entry: str) -> str:
         pass
 
     try:
-        subprocess.run([
-            cmd,
-            "obfuscate",
-            "-O",
-            out_dir,
-            entry,
-        ], check=True)
+        subprocess.run(
+            [
+                cmd,
+                "obfuscate",
+                "-O",
+                out_dir,
+                entry,
+            ],
+            check=True,
+        )
 
         out_file = os.path.join(out_dir, entry)
         if not os.path.exists(out_file):
@@ -71,6 +74,7 @@ PyInstaller.__main__.run(
         f"--add-data=assets{os.sep}icons{os.sep}Icon - Administration.png{sep}assets/icons",
         # bundle the application icon used by the Qt interface
         f"--add-data=assets{os.sep}icons{os.sep}Icon - CompareSet.ico{sep}assets/icons",
+        f"--add-data=assets{os.sep}style.qss{sep}assets",
         f"--add-data=LICENSE{sep}.",
         f"--add-data=LICENSE_EN.txt{sep}.",
         f"--add-data=LICENSE_PT.txt{sep}.",

@@ -1,5 +1,9 @@
 """Remote user management for CompareSet.
 
+DEPRECATED: this module is kept for legacy scripts and will be
+removed in a future release. The new Qt interface does not rely
+on remote user lists.
+
 This module loads and saves the user list stored remotely on GitHub.  The
 remote JSON file contains two keys:
 

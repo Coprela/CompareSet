@@ -236,6 +236,15 @@ def _resize_new_pdf(
 
         page = doc_new[i]
         src_rect = page.rect
+        if (
+            src_rect.width == 0
+            or src_rect.height == 0
+            or target_rect.width == 0
+            or target_rect.height == 0
+        ):
+            logger.warning("Skipping page %d with zero dimension", i)
+            resized.new_page(width=target_rect.width, height=target_rect.height)
+            continue
         rotate = 0.0
         if auto_orient and _page_orientation(target_rect) != _page_orientation(
             src_rect
