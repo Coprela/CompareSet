@@ -12,5 +12,17 @@ dependencies = [
     "pyarmor",
 ]
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"compareset" = [
+    "ui/*.ui",
+]
+"" = [
+    "assets/**",
+    "assets/*.qss",
+]

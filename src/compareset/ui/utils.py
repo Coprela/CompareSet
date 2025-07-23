@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from PySide6.QtCore import Qt, QFile
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
@@ -15,6 +16,18 @@ def load_svg_icon(path: str, size: int = 16) -> QIcon:
     renderer.render(painter)
     painter.end()
     return QIcon(pix)
+
+
+def asset_path(*parts: str) -> str:
+    """Return absolute path to an asset, working in dev and installed modes."""
+    base = Path(__file__).resolve()
+    # Check repository layout first (../..../assets)
+    candidate = base.parents[3] / "assets" / Path(*parts)
+    if candidate.exists():
+        return str(candidate)
+    # Fallback to installed package layout (..../assets)
+    candidate = base.parents[2] / "assets" / Path(*parts)
+    return str(candidate)
 
 
 def load_ui(path: str, parent=None):

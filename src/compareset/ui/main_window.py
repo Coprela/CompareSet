@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QPropertyAnimation
 
-from .utils import load_svg_icon
+from .utils import load_svg_icon, asset_path
 from .compare_page import ComparePage
 from .history_page import HistoryPage
 from .admin_page import AdminPage
@@ -39,10 +39,18 @@ class MainWindow(QMainWindow):
     def _create_toolbar(self) -> None:
         toolbar = QToolBar()
         toolbar.setMovable(False)
-        icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icons')
-        toolbar.addAction(load_svg_icon(os.path.join(icon_dir, 'history.svg')), "History", lambda: self.switch_page(self.history_page)).setToolTip("History")
-        toolbar.addAction(load_svg_icon(os.path.join(icon_dir, 'settings.svg')), "Settings").setToolTip("Settings")
-        toolbar.addAction(load_svg_icon(os.path.join(icon_dir, 'help.svg')), "Help").setToolTip("Help")
+        icon_dir = asset_path("icons")
+        toolbar.addAction(
+            load_svg_icon(os.path.join(icon_dir, "history.svg")),
+            "History",
+            lambda: self.switch_page(self.history_page),
+        ).setToolTip("History")
+        toolbar.addAction(
+            load_svg_icon(os.path.join(icon_dir, "settings.svg")), "Settings"
+        ).setToolTip("Settings")
+        toolbar.addAction(
+            load_svg_icon(os.path.join(icon_dir, "help.svg")), "Help"
+        ).setToolTip("Help")
         self.addToolBar(toolbar)
 
     def switch_page(self, page: QWidget) -> None:
@@ -59,9 +67,9 @@ def main() -> None:
     from PySide6.QtWidgets import QApplication
 
     app = QApplication([])
-    style_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'style.qss')
+    style_path = os.path.join(asset_path(), "style.qss")
     if os.path.exists(style_path):
-        with open(style_path, 'r', encoding='utf-8') as f:
+        with open(style_path, "r", encoding="utf-8") as f:
             app.setStyleSheet(f.read())
     window = MainWindow()
     window.show()
