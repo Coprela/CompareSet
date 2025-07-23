@@ -1,3 +1,11 @@
+"""Legacy single-file interface (deprecated).
+
+This module contains the original Qt implementation bundled with logic and
+translations.  The project now provides a modular interface under
+``src/compareset/ui`` which should be used instead.  This file is kept only for
+reference and will be removed in a future release.
+"""
+
 import os
 import time
 import getpass
