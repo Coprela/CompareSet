@@ -14,9 +14,13 @@ for use in authorized corporate environments.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 # PyMuPDF 1.22 or newer is required
 python -m compareset
 ```
+On Windows activate the virtual environment with `.\.venv\Scripts\activate.bat`
+(cmd.exe) or `.venv\Scripts\Activate.ps1` (PowerShell) before installing the
+dependencies.
 The application depends on [PyMuPDF](https://pypi.org/project/PyMuPDF/) version
 1.22 or newer so that the two-argument ``Matrix`` constructor is available.
 The interface layouts are defined as Qt Designer `.ui` files in `src/compareset/ui` and styled by `assets/style.qss` for a consistent look.
