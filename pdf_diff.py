@@ -265,6 +265,10 @@ def _resize_new_pdf(
         sx = target_rect.width / src_rect.width
         sy = target_rect.height / src_rect.height
         s = min(sx, sy)
+        if s == 0:
+            logger.warning("Skipping page %d due to zero scale", i)
+            resized.new_page(width=target_rect.width, height=target_rect.height)
+            continue
         tx = (target_rect.width - src_rect.width * s) / 2.0
         ty = (target_rect.height - src_rect.height * s) / 2.0
 
