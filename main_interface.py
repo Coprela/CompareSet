@@ -67,7 +67,6 @@ class ComparisonThread(QtCore.QThread):
         output_pdf: str,
         ignore_geometry: bool,
         ignore_text: bool,
-        verbose: bool,
     ):
         super().__init__()
         self.old_pdf = old_pdf
@@ -75,7 +74,6 @@ class ComparisonThread(QtCore.QThread):
         self.output_pdf = output_pdf
         self.ignore_geometry = ignore_geometry
         self.ignore_text = ignore_text
-        self.verbose = verbose
         self._cancelled = False
         self.elements_checked = 0
         self.diff_count = 0
@@ -96,7 +94,6 @@ class ComparisonThread(QtCore.QThread):
                 ignore_text=self.ignore_text,
                 progress_callback=lambda p: self.progress.emit(p / 2),
                 cancel_callback=self.is_cancelled,
-                verbose=self.verbose,
             )
             self.elements_checked = dados.get("verificados", 0)
             self.diff_count = len(dados.get("removidos", [])) + len(
@@ -845,7 +842,6 @@ class CompareSetQt(QtWidgets.QWidget):
             out,
             ignore_geometry,
             ignore_text,
-            not self.silent_chk.isChecked(),
         )
         self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)
