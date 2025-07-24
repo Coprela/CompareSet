@@ -33,6 +33,24 @@ def asset_path(*parts: str) -> str:
     return str(candidate)
 
 
+def root_path(*parts: str) -> str:
+    """Return absolute path relative to the project root."""
+    base = Path(__file__).resolve()
+
+    frozen_base = getattr(sys, "_MEIPASS", None)
+    if frozen_base:
+        candidate = Path(frozen_base) / Path(*parts)
+        if candidate.exists():
+            return str(candidate)
+
+    candidate = base.parents[4] / Path(*parts)
+    if candidate.exists():
+        return str(candidate)
+
+    candidate = base.parents[3] / Path(*parts)
+    return str(candidate)
+
+
 def load_ui(path: str, parent=None):
     """Load a .ui file produced by Qt Designer.
 

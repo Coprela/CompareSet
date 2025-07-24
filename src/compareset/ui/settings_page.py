@@ -5,11 +5,27 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton
 )
 
-from .utils import asset_path
+from .utils import asset_path, root_path
 
 TRANSLATIONS = {
-    "en": {"language": "Language", "appearance": "Appearance", "back": "Back", "license": "License", "light": "Light", "dark": "Dark"},
-    "pt": {"language": "Idioma", "appearance": "Aparência", "back": "Voltar", "license": "Licença", "light": "Claro", "dark": "Escuro"},
+    "en": {
+        "language": "Language",
+        "appearance": "Appearance",
+        "back": "Back",
+        "license": "License",
+        "light": "Light",
+        "dark": "Dark",
+        "not_found": "License file not found.",
+    },
+    "pt": {
+        "language": "Idioma",
+        "appearance": "Aparência",
+        "back": "Voltar",
+        "license": "Licença",
+        "light": "Claro",
+        "dark": "Escuro",
+        "not_found": "Arquivo de licença não encontrado.",
+    },
 }
 
 
@@ -55,14 +71,16 @@ class SettingsPage(QWidget):
         self.appearance_combo.setItemText(1, t["dark"])
 
     def show_license(self) -> None:
+        """Display license text from the project root."""
         fname = "LICENSE_EN.txt" if self.main.lang == "en" else "LICENSE_PT.txt"
-        path = os.path.join(asset_path(), fname)
+        path = root_path(fname)
         text = ""
         try:
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read()
         except Exception:
-            text = "License file not found."
+            t = TRANSLATIONS.get(self.main.lang, TRANSLATIONS["en"])
+            text = t["not_found"]
         from PySide6.QtWidgets import QMessageBox
 
         QMessageBox.information(self, "License", text)
