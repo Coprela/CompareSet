@@ -67,6 +67,7 @@ class ComparisonThread(QtCore.QThread):
         output_pdf: str,
         ignore_geometry: bool,
         ignore_text: bool,
+        verbose: bool,
     ):
         super().__init__()
         self.old_pdf = old_pdf
@@ -74,6 +75,7 @@ class ComparisonThread(QtCore.QThread):
         self.output_pdf = output_pdf
         self.ignore_geometry = ignore_geometry
         self.ignore_text = ignore_text
+        self.verbose = verbose
         self._cancelled = False
         self.elements_checked = 0
         self.diff_count = 0
@@ -94,6 +96,7 @@ class ComparisonThread(QtCore.QThread):
                 ignore_text=self.ignore_text,
                 progress_callback=lambda p: self.progress.emit(p / 2),
                 cancel_callback=self.is_cancelled,
+                verbose=self.verbose,
             )
             self.elements_checked = dados.get("verificados", 0)
             self.diff_count = len(dados.get("removidos", [])) + len(
@@ -230,6 +233,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "text_tip": "Compares changes in words, numbers, and annotations.",
                 "geom_option": "Geometric elements",
                 "geom_tip": "Compares changes in visual elements such as lines, shapes, charts, and vectors.",
+                "silent_option": "Silent mode",
                 "coming_soon": "Coming soon",
             },
             "pt": {
@@ -308,6 +312,7 @@ class CompareSetQt(QtWidgets.QWidget):
                 "text_tip": "Compara alterações em palavras, números e anotações.",
                 "geom_option": "Elementos geométricos",
                 "geom_tip": "Compara alterações em elementos visuais como linhas, formas, gráficos e vetores.",
+                "silent_option": "Modo silencioso",
                 "coming_soon": "Em breve",
             },
         }
@@ -377,6 +382,7 @@ class CompareSetQt(QtWidgets.QWidget):
             self.text_chk.setToolTip(t["text_tip"])
             self.geom_chk.setText(t["geom_option"])
             self.geom_chk.setToolTip(t["geom_tip"])
+            self.silent_chk.setText(t["silent_option"])
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
         if hasattr(self, "btn_view"):
@@ -549,6 +555,8 @@ class CompareSetQt(QtWidgets.QWidget):
         self.geom_chk.stateChanged.connect(self._enforce_element_selection)
         elements_row.addWidget(self.text_chk)
         elements_row.addWidget(self.geom_chk)
+        self.silent_chk = QtWidgets.QCheckBox()
+        elements_row.addWidget(self.silent_chk)
         layout.addLayout(elements_row)
 
         self.btn_compare = QtWidgets.QPushButton()
@@ -837,6 +845,7 @@ class CompareSetQt(QtWidgets.QWidget):
             out,
             ignore_geometry,
             ignore_text,
+            not self.silent_chk.isChecked(),
         )
         self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)

@@ -17,6 +17,7 @@ TRANSLATIONS = {
         "compare": "Compare",
         "text": "Text",
         "geom": "Geometry",
+        "silent": "Silent mode",
     },
     "pt": {
         "select_old": "Selecionar PDF antigo",
@@ -25,6 +26,7 @@ TRANSLATIONS = {
         "compare": "Comparar",
         "text": "Texto",
         "geom": "Elementos geom\u00e9tricos",
+        "silent": "Modo silencioso",
     },
 }
 
@@ -43,6 +45,7 @@ class ComparePage(QWidget):
         self.btn_swap = self.findChild(QWidget, 'btnSwap')
         self.text_chk = self.findChild(QWidget, 'textChk')
         self.geom_chk = self.findChild(QWidget, 'geomChk')
+        self.silent_chk = self.findChild(QWidget, 'silentChk')
         self.btn_compare = self.findChild(QWidget, 'btnCompare')
         self.progress = self.findChild(QWidget, 'progressBar')
 
@@ -101,6 +104,7 @@ class ComparePage(QWidget):
         self.btn_compare.setText(t["compare"])
         self.text_chk.setText(t["text"])
         self.geom_chk.setText(t["geom"])
+        self.silent_chk.setText(t["silent"])
 
     def compare_pdfs(self):
         if not self.old_path or not self.new_path:
@@ -110,7 +114,11 @@ class ComparePage(QWidget):
         if not out:
             return
         try:
-            result = comparar_pdfs(self.old_path, self.new_path)
+            result = comparar_pdfs(
+                self.old_path,
+                self.new_path,
+                verbose=not self.silent_chk.isChecked(),
+            )
             if not result['removidos'] and not result['adicionados']:
                 QMessageBox.information(self, 'Result', 'No differences found')
                 return
