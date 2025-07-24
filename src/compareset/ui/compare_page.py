@@ -30,8 +30,9 @@ TRANSLATIONS = {
 
 
 class ComparePage(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, main: 'MainWindow') -> None:
+        super().__init__(parent=main.stack)
+        self.main = main
         ui_path = os.path.join(os.path.dirname(__file__), 'compare_page.ui')
         self.ui = load_ui(ui_path, self)
         layout = self.layout()  # layout from .ui

@@ -12,10 +12,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QPropertyAnimation
 
-from .utils import load_svg_icon, asset_path
+from .utils import load_icon, asset_path
 from .compare_page import ComparePage
 from .history_page import HistoryPage
 from .admin_page import AdminPage
+from .settings_page import SettingsPage
 
 TRANSLATIONS = {
     "en": {"history": "History", "help": "Help", "settings": "Settings", "language": "Language"},
@@ -34,13 +35,15 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
-        self.compare_page = ComparePage()
-        self.history_page = HistoryPage()
-        self.admin_page = AdminPage()
+        self.compare_page = ComparePage(self)
+        self.history_page = HistoryPage(self)
+        self.admin_page = AdminPage(self)
+        self.settings_page = SettingsPage(self)
 
         self.stack.addWidget(self.compare_page)
         self.stack.addWidget(self.history_page)
         self.stack.addWidget(self.admin_page)
+        self.stack.addWidget(self.settings_page)
 
         self._create_toolbar()
         self.setStatusBar(QStatusBar())
@@ -52,17 +55,17 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         icon_dir = asset_path("icons")
         self.action_history = toolbar.addAction(
-            load_svg_icon(os.path.join(icon_dir, "history.svg")),
+            load_icon(os.path.join(icon_dir, "Icon - History.png")),
             "",
             lambda: self.switch_page(self.history_page),
         )
         self.action_history.setToolTip("History")
         self.action_settings = toolbar.addAction(
-            load_svg_icon(os.path.join(icon_dir, "settings.svg")), ""
+            load_icon(os.path.join(icon_dir, "Icon - Gear.png")), ""
         )
         self.action_settings.setToolTip("Settings")
         self.action_help = toolbar.addAction(
-            load_svg_icon(os.path.join(icon_dir, "help.svg")), ""
+            load_icon(os.path.join(icon_dir, "Icon - Question Mark Help.png")), ""
         )
         self.action_help.setToolTip("Help")
 
@@ -99,6 +102,7 @@ class MainWindow(QMainWindow):
         self.action_settings.setToolTip(t["settings"])
         self.lang_button.setText(t["language"])
         self.compare_page.set_language(self.lang)
+        self.settings_page.set_language(self.lang)
 
     def open_help(self) -> None:
         from PySide6.QtWidgets import QMessageBox
@@ -106,7 +110,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Help", "Help is not implemented yet")
 
     def open_settings(self) -> None:
-        self.switch_page(self.admin_page)
+        self.switch_page(self.settings_page)
 
     def switch_page(self, page: QWidget) -> None:
         self.statusBar().showMessage(page.objectName(), 2000)
