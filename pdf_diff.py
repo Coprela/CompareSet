@@ -231,10 +231,31 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
         doc.close()
 
 
+def _valid_size(value: float) -> bool:
+    """Return ``True`` when ``value`` is a positive number."""
+
+    try:
+        return value is not None and float(value) > 0
+    except Exception:
+        return False
+
+
 def _resize_new_pdf(
-    doc_old: fitz.Document, doc_new: fitz.Document, auto_orient: bool
+    doc_old: fitz.Document, doc_new: fitz.Document, auto_orient: bool,
+    *, page_log: Optional[Callable[[int, str], None]] = None
 ) -> fitz.Document:
-    """Return ``doc_new`` scaled to match ``doc_old`` page dimensions."""
+    """Return ``doc_new`` scaled to match ``doc_old`` page dimensions.
+
+    Parameters
+    ----------
+    doc_old, doc_new:
+        Documents whose pages will be matched in size.
+    auto_orient:
+        When ``True`` rotate new pages to match the orientation of the old ones.
+    page_log:
+        Optional callback receiving the page index and the status
+        ``"OK"`` or ``"SKIPPED"`` for logging purposes.
+    """
 
     resized = fitz.open()
     max_pages = len(doc_new)
@@ -246,14 +267,26 @@ def _resize_new_pdf(
 
         page = doc_new[i]
         src_rect = page.rect
-        if (
-            src_rect.width == 0
-            or src_rect.height == 0
-            or target_rect.width == 0
-            or target_rect.height == 0
+        if not (
+            _valid_size(src_rect.width)
+            and _valid_size(src_rect.height)
+            and _valid_size(target_rect.width)
+            and _valid_size(target_rect.height)
         ):
-            logger.warning("Skipping page %d with zero dimension", i)
-            resized.new_page(width=target_rect.width, height=target_rect.height)
+            logger.warning(
+                "Skipping page %d with invalid dimensions old=(%.2f, %.2f) new=(%.2f, %.2f)",
+                i,
+                target_rect.width,
+                target_rect.height,
+                src_rect.width,
+                src_rect.height,
+            )
+            resized.new_page(
+                width=target_rect.width if _valid_size(target_rect.width) else 1,
+                height=target_rect.height if _valid_size(target_rect.height) else 1,
+            )
+            if page_log:
+                page_log(i, "SKIPPED")
             continue
         rotate = 0.0
         if auto_orient and _page_orientation(target_rect) != _page_orientation(
@@ -271,6 +304,8 @@ def _resize_new_pdf(
         new_page = resized.new_page(width=target_rect.width, height=target_rect.height)
         dest = fitz.Rect(tx, ty, tx + src_rect.width * s, ty + src_rect.height * s)
         new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
+        if page_log:
+            page_log(i, "OK")
 
     return resized
 
@@ -447,6 +482,7 @@ def comparar_pdfs(
     ignore_geometry: bool = False,
     ignore_text: bool = False,
     auto_orient: bool = True,
+    verbose: bool = False,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -481,6 +517,8 @@ def comparar_pdfs(
     auto_orient : bool, optional
         When ``True`` automatically rotate pages so old and new PDFs share the
         same orientation before comparison.
+    verbose : bool, optional
+        When ``True`` print status messages for each processed page.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
@@ -512,8 +550,19 @@ def comparar_pdfs(
                     pages,
                 )
 
+        def _page_log(idx: int, status: str) -> None:
+            if verbose:
+                page = doc_new[idx] if idx < len(doc_new) else doc_old[idx]
+                w = page.rect.width
+                h = page.rect.height
+                print(f"Comparando página {idx + 1}...")
+                print(f"Dimensões: W = {w:.2f}, H = {h:.2f}")
+                print(f"Status: {status}")
+
         # scale new PDF pages to match the size of the old PDF
-        doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
+        doc_new_resized = _resize_new_pdf(
+            doc_old, doc_new, auto_orient, page_log=_page_log if verbose else None
+        )
 
         old_pages = _extract_bboxes(
             doc_old,
@@ -525,6 +574,18 @@ def comparar_pdfs(
             ignore_geometry=ignore_geometry,
             ignore_text=ignore_text,
         )
+        if (
+            all(not p for p in old_pages) or all(not p for p in new_pages)
+        ):
+            msg = (
+                "Não foi possível comparar as páginas. Verifique se ambos os PDFs "
+                "possuem conteúdo visível e dimensões válidas."
+            )
+            if verbose:
+                print(msg)
+            logger.warning(msg)
+            doc_new_resized.close()
+            return {"removidos": [], "adicionados": [], "verificados": 0}
         max_pages = max(len(old_pages), len(new_pages))
 
         if adaptive:
@@ -605,6 +666,7 @@ def compare_multiple_pdfs(
     ignore_geometry: bool = False,
     ignore_text: bool = False,
     auto_orient: bool = True,
+    verbose: bool = False,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> List[Dict[str, List[Dict]]]:
@@ -618,6 +680,9 @@ def compare_multiple_pdfs(
         Function called with the overall progress percentage.
     cancel_callback:
         Function returning ``True`` to abort the operation.
+
+    verbose:
+        Forwarded to :func:`comparar_pdfs` to enable per-page logging.
 
     Other parameters are forwarded to :func:`comparar_pdfs`.
 
@@ -650,6 +715,7 @@ def compare_multiple_pdfs(
             ignore_geometry=ignore_geometry,
             ignore_text=ignore_text,
             auto_orient=auto_orient,
+            verbose=verbose,
             progress_callback=_cb(idx),
             cancel_callback=cancel_callback,
         )
