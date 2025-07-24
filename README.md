@@ -14,6 +14,8 @@ for use in authorized corporate environments.
 pip install -r requirements.txt
 python run_app.py
 ```
+Windows users can simply double-click ``run_app.py`` after installing the
+requirements; no virtual environment is required.
 PyMuPDF 1.22 or newer is required for PDF processing.
 The interface layouts are defined as Qt Designer `.ui` files in `src/compareset/ui` and styled by `assets/style.qss` for a consistent look.
 
@@ -35,30 +37,6 @@ docs/                 - Additional documentation
 ```
 
 See the `docs/` directory for architectural notes and customization tips.
-
-## Environment
-
-Configuration is loaded from environment variables. Copy `.env.example` to `.env`
-and adjust as needed. Set `GITHUB_TOKEN` to a fine-grained personal access token
-with **Contents: Read and Write** permission for the repository. Using
-[python-dotenv](https://pypi.org/project/python-dotenv/) prevents secrets from
-being committed.
-
-| Variable | Purpose |
-|----------|---------|
-| `GITHUB_REPO` | Repository used to fetch remote configuration |
-| `GITHUB_TOKEN` | Personal access token for the repository |
-| `GITHUB_API_BASE` | Base URL for the GitHub API |
-| `GITHUB_PATH_PREFIX` | Path inside the repo for config files |
-| `LATEST_VERSION_FILE` | JSON file with the latest version information |
-| `ALLOWED_USERS_FILE` | Remote user list file |
-| `ADMIN_MODE` | Set to `1` to enable admin features |
-| `LANG` | Force interface language (`pt` or `en`) |
-| `SIGNTOOL` | Path to signtool.exe for signing builds |
-| `SIGN_CERT` | Code signing certificate (.pfx) |
-| `SIGN_PASS` | Password for the signing certificate |
-| `SIGN_TIMESTAMP` | Timestamp URL used when signing |
-
 
 ## Packaging
 
