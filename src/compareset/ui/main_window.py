@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QToolBar,
     QStatusBar,
     QWidget,
+    QToolButton,
+    QMenu,
 )
 from PySide6.QtCore import Qt, QPropertyAnimation
 
@@ -15,12 +17,19 @@ from .compare_page import ComparePage
 from .history_page import HistoryPage
 from .admin_page import AdminPage
 
+TRANSLATIONS = {
+    "en": {"history": "History", "help": "Help", "settings": "Settings", "language": "Language"},
+    "pt": {"history": "Hist\u00f3rico", "help": "Ajuda", "settings": "Configura\u00e7\u00f5es", "language": "Idioma"},
+}
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("CompareSet")
         self.resize(800, 600)
+
+        self.lang = "en"
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -36,22 +45,68 @@ class MainWindow(QMainWindow):
         self._create_toolbar()
         self.setStatusBar(QStatusBar())
 
+        self.set_language(self.lang)
+
     def _create_toolbar(self) -> None:
         toolbar = QToolBar()
         toolbar.setMovable(False)
         icon_dir = asset_path("icons")
-        toolbar.addAction(
+        self.action_history = toolbar.addAction(
             load_svg_icon(os.path.join(icon_dir, "history.svg")),
-            "History",
+            "",
             lambda: self.switch_page(self.history_page),
-        ).setToolTip("History")
-        toolbar.addAction(
-            load_svg_icon(os.path.join(icon_dir, "settings.svg")), "Settings"
-        ).setToolTip("Settings")
-        toolbar.addAction(
-            load_svg_icon(os.path.join(icon_dir, "help.svg")), "Help"
-        ).setToolTip("Help")
+        )
+        self.action_history.setToolTip("History")
+        self.action_settings = toolbar.addAction(
+            load_svg_icon(os.path.join(icon_dir, "settings.svg")), ""
+        )
+        self.action_settings.setToolTip("Settings")
+        self.action_help = toolbar.addAction(
+            load_svg_icon(os.path.join(icon_dir, "help.svg")), ""
+        )
+        self.action_help.setToolTip("Help")
+
+        self.action_history.triggered.connect(
+            lambda: self.switch_page(self.history_page)
+        )
+        self.action_settings.triggered.connect(
+            self.open_settings
+        )
+        self.action_help.triggered.connect(self.open_help)
+
+        # language toggle button
+        self.lang_button = QToolButton()
+        lang_menu = QMenu(self.lang_button)
+        act_en = lang_menu.addAction("EN")
+        act_pt = lang_menu.addAction("PT")
+        act_en.triggered.connect(lambda: self.set_language("en"))
+        act_pt.triggered.connect(lambda: self.set_language("pt"))
+        self.lang_button.setMenu(lang_menu)
+        self.lang_button.setPopupMode(QToolButton.InstantPopup)
+        toolbar.addWidget(self.lang_button)
+
         self.addToolBar(toolbar)
+
+    def set_language(self, lang: str) -> None:
+        """Set interface language and update labels."""
+        self.lang = lang if lang in TRANSLATIONS else "en"
+        t = TRANSLATIONS[self.lang]
+        self.action_history.setText(t["history"])
+        self.action_history.setToolTip(t["history"])
+        self.action_help.setText(t["help"])
+        self.action_help.setToolTip(t["help"])
+        self.action_settings.setText(t["settings"])
+        self.action_settings.setToolTip(t["settings"])
+        self.lang_button.setText(t["language"])
+        self.compare_page.set_language(self.lang)
+
+    def open_help(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.information(self, "Help", "Help is not implemented yet")
+
+    def open_settings(self) -> None:
+        self.switch_page(self.admin_page)
 
     def switch_page(self, page: QWidget) -> None:
         self.statusBar().showMessage(page.objectName(), 2000)

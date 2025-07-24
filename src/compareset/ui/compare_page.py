@@ -9,6 +9,25 @@ from pdf_highlighter import gerar_pdf_com_destaques
 
 from .utils import load_ui
 
+TRANSLATIONS = {
+    "en": {
+        "select_old": "Select old PDF",
+        "select_new": "Select new PDF",
+        "swap": "Swap",
+        "compare": "Compare",
+        "text": "Text",
+        "geom": "Geometry",
+    },
+    "pt": {
+        "select_old": "Selecionar PDF antigo",
+        "select_new": "Selecionar PDF novo",
+        "swap": "Inverter",
+        "compare": "Comparar",
+        "text": "Texto",
+        "geom": "Elementos geom\u00e9tricos",
+    },
+}
+
 
 class ComparePage(QWidget):
     def __init__(self, parent=None):
@@ -35,6 +54,9 @@ class ComparePage(QWidget):
         self.btn_compare.clicked.connect(self.compare_pdfs)
         self.text_chk.stateChanged.connect(self._ensure_elements)
         self.geom_chk.stateChanged.connect(self._ensure_elements)
+
+        self.lang = "en"
+        self.set_language(self.lang)
 
     def _ensure_elements(self):
         if not (self.text_chk.isChecked() or self.geom_chk.isChecked()):
@@ -67,6 +89,17 @@ class ComparePage(QWidget):
     def _update_compare_state(self):
         enabled = bool(self.old_path and self.new_path)
         self.btn_compare.setEnabled(enabled)
+
+    def set_language(self, lang: str) -> None:
+        """Update labels according to ``lang`` (``'en'`` or ``'pt'``)."""
+        self.lang = lang if lang in TRANSLATIONS else "en"
+        t = TRANSLATIONS[self.lang]
+        self.btn_old.setText(t["select_old"])
+        self.btn_new.setText(t["select_new"])
+        self.btn_swap.setText(t["swap"])
+        self.btn_compare.setText(t["compare"])
+        self.text_chk.setText(t["text"])
+        self.geom_chk.setText(t["geom"])
 
     def compare_pdfs(self):
         if not self.old_path or not self.new_path:

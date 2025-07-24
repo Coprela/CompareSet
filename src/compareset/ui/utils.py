@@ -41,10 +41,31 @@ def asset_path(*parts: str) -> str:
 
 
 def load_ui(path: str, parent=None):
-    """Load a .ui file produced by Qt Designer."""
+    """Load a .ui file produced by Qt Designer.
+
+    When ``parent`` is provided the loaded widget's layout and children
+    are re-parented so that ``parent`` effectively becomes the top-level
+    widget. This mirrors the behaviour of :func:`uic.loadUi` and ensures
+    the UI elements are visible even when ``parent`` has no layout set.
+    """
+
     loader = QUiLoader()
     file = QFile(path)
+    if not file.exists():
+        raise FileNotFoundError(path)
+
     file.open(QFile.ReadOnly)
     ui = loader.load(file, parent)
     file.close()
+
+    if parent is not None and ui is not parent:
+        layout = ui.layout()
+        if layout is not None:
+            parent.setLayout(layout)
+        for child in ui.children():
+            if hasattr(child, "setParent"):
+                child.setParent(parent)
+        ui.deleteLater()
+        return parent
+
     return ui
