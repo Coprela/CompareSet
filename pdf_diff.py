@@ -594,3 +594,65 @@ def comparar_pdfs(
         doc_new_resized.close()
 
     return result
+
+
+def compare_multiple_pdfs(
+    pairs: Sequence[Tuple[str, str]],
+    *,
+    thr: float = 0.9,
+    adaptive: bool = False,
+    pos_tol: float = 3.0,
+    ignore_geometry: bool = False,
+    ignore_text: bool = False,
+    auto_orient: bool = True,
+    progress_callback: Optional[Callable[[float], None]] = None,
+    cancel_callback: Optional[Callable[[], bool]] = None,
+) -> List[Dict[str, List[Dict]]]:
+    """Compare multiple PDF pairs sequentially.
+
+    Parameters
+    ----------
+    pairs:
+        Sequence of ``(old_pdf, new_pdf)`` tuples.
+    progress_callback:
+        Function called with the overall progress percentage.
+    cancel_callback:
+        Function returning ``True`` to abort the operation.
+
+    Other parameters are forwarded to :func:`comparar_pdfs`.
+
+    Returns
+    -------
+    list of dict
+        List of results from :func:`comparar_pdfs` for each pair.
+    """
+
+    results: List[Dict[str, List[Dict]]] = []
+    total = len(pairs)
+
+    def _cb(idx: int) -> Callable[[float], None]:
+        def wrapper(p: float) -> None:
+            if progress_callback:
+                progress = ((idx + p / 100) / total) * 100
+                progress_callback(progress)
+
+        return wrapper
+
+    for idx, (old_pdf, new_pdf) in enumerate(pairs):
+        if cancel_callback and cancel_callback():
+            raise CancelledError()
+        res = comparar_pdfs(
+            old_pdf,
+            new_pdf,
+            thr=thr,
+            adaptive=adaptive,
+            pos_tol=pos_tol,
+            ignore_geometry=ignore_geometry,
+            ignore_text=ignore_text,
+            auto_orient=auto_orient,
+            progress_callback=_cb(idx),
+            cancel_callback=cancel_callback,
+        )
+        results.append(res)
+
+    return results
