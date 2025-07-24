@@ -50,6 +50,12 @@ class CancelledError(Exception):
     pass
 
 
+class InvalidDimensionsError(Exception):
+    """Raised when PDF pages have invalid sizes."""
+
+    pass
+
+
 def _page_orientation(rect: fitz.Rect) -> str:
     """Return ``'landscape'`` or ``'portrait'`` for a page rectangle."""
     return "landscape" if rect.width > rect.height else "portrait"
