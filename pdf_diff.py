@@ -107,6 +107,10 @@ def _extract_bboxes(
                 rot = None
             elif len(t) == 5:
                 sx, sy, tx, ty, rot = t
+                if sx <= 0 or sy <= 0:
+                    raise ValueError(
+                        f"Transform {i} has invalid scale factors"
+                    )
                 try:
                     matrix = fitz.Matrix(sx, sy)
                 except Exception as exc:
@@ -116,6 +120,10 @@ def _extract_bboxes(
             else:  # len == 4
                 sx, sy, tx, ty = t
                 rot = 0.0
+                if sx <= 0 or sy <= 0:
+                    raise ValueError(
+                        f"Transform {i} has invalid scale factors"
+                    )
                 matrix = fitz.Matrix(sx, sy)
         else:
             tx = ty = 0.0

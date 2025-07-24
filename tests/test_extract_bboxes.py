@@ -22,6 +22,15 @@ def test_extract_bboxes_invalid_transform_type(tmp_path):
     doc.close()
 
 
+def test_extract_bboxes_zero_scale(tmp_path):
+    doc = fitz.open()
+    doc.new_page()
+    invalid = [(0.0, 1.0, 0.0, 0.0)]
+    with pytest.raises(ValueError):
+        _extract_bboxes(doc, invalid)
+    doc.close()
+
+
 def test_extract_bboxes_matrix_transform(tmp_path):
     doc = fitz.open()
     page = doc.new_page()
