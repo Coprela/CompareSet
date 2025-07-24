@@ -97,12 +97,22 @@ def _extract_bboxes(
         if transforms and i < len(transforms):
             t = transforms[i]
             if len(t) == 6:
-                matrix = fitz.Matrix(*t)
+                try:
+                    matrix = fitz.Matrix(*t)
+                except Exception as exc:
+                    raise ValueError(
+                        "Transform %d must contain 6 numeric values" % idx
+                    ) from exc
                 tx = ty = 0.0
                 rot = None
             elif len(t) == 5:
                 sx, sy, tx, ty, rot = t
-                matrix = fitz.Matrix(sx, sy)
+                try:
+                    matrix = fitz.Matrix(sx, sy)
+                except Exception as exc:
+                    raise ValueError(
+                        "Transform %d must contain numeric scale values" % idx
+                    ) from exc
             else:  # len == 4
                 sx, sy, tx, ty = t
                 rot = 0.0
