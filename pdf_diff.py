@@ -50,12 +50,6 @@ class CancelledError(Exception):
     pass
 
 
-class InvalidDimensionsError(Exception):
-    """Raised when comparison cannot run due to invalid page dimensions."""
-
-    pass
-
-
 def _page_orientation(rect: fitz.Rect) -> str:
     """Return ``'landscape'`` or ``'portrait'`` for a page rectangle."""
     return "landscape" if rect.width > rect.height else "portrait"
@@ -113,10 +107,6 @@ def _extract_bboxes(
                 rot = None
             elif len(t) == 5:
                 sx, sy, tx, ty, rot = t
-                if sx <= 0 or sy <= 0:
-                    raise ValueError(
-                        f"Transform {i} has invalid scale factors"
-                    )
                 try:
                     matrix = fitz.Matrix(sx, sy)
                 except Exception as exc:
@@ -126,10 +116,6 @@ def _extract_bboxes(
             else:  # len == 4
                 sx, sy, tx, ty = t
                 rot = 0.0
-                if sx <= 0 or sy <= 0:
-                    raise ValueError(
-                        f"Transform {i} has invalid scale factors"
-                    )
                 matrix = fitz.Matrix(sx, sy)
         else:
             tx = ty = 0.0
@@ -246,11 +232,7 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
 
 
 def _resize_new_pdf(
-    doc_old: fitz.Document,
-    doc_new: fitz.Document,
-    auto_orient: bool,
-    *,
-    verbose: bool = False,
+    doc_old: fitz.Document, doc_new: fitz.Document, auto_orient: bool
 ) -> fitz.Document:
     """Return ``doc_new`` scaled to match ``doc_old`` page dimensions."""
 
@@ -264,11 +246,6 @@ def _resize_new_pdf(
 
         page = doc_new[i]
         src_rect = page.rect
-        if verbose:
-            logger.info("Comparando página %d...", i + 1)
-            logger.info(
-                "Dimensões: W=%.2f H=%.2f", src_rect.width, src_rect.height
-            )
         if (
             src_rect.width == 0
             or src_rect.height == 0
@@ -276,8 +253,6 @@ def _resize_new_pdf(
             or target_rect.height == 0
         ):
             logger.warning("Skipping page %d with zero dimension", i)
-            if verbose:
-                logger.info("Status: IGNORED")
             resized.new_page(width=target_rect.width, height=target_rect.height)
             continue
         rotate = 0.0
@@ -299,15 +274,7 @@ def _resize_new_pdf(
 
         new_page = resized.new_page(width=target_rect.width, height=target_rect.height)
         dest = fitz.Rect(tx, ty, tx + src_rect.width * s, ty + src_rect.height * s)
-        try:
-            new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
-        except Exception:
-            if verbose:
-                logger.info("Status: ERROR")
-            raise
-        else:
-            if verbose:
-                logger.info("Status: OK")
+        new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
 
     return resized
 
@@ -486,8 +453,6 @@ def comparar_pdfs(
     auto_orient: bool = True,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
-    *,
-    verbose: bool = False,
 ) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
@@ -524,8 +489,6 @@ def comparar_pdfs(
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
         Function returning ``True`` to abort the operation.
-    verbose : bool, optional
-        When ``True`` log progress information for each processed page.
 
     Returns
     -------
@@ -554,31 +517,7 @@ def comparar_pdfs(
                 )
 
         # scale new PDF pages to match the size of the old PDF
-        doc_new_resized = _resize_new_pdf(
-            doc_old, doc_new, auto_orient, verbose=verbose
-        )
-
-        if len(doc_new_resized) == 0:
-            raise InvalidDimensionsError()
-
-        skip_all = True
-        for i in range(len(doc_new)):
-            if i < len(doc_old):
-                target_rect = doc_old[i].rect
-            else:
-                target_rect = doc_new[i].rect
-            src_rect = doc_new[i].rect
-            if not (
-                src_rect.width == 0
-                or src_rect.height == 0
-                or target_rect.width == 0
-                or target_rect.height == 0
-            ):
-                skip_all = False
-                break
-        if skip_all:
-            doc_new_resized.close()
-            raise InvalidDimensionsError()
+        doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
 
         old_pages = _extract_bboxes(
             doc_old,
@@ -659,69 +598,3 @@ def comparar_pdfs(
         doc_new_resized.close()
 
     return result
-
-
-def compare_multiple_pdfs(
-    pairs: Sequence[Tuple[str, str]],
-    *,
-    thr: float = 0.9,
-    adaptive: bool = False,
-    pos_tol: float = 3.0,
-    ignore_geometry: bool = False,
-    ignore_text: bool = False,
-    auto_orient: bool = True,
-    progress_callback: Optional[Callable[[float], None]] = None,
-    cancel_callback: Optional[Callable[[], bool]] = None,
-    verbose: bool = False,
-) -> List[Dict[str, List[Dict]]]:
-    """Compare multiple PDF pairs sequentially.
-
-    Parameters
-    ----------
-    pairs:
-        Sequence of ``(old_pdf, new_pdf)`` tuples.
-    progress_callback:
-        Function called with the overall progress percentage.
-    cancel_callback:
-        Function returning ``True`` to abort the operation.
-    verbose:
-        Forwarded to :func:`comparar_pdfs` to enable logging.
-
-    Other parameters are forwarded to :func:`comparar_pdfs`.
-
-    Returns
-    -------
-    list of dict
-        List of results from :func:`comparar_pdfs` for each pair.
-    """
-
-    results: List[Dict[str, List[Dict]]] = []
-    total = len(pairs)
-
-    def _cb(idx: int) -> Callable[[float], None]:
-        def wrapper(p: float) -> None:
-            if progress_callback:
-                progress = ((idx + p / 100) / total) * 100
-                progress_callback(progress)
-
-        return wrapper
-
-    for idx, (old_pdf, new_pdf) in enumerate(pairs):
-        if cancel_callback and cancel_callback():
-            raise CancelledError()
-        res = comparar_pdfs(
-            old_pdf,
-            new_pdf,
-            thr=thr,
-            adaptive=adaptive,
-            pos_tol=pos_tol,
-            ignore_geometry=ignore_geometry,
-            ignore_text=ignore_text,
-            auto_orient=auto_orient,
-            progress_callback=_cb(idx),
-            cancel_callback=cancel_callback,
-            verbose=verbose,
-        )
-        results.append(res)
-
-    return results
