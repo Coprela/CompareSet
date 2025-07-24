@@ -258,9 +258,16 @@ def _resize_new_pdf(
             or target_rect.width == 0
             or target_rect.height == 0
         ):
-            logger.warning("Skipping page %d with zero dimension", i)
-            resized.new_page(width=target_rect.width, height=target_rect.height)
-            continue
+            raise InvalidDimensionsError(
+                "page %d has invalid size (%.2f x %.2f -> %.2f x %.2f)"
+                % (
+                    i,
+                    src_rect.width,
+                    src_rect.height,
+                    target_rect.width,
+                    target_rect.height,
+                )
+            )
         rotate = 0.0
         if auto_orient and _page_orientation(target_rect) != _page_orientation(
             src_rect

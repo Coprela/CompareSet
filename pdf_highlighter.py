@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from pdf_diff import CancelledError, _resize_new_pdf
+from pdf_diff import CancelledError, InvalidDimensionsError, _resize_new_pdf
 
 import fitz  # PyMuPDF
 
@@ -62,6 +62,11 @@ def gerar_pdf_com_destaques(
                 base_page = doc_old[i]
             else:
                 base_page = doc_new_resized[i]
+
+            if base_page.rect.width == 0 or base_page.rect.height == 0:
+                raise InvalidDimensionsError(
+                    f"page {i} has invalid size ({base_page.rect.width} x {base_page.rect.height})"
+                )
 
             new_page = final.new_page(
                 width=base_page.rect.width, height=base_page.rect.height
