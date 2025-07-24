@@ -50,6 +50,12 @@ class CancelledError(Exception):
     pass
 
 
+class InvalidDimensionsError(Exception):
+    """Raised when comparison cannot run due to invalid page dimensions."""
+
+    pass
+
+
 def _page_orientation(rect: fitz.Rect) -> str:
     """Return ``'landscape'`` or ``'portrait'`` for a page rectangle."""
     return "landscape" if rect.width > rect.height else "portrait"
@@ -514,6 +520,28 @@ def comparar_pdfs(
 
         # scale new PDF pages to match the size of the old PDF
         doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
+
+        if len(doc_new_resized) == 0:
+            raise InvalidDimensionsError()
+
+        skip_all = True
+        for i in range(len(doc_new)):
+            if i < len(doc_old):
+                target_rect = doc_old[i].rect
+            else:
+                target_rect = doc_new[i].rect
+            src_rect = doc_new[i].rect
+            if not (
+                src_rect.width == 0
+                or src_rect.height == 0
+                or target_rect.width == 0
+                or target_rect.height == 0
+            ):
+                skip_all = False
+                break
+        if skip_all:
+            doc_new_resized.close()
+            raise InvalidDimensionsError()
 
         old_pages = _extract_bboxes(
             doc_old,

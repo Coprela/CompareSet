@@ -4,7 +4,7 @@ import os
 from PySide6.QtWidgets import QWidget, QFileDialog, QMessageBox
 from PySide6.QtCore import Qt
 
-from pdf_diff import comparar_pdfs, CancelledError
+from pdf_diff import comparar_pdfs, CancelledError, InvalidDimensionsError
 from pdf_highlighter import gerar_pdf_com_destaques
 
 from .utils import load_ui
@@ -124,6 +124,13 @@ class ComparePage(QWidget):
             QMessageBox.information(self, 'Result', f'Comparison PDF saved to: {out}')
         except CancelledError:
             QMessageBox.information(self, 'Result', 'Operation cancelled')
+        except InvalidDimensionsError:
+            QMessageBox.warning(
+                self,
+                "Erro",
+                "Não foi possível comparar as páginas. Verifique se ambos os PDFs "
+                "possuem conteúdo visível e dimensões válidas.",
+            )
         except Exception as exc:
             QMessageBox.critical(self, 'Error', str(exc))
 
