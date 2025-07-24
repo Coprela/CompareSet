@@ -80,6 +80,16 @@
     </layout>
    </item>
    <item>
+    <widget class="QCheckBox" name="silentChk">
+     <property name="text">
+      <string>Silent mode</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QPushButton" name="btnCompare">
      <property name="text">
       <string>Compare</string>

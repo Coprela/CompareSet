@@ -232,7 +232,11 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
 
 
 def _resize_new_pdf(
-    doc_old: fitz.Document, doc_new: fitz.Document, auto_orient: bool
+    doc_old: fitz.Document,
+    doc_new: fitz.Document,
+    auto_orient: bool,
+    *,
+    verbose: bool = False,
 ) -> fitz.Document:
     """Return ``doc_new`` scaled to match ``doc_old`` page dimensions."""
 
@@ -246,6 +250,11 @@ def _resize_new_pdf(
 
         page = doc_new[i]
         src_rect = page.rect
+        if verbose:
+            logger.info("Comparando página %d...", i + 1)
+            logger.info(
+                "Dimensões: W=%.2f H=%.2f", src_rect.width, src_rect.height
+            )
         if (
             src_rect.width == 0
             or src_rect.height == 0
@@ -253,6 +262,8 @@ def _resize_new_pdf(
             or target_rect.height == 0
         ):
             logger.warning("Skipping page %d with zero dimension", i)
+            if verbose:
+                logger.info("Status: IGNORED")
             resized.new_page(width=target_rect.width, height=target_rect.height)
             continue
         rotate = 0.0
@@ -270,7 +281,15 @@ def _resize_new_pdf(
 
         new_page = resized.new_page(width=target_rect.width, height=target_rect.height)
         dest = fitz.Rect(tx, ty, tx + src_rect.width * s, ty + src_rect.height * s)
-        new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
+        try:
+            new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
+        except Exception:
+            if verbose:
+                logger.info("Status: ERROR")
+            raise
+        else:
+            if verbose:
+                logger.info("Status: OK")
 
     return resized
 
@@ -449,6 +468,8 @@ def comparar_pdfs(
     auto_orient: bool = True,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
+    *,
+    verbose: bool = False,
 ) -> Dict[str, List[Dict]]:
     """Compare two PDFs and return removed and added bounding boxes.
 
@@ -485,6 +506,8 @@ def comparar_pdfs(
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
         Function returning ``True`` to abort the operation.
+    verbose : bool, optional
+        When ``True`` log progress information for each processed page.
 
     Returns
     -------
@@ -513,7 +536,9 @@ def comparar_pdfs(
                 )
 
         # scale new PDF pages to match the size of the old PDF
-        doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
+        doc_new_resized = _resize_new_pdf(
+            doc_old, doc_new, auto_orient, verbose=verbose
+        )
 
         old_pages = _extract_bboxes(
             doc_old,
@@ -607,6 +632,7 @@ def compare_multiple_pdfs(
     auto_orient: bool = True,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
+    verbose: bool = False,
 ) -> List[Dict[str, List[Dict]]]:
     """Compare multiple PDF pairs sequentially.
 
@@ -618,6 +644,8 @@ def compare_multiple_pdfs(
         Function called with the overall progress percentage.
     cancel_callback:
         Function returning ``True`` to abort the operation.
+    verbose:
+        Forwarded to :func:`comparar_pdfs` to enable logging.
 
     Other parameters are forwarded to :func:`comparar_pdfs`.
 
@@ -652,6 +680,7 @@ def compare_multiple_pdfs(
             auto_orient=auto_orient,
             progress_callback=_cb(idx),
             cancel_callback=cancel_callback,
+            verbose=verbose,
         )
         results.append(res)
 
