@@ -117,7 +117,6 @@ class ComparePage(QWidget):
             result = comparar_pdfs(
                 self.old_path,
                 self.new_path,
-                verbose=not self.silent_chk.isChecked(),
             )
             if not result['removidos'] and not result['adicionados']:
                 QMessageBox.information(self, 'Result', 'No differences found')
