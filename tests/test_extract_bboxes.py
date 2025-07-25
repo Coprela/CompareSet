@@ -61,3 +61,48 @@ def test_extract_bboxes_error_uses_page_index(monkeypatch):
 
     assert "Transform 1" in str(excinfo.value)
     doc.close()
+
+
+def test_comparar_pdfs_no_resize(monkeypatch, tmp_path):
+    fitz = pytest.importorskip("fitz")
+    import pdf_diff
+
+    old = fitz.open()
+    old.new_page()
+    old_path = tmp_path / "old.pdf"
+    old.save(old_path)
+    old.close()
+
+    new = fitz.open()
+    new.new_page()
+    new_path = tmp_path / "new.pdf"
+    new.save(new_path)
+    new.close()
+
+    def boom(*args, **kwargs):
+        pytest.fail("_resize_new_pdf should not be called")
+
+    monkeypatch.setattr(pdf_diff, "_resize_new_pdf", boom)
+
+    loaded = []
+    orig_loader = pdf_diff._load_pdf_without_signatures
+
+    def loader(path):
+        doc = orig_loader(path)
+        loaded.append(doc)
+        return doc
+
+    monkeypatch.setattr(pdf_diff, "_load_pdf_without_signatures", loader)
+
+    used = []
+    orig_extract = pdf_diff._extract_bboxes
+
+    def extract(doc, *args, **kwargs):
+        used.append(doc)
+        return orig_extract(doc, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_diff, "_extract_bboxes", extract)
+
+    pdf_diff.comparar_pdfs(str(old_path), str(new_path), resize=False)
+
+    assert used[1] is loaded[1]

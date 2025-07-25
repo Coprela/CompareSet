@@ -106,7 +106,7 @@ class ComparePage(QWidget):
         self.geom_chk.setText(t["geom"])
         self.silent_chk.setText(t["silent"])
 
-    def compare_pdfs(self):
+    def compare_pdfs(self, resize: bool = True):
         if not self.old_path or not self.new_path:
             QMessageBox.warning(self, 'Error', 'Select both PDFs for comparison')
             return
@@ -117,6 +117,7 @@ class ComparePage(QWidget):
             result = comparar_pdfs(
                 self.old_path,
                 self.new_path,
+                resize=resize,
             )
             if not result['removidos'] and not result['adicionados']:
                 QMessageBox.information(self, 'Result', 'No differences found')

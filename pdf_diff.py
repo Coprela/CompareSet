@@ -464,6 +464,7 @@ def comparar_pdfs(
     ignore_geometry: bool = False,
     ignore_text: bool = False,
     auto_orient: bool = True,
+    resize: bool = True,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -498,6 +499,9 @@ def comparar_pdfs(
     auto_orient : bool, optional
         When ``True`` automatically rotate pages so old and new PDFs share the
         same orientation before comparison.
+    resize : bool, optional
+        When ``False`` skip page rescaling and extract boxes directly from the
+        new PDF. Orientation adjustments are also disabled in this mode.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
@@ -529,8 +533,13 @@ def comparar_pdfs(
                     pages,
                 )
 
-        # scale new PDF pages to match the size of the old PDF
-        doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
+        # scale new PDF pages to match the size of the old PDF when enabled
+        if resize:
+            doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
+            close_resized = True
+        else:
+            doc_new_resized = doc_new
+            close_resized = False
 
         old_pages = _extract_bboxes(
             doc_old,
@@ -608,6 +617,7 @@ def comparar_pdfs(
             if not removidos and not adicionados:
                 break
 
-        doc_new_resized.close()
+        if close_resized:
+            doc_new_resized.close()
 
     return result
