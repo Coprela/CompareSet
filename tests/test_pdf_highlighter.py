@@ -29,6 +29,32 @@ def test_generate_highlights(tmp_path):
     assert output.exists()
 
 
+def test_generate_highlights_separate(tmp_path):
+    old = tmp_path / "old.pdf"
+    new = tmp_path / "new.pdf"
+    output = tmp_path / "out.pdf"
+
+    for path, text in [(old, "a"), (new, "b")]:
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), text)
+        doc.save(path)
+        doc.close()
+
+    gerar_pdf_com_destaques(
+        str(old),
+        str(new),
+        [],
+        [],
+        str(output),
+        overlay=False,
+    )
+
+    doc_out = fitz.open(str(output))
+    assert len(doc_out) == 2
+    doc_out.close()
+
+
 def test_highlighter_invalid_dimensions(tmp_path):
     old = tmp_path / "old.pdf"
     new = tmp_path / "new.pdf"
