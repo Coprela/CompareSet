@@ -89,6 +89,16 @@
      </property>
     </widget>
    </item>
+    <item>
+     <widget class="QCheckBox" name="overlayChk">
+      <property name="text">
+       <string>Overlay pages</string>
+      </property>
+      <property name="checked">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
    <item>
     <widget class="QPushButton" name="btnCompare">
      <property name="text">

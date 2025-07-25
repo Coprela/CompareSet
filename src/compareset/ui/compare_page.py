@@ -18,6 +18,7 @@ TRANSLATIONS = {
         "text": "Text",
         "geom": "Geometry",
         "silent": "Silent mode",
+        "overlay": "Overlay pages",
     },
     "pt": {
         "select_old": "Selecionar PDF antigo",
@@ -27,30 +28,32 @@ TRANSLATIONS = {
         "text": "Texto",
         "geom": "Elementos geom\u00e9tricos",
         "silent": "Modo silencioso",
+        "overlay": "Sobrepor páginas",
     },
 }
 
 
 class ComparePage(QWidget):
-    def __init__(self, main: 'MainWindow') -> None:
+    def __init__(self, main: "MainWindow") -> None:
         super().__init__(parent=main.stack)
         self.main = main
-        ui_path = os.path.join(os.path.dirname(__file__), 'compare_page.ui')
+        ui_path = os.path.join(os.path.dirname(__file__), "compare_page.ui")
         self.ui = load_ui(ui_path, self)
         layout = self.layout()  # layout from .ui
-        self.edit_old = self.findChild(QWidget, 'editOld')
-        self.btn_old = self.findChild(QWidget, 'btnOld')
-        self.edit_new = self.findChild(QWidget, 'editNew')
-        self.btn_new = self.findChild(QWidget, 'btnNew')
-        self.btn_swap = self.findChild(QWidget, 'btnSwap')
-        self.text_chk = self.findChild(QWidget, 'textChk')
-        self.geom_chk = self.findChild(QWidget, 'geomChk')
-        self.silent_chk = self.findChild(QWidget, 'silentChk')
-        self.btn_compare = self.findChild(QWidget, 'btnCompare')
-        self.progress = self.findChild(QWidget, 'progressBar')
+        self.edit_old = self.findChild(QWidget, "editOld")
+        self.btn_old = self.findChild(QWidget, "btnOld")
+        self.edit_new = self.findChild(QWidget, "editNew")
+        self.btn_new = self.findChild(QWidget, "btnNew")
+        self.btn_swap = self.findChild(QWidget, "btnSwap")
+        self.text_chk = self.findChild(QWidget, "textChk")
+        self.geom_chk = self.findChild(QWidget, "geomChk")
+        self.silent_chk = self.findChild(QWidget, "silentChk")
+        self.overlay_chk = self.findChild(QWidget, "overlayChk")
+        self.btn_compare = self.findChild(QWidget, "btnCompare")
+        self.progress = self.findChild(QWidget, "progressBar")
 
-        self.old_path = ''
-        self.new_path = ''
+        self.old_path = ""
+        self.new_path = ""
 
         self.btn_old.clicked.connect(self.select_old)
         self.btn_new.clicked.connect(self.select_new)
@@ -71,14 +74,18 @@ class ComparePage(QWidget):
                 self.geom_chk.setChecked(True)
 
     def select_old(self):
-        path, _ = QFileDialog.getOpenFileName(self, 'Select old PDF', filter='PDF Files (*.pdf)')
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select old PDF", filter="PDF Files (*.pdf)"
+        )
         if path:
             self.old_path = path
             self.edit_old.setText(path)
             self._update_compare_state()
 
     def select_new(self):
-        path, _ = QFileDialog.getOpenFileName(self, 'Select new PDF', filter='PDF Files (*.pdf)')
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select new PDF", filter="PDF Files (*.pdf)"
+        )
         if path:
             self.new_path = path
             self.edit_new.setText(path)
@@ -105,12 +112,15 @@ class ComparePage(QWidget):
         self.text_chk.setText(t["text"])
         self.geom_chk.setText(t["geom"])
         self.silent_chk.setText(t["silent"])
+        self.overlay_chk.setText(t["overlay"])
 
     def compare_pdfs(self):
         if not self.old_path or not self.new_path:
-            QMessageBox.warning(self, 'Error', 'Select both PDFs for comparison')
+            QMessageBox.warning(self, "Error", "Select both PDFs for comparison")
             return
-        out, _ = QFileDialog.getSaveFileName(self, 'Save comparison PDF', filter='PDF Files (*.pdf)')
+        out, _ = QFileDialog.getSaveFileName(
+            self, "Save comparison PDF", filter="PDF Files (*.pdf)"
+        )
         if not out:
             return
         try:
@@ -118,19 +128,20 @@ class ComparePage(QWidget):
                 self.old_path,
                 self.new_path,
             )
-            if not result['removidos'] and not result['adicionados']:
-                QMessageBox.information(self, 'Result', 'No differences found')
+            if not result["removidos"] and not result["adicionados"]:
+                QMessageBox.information(self, "Result", "No differences found")
                 return
             gerar_pdf_com_destaques(
                 self.old_path,
                 self.new_path,
-                result['removidos'],
-                result['adicionados'],
+                result["removidos"],
+                result["adicionados"],
                 out,
+                overlay=self.overlay_chk.isChecked(),
             )
-            QMessageBox.information(self, 'Result', f'Comparison PDF saved to: {out}')
+            QMessageBox.information(self, "Result", f"Comparison PDF saved to: {out}")
         except CancelledError:
-            QMessageBox.information(self, 'Result', 'Operation cancelled')
+            QMessageBox.information(self, "Result", "Operation cancelled")
         except InvalidDimensionsError:
             QMessageBox.warning(
                 self,
@@ -139,5 +150,4 @@ class ComparePage(QWidget):
                 "possuem conteúdo visível e dimensões válidas.",
             )
         except Exception as exc:
-            QMessageBox.critical(self, 'Error', str(exc))
-
+            QMessageBox.critical(self, "Error", str(exc))
