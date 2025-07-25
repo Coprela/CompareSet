@@ -5,17 +5,17 @@ QWidget {
 }
 
 QPushButton {
-    background: #3d72a4;
+    background: #471F6F;
     color: white;
     border-radius: 4px;
     padding: 4px 8px;
 }
 QPushButton:hover {
-    background: #4e82b4;
+    background: #5c2c88;
 }
 QPushButton:disabled {
-    background: #c0c0c0;
-    color: #555;
+    background: #555555;
+    color: white;
 }
 
 QLineEdit, QComboBox {
