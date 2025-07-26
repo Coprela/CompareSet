@@ -472,7 +472,7 @@ def comparar_pdfs(
                 )
 
         # normalize coordinates of the new PDF so they match the old one
-        normalized = normalize_pdf_to_reference(old_pdf, new_pdf)
+        normalized = normalize_pdf_to_reference(doc_old, doc_new)
         doc_new_resized = normalized.document
         try:
             old_pages = _extract_bboxes(

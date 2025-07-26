@@ -3,8 +3,9 @@ from __future__ import annotations
 """Helpers for aligning PDF coordinate spaces."""
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Union
 import logging
+import os
 
 import fitz
 
@@ -57,9 +58,30 @@ def _content_bbox(page: fitz.Page) -> fitz.Rect | None:
     return rect
 
 
-def normalize_pdf_to_reference(pdf_ref_path: str, pdf_target_path: str) -> NormalizedPDF:
-    """Adjust ``pdf_target_path`` to match ``pdf_ref_path`` coordinate space."""
-    with fitz.open(pdf_ref_path) as doc_ref, fitz.open(pdf_target_path) as doc_tgt:
+def normalize_pdf_to_reference(
+    pdf_ref: Union[str, fitz.Document],
+    pdf_target: Union[str, fitz.Document],
+) -> NormalizedPDF:
+    """Adjust ``pdf_target`` to match ``pdf_ref`` coordinate space.
+
+    Parameters
+    ----------
+    pdf_ref, pdf_target : str or :class:`fitz.Document`
+        Paths to the PDFs or opened ``fitz.Document`` instances to be aligned.
+    """
+    close_ref = False
+    close_tgt = False
+    if isinstance(pdf_ref, (str, bytes, bytearray, os.PathLike)):
+        doc_ref = fitz.open(pdf_ref)
+        close_ref = True
+    else:
+        doc_ref = pdf_ref
+    if isinstance(pdf_target, (str, bytes, bytearray, os.PathLike)):
+        doc_tgt = fitz.open(pdf_target)
+        close_tgt = True
+    else:
+        doc_tgt = pdf_target
+    try:
         result = fitz.open()
         transforms: List[PageTransform] = []
         max_pages = max(len(doc_ref), len(doc_tgt))
@@ -95,3 +117,8 @@ def normalize_pdf_to_reference(pdf_ref_path: str, pdf_target_path: str) -> Norma
             transforms.append(PageTransform(scale, tx, ty))
         result.set_metadata(doc_tgt.metadata)
         return NormalizedPDF(result, transforms)
+    finally:
+        if close_ref:
+            doc_ref.close()
+        if close_tgt:
+            doc_tgt.close()

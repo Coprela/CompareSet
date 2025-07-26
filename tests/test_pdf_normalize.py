@@ -21,6 +21,7 @@ def test_normalize_basic(tmp_path):
     doc_tgt.save(tgt_path)
     doc_tgt.close()
 
-    result = normalize_pdf_to_reference(str(ref_path), str(tgt_path))
+    with fitz.open(str(ref_path)) as doc_r, fitz.open(str(tgt_path)) as doc_t:
+        result = normalize_pdf_to_reference(doc_r, doc_t)
     assert len(result.document) == 1
     assert pytest.approx(result.transforms[0].scale, rel=1e-3) == 1.25

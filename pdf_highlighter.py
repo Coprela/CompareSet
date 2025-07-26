@@ -58,7 +58,7 @@ def gerar_pdf_com_destaques(
     with fitz.open(pdf_old) as doc_old, fitz.open(
         pdf_new
     ) as doc_new, fitz.open() as final:
-        normalized = normalize_pdf_to_reference(pdf_old, pdf_new)
+        normalized = normalize_pdf_to_reference(doc_old, doc_new)
         doc_new_resized = normalized.document
         try:
             if overlay:
