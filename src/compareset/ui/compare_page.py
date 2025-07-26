@@ -90,7 +90,6 @@ TRANSLATIONS = {
         "compare": "Compare",
         "text": "Text",
         "geom": "Geometry",
-        "silent": "Silent mode",
         "overlay": "Overlay pages",
     },
     "pt": {
@@ -100,7 +99,6 @@ TRANSLATIONS = {
         "compare": "Comparar",
         "text": "Texto",
         "geom": "Elementos geom\u00e9tricos",
-        "silent": "Modo silencioso",
         "overlay": "Sobrepor páginas",
     },
 }
@@ -120,7 +118,6 @@ class ComparePage(QWidget):
         self.btn_swap = self.findChild(QWidget, "btnSwap")
         self.text_chk = self.findChild(QWidget, "textChk")
         self.geom_chk = self.findChild(QWidget, "geomChk")
-        self.silent_chk = self.findChild(QWidget, "silentChk")
         self.overlay_chk = self.findChild(QWidget, "overlayChk")
         self.btn_compare = self.findChild(QWidget, "btnCompare")
         self.progress = self.findChild(QWidget, "progressBar")
@@ -202,7 +199,6 @@ class ComparePage(QWidget):
         self.btn_compare.setText(t["compare"])
         self.text_chk.setText(t["text"])
         self.geom_chk.setText(t["geom"])
-        self.silent_chk.setText(t["silent"])
         self.overlay_chk.setText(t["overlay"])
         if self.btn_cancel:
             self.btn_cancel.setText("Cancel" if self.lang == "en" else "Cancelar")
