@@ -79,11 +79,6 @@ def test_comparar_pdfs_no_resize(monkeypatch, tmp_path):
     new.save(new_path)
     new.close()
 
-    def boom(*args, **kwargs):
-        pytest.fail("_resize_new_pdf should not be called")
-
-    monkeypatch.setattr(pdf_diff, "_resize_new_pdf", boom)
-
     loaded = []
     orig_loader = pdf_diff._load_pdf_without_signatures
 
@@ -103,6 +98,6 @@ def test_comparar_pdfs_no_resize(monkeypatch, tmp_path):
 
     monkeypatch.setattr(pdf_diff, "_extract_bboxes", extract)
 
-    pdf_diff.comparar_pdfs(str(old_path), str(new_path), resize=False)
+    pdf_diff.comparar_pdfs(str(old_path), str(new_path))
 
     assert used[1] is loaded[1]

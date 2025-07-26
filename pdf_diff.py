@@ -237,59 +237,6 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
         doc.close()
 
 
-def _resize_new_pdf(
-    doc_old: fitz.Document, doc_new: fitz.Document, auto_orient: bool
-) -> fitz.Document:
-    """Return ``doc_new`` scaled to match ``doc_old`` page dimensions."""
-
-    resized = fitz.open()
-    max_pages = len(doc_new)
-    for i in range(max_pages):
-        if i < len(doc_old):
-            target_rect = doc_old[i].rect
-        else:
-            target_rect = doc_new[i].rect
-
-        page = doc_new[i]
-        src_rect = page.rect
-        if (
-            src_rect.width == 0
-            or src_rect.height == 0
-            or target_rect.width == 0
-            or target_rect.height == 0
-        ):
-            raise InvalidDimensionsError(
-                "page %d has invalid size (%.2f x %.2f -> %.2f x %.2f)"
-                % (
-                    i,
-                    src_rect.width,
-                    src_rect.height,
-                    target_rect.width,
-                    target_rect.height,
-                )
-            )
-        rotate = 0.0
-        if auto_orient and _page_orientation(target_rect) != _page_orientation(
-            src_rect
-        ):
-            rotate = 90.0
-            src_rect = fitz.Rect(0, 0, src_rect.height, src_rect.width)
-
-        sx = target_rect.width / src_rect.width
-        sy = target_rect.height / src_rect.height
-        s = min(sx, sy)
-        if s == 0:
-            logger.warning("Skipping page %d due to zero scale", i)
-            resized.new_page(width=target_rect.width, height=target_rect.height)
-            continue
-        tx = (target_rect.width - src_rect.width * s) / 2.0
-        ty = (target_rect.height - src_rect.height * s) / 2.0
-
-        new_page = resized.new_page(width=target_rect.width, height=target_rect.height)
-        dest = fitz.Rect(tx, ty, tx + src_rect.width * s, ty + src_rect.height * s)
-        new_page.show_pdf_page(dest, doc_new, i, rotate=rotate)
-
-    return resized
 
 
 def _round(value: float, digits: int = 1) -> float:
@@ -463,8 +410,6 @@ def comparar_pdfs(
     pos_tol: float = 3.0,
     ignore_geometry: bool = False,
     ignore_text: bool = False,
-    auto_orient: bool = False,
-    resize: bool = False,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -496,12 +441,6 @@ def comparar_pdfs(
         and image elements.
     ignore_text : bool, optional
         If ``True`` compare only drawing and image elements, ignoring words.
-    auto_orient : bool, optional
-        When ``True`` and ``resize`` is enabled, automatically rotate pages so
-        old and new PDFs share the same orientation before comparison.
-    resize : bool, optional
-        When ``True`` scale pages from the new PDF to match the old PDF.
-        Orientation adjustments are performed only in this mode.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
@@ -533,13 +472,8 @@ def comparar_pdfs(
                     pages,
                 )
 
-        # scale new PDF pages to match the size of the old PDF when enabled
-        if resize:
-            doc_new_resized = _resize_new_pdf(doc_old, doc_new, auto_orient)
-            close_resized = True
-        else:
-            doc_new_resized = doc_new
-            close_resized = False
+        # resizing and auto orientation removed
+        doc_new_resized = doc_new
 
         old_pages = _extract_bboxes(
             doc_old,
@@ -616,8 +550,5 @@ def comparar_pdfs(
             previous = current
             if not removidos and not adicionados:
                 break
-
-        if close_resized:
-            doc_new_resized.close()
 
     return result
