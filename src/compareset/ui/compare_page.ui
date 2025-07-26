@@ -138,7 +138,8 @@
     </property>
   </widget>
  </item>
-</layout>
+ </layout>
+ </item>
  <item>
   <layout class="QHBoxLayout" name="licenseLayout">
    <property name="leftMargin">
@@ -178,7 +179,6 @@
    </item>
   </layout>
  </item>
-</item>
   </layout>
  </widget>
  <resources/>
