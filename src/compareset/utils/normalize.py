@@ -64,8 +64,25 @@ def normalize_pdf_to_reference(pdf_ref_path: str, pdf_target_path: str) -> Norma
         transforms: List[PageTransform] = []
         max_pages = max(len(doc_ref), len(doc_tgt))
         for i in range(max_pages):
-            ref_page = doc_ref[i] if i < len(doc_ref) else doc_ref[-1]
-            tgt_page = doc_tgt[i] if i < len(doc_tgt) else doc_tgt[-1]
+            ref_page = doc_ref[i] if i < len(doc_ref) else None
+            tgt_page = doc_tgt[i] if i < len(doc_tgt) else None
+
+            if ref_page is None and tgt_page is None:
+                # nothing to do
+                continue
+
+            if ref_page is None:
+                page_out = result.new_page(width=tgt_page.rect.width, height=tgt_page.rect.height)
+                page_out.show_pdf_page(page_out.rect, doc_tgt, i)
+                transforms.append(PageTransform(1.0, 0.0, 0.0))
+                logger.debug("Page %d: no reference page, copied as is", i)
+                continue
+
+            if tgt_page is None:
+                result.new_page(width=ref_page.rect.width, height=ref_page.rect.height)
+                transforms.append(PageTransform(1.0, 0.0, 0.0))
+                logger.debug("Page %d: missing target page, inserted blank", i)
+                continue
 
             ref_bbox = _content_bbox(ref_page) or ref_page.rect
             tgt_bbox = _content_bbox(tgt_page) or tgt_page.rect
