@@ -1,6 +1,0 @@
-PySide6
-PyMuPDF>=1.22
-pytest
-PyInstaller
-python-dotenv
-requests
