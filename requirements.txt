@@ -1,5 +1,1 @@
 PyMuPDF>=1.22
-PySide6
-requests
-python-dotenv
-pyarmor==7.6.1
