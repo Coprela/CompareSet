@@ -94,6 +94,8 @@ class ComparisonThread(QtCore.QThread):
                 adaptive=True,
                 ignore_geometry=self.ignore_geometry,
                 ignore_text=self.ignore_text,
+                resize=False,
+                auto_orient=False,
                 progress_callback=lambda p: self.progress.emit(p / 2),
                 cancel_callback=self.is_cancelled,
             )

@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from pdf_diff import CancelledError, InvalidDimensionsError, _resize_new_pdf
+from pdf_diff import CancelledError, InvalidDimensionsError
 
 import fitz  # PyMuPDF
 
@@ -57,10 +57,7 @@ def gerar_pdf_com_destaques(
     with fitz.open(pdf_old) as doc_old, fitz.open(
         pdf_new
     ) as doc_new, fitz.open() as final:
-        if overlay:
-            doc_new_resized = _resize_new_pdf(doc_old, doc_new, True)
-        else:
-            doc_new_resized = doc_new
+        doc_new_resized = doc_new
         if overlay:
             total_steps = max(len(doc_old), len(doc_new_resized))
         else:
@@ -160,8 +157,6 @@ def gerar_pdf_com_destaques(
                             )
 
         final.save(output_pdf)
-        if overlay:
-            doc_new_resized.close()
         if progress_callback:
             progress_callback(100.0)
         logger.info("PDF with highlights saved to %s", output_pdf)

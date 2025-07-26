@@ -463,8 +463,8 @@ def comparar_pdfs(
     pos_tol: float = 3.0,
     ignore_geometry: bool = False,
     ignore_text: bool = False,
-    auto_orient: bool = True,
-    resize: bool = True,
+    auto_orient: bool = False,
+    resize: bool = False,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, List[Dict]]:
@@ -497,11 +497,11 @@ def comparar_pdfs(
     ignore_text : bool, optional
         If ``True`` compare only drawing and image elements, ignoring words.
     auto_orient : bool, optional
-        When ``True`` automatically rotate pages so old and new PDFs share the
-        same orientation before comparison.
+        When ``True`` and ``resize`` is enabled, automatically rotate pages so
+        old and new PDFs share the same orientation before comparison.
     resize : bool, optional
-        When ``False`` skip page rescaling and extract boxes directly from the
-        new PDF. Orientation adjustments are also disabled in this mode.
+        When ``True`` scale pages from the new PDF to match the old PDF.
+        Orientation adjustments are performed only in this mode.
     progress_callback : callable, optional
         Function called with a ``0-100`` progress percentage.
     cancel_callback : callable, optional
