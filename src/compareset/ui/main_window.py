@@ -9,6 +9,9 @@ from PySide6.QtWidgets import (
     QWidget,
     QToolButton,
     QMenu,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, QPropertyAnimation
 
@@ -17,6 +20,7 @@ from .compare_page import ComparePage
 from .history_page import HistoryPage
 from .admin_page import AdminPage
 from .settings_page import SettingsPage
+from ..utils import normalize_pdf_to_reference
 
 TRANSLATIONS = {
     "en": {"history": "History", "help": "Help", "settings": "Settings", "language": "Language"},
@@ -47,6 +51,7 @@ class MainWindow(QMainWindow):
 
         self._create_toolbar()
         self.setStatusBar(QStatusBar())
+        self._add_test_button()
 
         self.set_language(self.lang)
 
@@ -90,6 +95,12 @@ class MainWindow(QMainWindow):
 
         self.addToolBar(toolbar)
 
+    def _add_test_button(self) -> None:
+        btn = QPushButton("Test Normalization")
+        self.statusBar().addPermanentWidget(btn)
+        btn.clicked.connect(self._run_normalization_test)
+        self._test_btn = btn
+
     def set_language(self, lang: str) -> None:
         """Set interface language and update labels."""
         self.lang = lang if lang in TRANSLATIONS else "en"
@@ -120,6 +131,22 @@ class MainWindow(QMainWindow):
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.start()
+
+    def _run_normalization_test(self) -> None:
+        ref, _ = QFileDialog.getOpenFileName(self, "Reference PDF", filter="PDF Files (*.pdf)")
+        if not ref:
+            return
+        tgt, _ = QFileDialog.getOpenFileName(self, "Target PDF", filter="PDF Files (*.pdf)")
+        if not tgt:
+            return
+        result = normalize_pdf_to_reference(ref, tgt)
+        save, _ = QFileDialog.getSaveFileName(self, "Save normalized PDF", filter="PDF Files (*.pdf)")
+        if save:
+            result.document.save(save)
+        msg = "\n".join(
+            f"page {i}: scale={t.scale:.3f} tx={t.tx:.3f} ty={t.ty:.3f}" for i, t in enumerate(result.transforms)
+        )
+        QMessageBox.information(self, "Normalization", msg)
 
 
 def main() -> None:
