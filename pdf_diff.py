@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import logging
 
 import fitz
+from compareset.utils import normalize_pdf_to_reference
 
 logger = logging.getLogger(__name__)
 
@@ -235,8 +236,6 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
         return cleaned
     finally:
         doc.close()
-
-
 
 
 def _round(value: float, digits: int = 1) -> float:
@@ -472,83 +471,85 @@ def comparar_pdfs(
                     pages,
                 )
 
-        # resizing and auto orientation removed
-        doc_new_resized = doc_new
+        # normalize coordinates of the new PDF so they match the old one
+        normalized = normalize_pdf_to_reference(old_pdf, new_pdf)
+        doc_new_resized = normalized.document
+        try:
+            old_pages = _extract_bboxes(
+                doc_old,
+                ignore_geometry=ignore_geometry,
+                ignore_text=ignore_text,
+            )
+            new_pages = _extract_bboxes(
+                doc_new_resized,
+                ignore_geometry=ignore_geometry,
+                ignore_text=ignore_text,
+            )
+            max_pages = max(len(old_pages), len(new_pages))
 
-        old_pages = _extract_bboxes(
-            doc_old,
-            ignore_geometry=ignore_geometry,
-            ignore_text=ignore_text,
-        )
-        new_pages = _extract_bboxes(
-            doc_new_resized,
-            ignore_geometry=ignore_geometry,
-            ignore_text=ignore_text,
-        )
-        max_pages = max(len(old_pages), len(new_pages))
+            if adaptive:
+                thr_values: List[float] = []
+                val = 1.0
+                while val >= thr:
+                    thr_values.append(round(val, 2))
+                    val -= 0.05
+                if thr_values[-1] != thr:
+                    thr_values.append(thr)
+            else:
+                thr_values = [thr]
 
-        if adaptive:
-            thr_values: List[float] = []
-            val = 1.0
-            while val >= thr:
-                thr_values.append(round(val, 2))
-                val -= 0.05
-            if thr_values[-1] != thr:
-                thr_values.append(thr)
-        else:
-            thr_values = [thr]
+            total_steps = max_pages * len(thr_values)
+            result = {"removidos": [], "adicionados": [], "verificados": 0}
+            elements_counted = False
+            previous: Optional[Tuple[set, set]] = None
 
-        total_steps = max_pages * len(thr_values)
-        result = {"removidos": [], "adicionados": [], "verificados": 0}
-        elements_counted = False
-        previous: Optional[Tuple[set, set]] = None
+            for j, thr_val in enumerate(thr_values):
+                removidos = []
+                adicionados = []
+                for page_num in range(max_pages):
+                    old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
+                    new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
+                    if not elements_counted:
+                        result["verificados"] += len(old_boxes) + len(new_boxes)
+                    rem, add = _compare_page(old_boxes, new_boxes, thr_val)
+                    removidos.extend(
+                        {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]}
+                        for b in rem
+                    )
+                    adicionados.extend(
+                        {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]}
+                        for b in add
+                    )
+                    if progress_callback:
+                        done = j * max_pages + page_num + 1
+                        progress = (done / total_steps) * 100
+                        progress_callback(progress)
+                    if cancel_callback and cancel_callback():
+                        raise CancelledError()
 
-        for j, thr_val in enumerate(thr_values):
-            removidos = []
-            adicionados = []
-            for page_num in range(max_pages):
-                old_boxes = old_pages[page_num] if page_num < len(old_pages) else []
-                new_boxes = new_pages[page_num] if page_num < len(new_pages) else []
-                if not elements_counted:
-                    result["verificados"] += len(old_boxes) + len(new_boxes)
-                rem, add = _compare_page(old_boxes, new_boxes, thr_val)
-                removidos.extend(
-                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]}
-                    for b in rem
+                removidos, adicionados = _remove_unchanged(removidos, adicionados)
+                removidos, adicionados = _remove_moved_same_text(
+                    removidos, adicionados, dist=pos_tol
                 )
-                adicionados.extend(
-                    {"pagina": page_num, "bbox": list(b[:4]), "texto": b[4]}
-                    for b in add
-                )
-                if progress_callback:
-                    done = j * max_pages + page_num + 1
-                    progress = (done / total_steps) * 100
-                    progress_callback(progress)
+                removidos = _remove_contained(removidos)
+                adicionados = _remove_contained(adicionados)
+                result = {
+                    "removidos": removidos,
+                    "adicionados": adicionados,
+                    "verificados": result["verificados"],
+                }
+                elements_counted = True
                 if cancel_callback and cancel_callback():
                     raise CancelledError()
-
-            removidos, adicionados = _remove_unchanged(removidos, adicionados)
-            removidos, adicionados = _remove_moved_same_text(
-                removidos, adicionados, dist=pos_tol
-            )
-            removidos = _remove_contained(removidos)
-            adicionados = _remove_contained(adicionados)
-            result = {
-                "removidos": removidos,
-                "adicionados": adicionados,
-                "verificados": result["verificados"],
-            }
-            elements_counted = True
-            if cancel_callback and cancel_callback():
-                raise CancelledError()
-            current = (
-                {(r["pagina"], tuple(r["bbox"])) for r in removidos},
-                {(a["pagina"], tuple(a["bbox"])) for a in adicionados},
-            )
-            if previous is not None and current == previous:
-                break
-            previous = current
-            if not removidos and not adicionados:
-                break
-
-    return result
+                current = (
+                    {(r["pagina"], tuple(r["bbox"])) for r in removidos},
+                    {(a["pagina"], tuple(a["bbox"])) for a in adicionados},
+                )
+                if previous is not None and current == previous:
+                    break
+                previous = current
+                if not removidos and not adicionados:
+                    break
+        finally:
+            doc_new_resized.close()
+        return result
