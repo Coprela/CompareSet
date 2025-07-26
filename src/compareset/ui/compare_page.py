@@ -12,7 +12,7 @@ from PySide6.QtGui import QDesktopServices
 from pdf_diff import comparar_pdfs, CancelledError, InvalidDimensionsError
 from pdf_highlighter import gerar_pdf_com_destaques
 
-from .utils import load_ui
+from .utils import load_ui, root_path
 
 
 class ComparisonThread(QThread):
@@ -93,6 +93,8 @@ TRANSLATIONS = {
         "text": "Text",
         "geom": "Geometry",
         "overlay": "Overlay pages",
+        "license": "License",
+        "not_found": "License file not found.",
     },
     "pt": {
         "select_old": "Selecionar PDF antigo",
@@ -102,6 +104,8 @@ TRANSLATIONS = {
         "text": "Texto",
         "geom": "Elementos geom\u00e9tricos",
         "overlay": "Sobrepor páginas",
+        "license": "Licença",
+        "not_found": "Arquivo de licença não encontrado.",
     },
 }
 
@@ -126,6 +130,7 @@ class ComparePage(QWidget):
         self.label_status = self.findChild(QWidget, "labelStatus")
         self.btn_cancel = self.findChild(QWidget, "btnCancel")
         self.btn_view = self.findChild(QWidget, "btnView")
+        self.btn_license = self.findChild(QWidget, "btnLicense")
 
         self.thread: ComparisonThread | None = None
         self.output_path = ""
@@ -139,6 +144,11 @@ class ComparePage(QWidget):
         self.btn_compare.clicked.connect(self.start_compare)
         self.btn_cancel.clicked.connect(self.cancel_compare)
         self.btn_view.clicked.connect(self.open_result)
+        if self.btn_license:
+            self.btn_license.clicked.connect(self.show_license)
+            self.btn_license.setStyleSheet(
+                "QPushButton{background:transparent;color:#888;border:none;padding:0px;}"
+            )
         self.text_chk.stateChanged.connect(self._ensure_elements)
         self.geom_chk.stateChanged.connect(self._ensure_elements)
 
@@ -206,6 +216,8 @@ class ComparePage(QWidget):
             self.btn_cancel.setText("Cancel" if self.lang == "en" else "Cancelar")
         if self.btn_view:
             self.btn_view.setText("View result" if self.lang == "en" else "Ver resultado")
+        if self.btn_license:
+            self.btn_license.setText(t["license"])
 
     def compare_pdfs(self, resize: bool = False):
         if not self.old_path or not self.new_path:
@@ -313,3 +325,14 @@ class ComparePage(QWidget):
     def open_result(self) -> None:
         if self.output_path:
             QDesktopServices.openUrl(QUrl.fromLocalFile(self.output_path))
+
+    def show_license(self) -> None:
+        t = TRANSLATIONS.get(self.lang, TRANSLATIONS["en"])
+        fname = "LICENSE_EN.txt" if self.main.lang == "en" else "LICENSE_PT.txt"
+        path = root_path(fname)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+        except Exception:
+            text = t.get("not_found", "License not found")
+        QMessageBox.information(self, t.get("license", "License"), text)
