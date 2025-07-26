@@ -233,7 +233,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "text_tip": "Compares changes in words, numbers, and annotations.",
                 "geom_option": "Geometric elements",
                 "geom_tip": "Compares changes in visual elements such as lines, shapes, charts, and vectors.",
-                "silent_option": "Silent mode",
                 "overlay_option": "Overlay pages",
                 "coming_soon": "Coming soon",
             },
@@ -313,7 +312,6 @@ class CompareSetQt(QtWidgets.QWidget):
                 "text_tip": "Compara alterações em palavras, números e anotações.",
                 "geom_option": "Elementos geométricos",
                 "geom_tip": "Compara alterações em elementos visuais como linhas, formas, gráficos e vetores.",
-                "silent_option": "Modo silencioso",
                 "overlay_option": "Sobrepor páginas",
                 "coming_soon": "Em breve",
             },
@@ -384,7 +382,6 @@ class CompareSetQt(QtWidgets.QWidget):
             self.text_chk.setToolTip(t["text_tip"])
             self.geom_chk.setText(t["geom_option"])
             self.geom_chk.setToolTip(t["geom_tip"])
-            self.silent_chk.setText(t["silent_option"])
             self.overlay_chk.setText(t["overlay_option"])
         if hasattr(self, "btn_cancel"):
             self.btn_cancel.setText(t["cancel"])
@@ -558,8 +555,6 @@ class CompareSetQt(QtWidgets.QWidget):
         self.geom_chk.stateChanged.connect(self._enforce_element_selection)
         elements_row.addWidget(self.text_chk)
         elements_row.addWidget(self.geom_chk)
-        self.silent_chk = QtWidgets.QCheckBox()
-        elements_row.addWidget(self.silent_chk)
         self.overlay_chk = QtWidgets.QCheckBox()
         self.overlay_chk.setChecked(True)
         elements_row.addWidget(self.overlay_chk)
