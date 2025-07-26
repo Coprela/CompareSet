@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from pdf_diff import CancelledError, InvalidDimensionsError
+from compareset.utils import normalize_pdf_to_reference
 
 import fitz  # PyMuPDF
 
@@ -57,42 +58,46 @@ def gerar_pdf_com_destaques(
     with fitz.open(pdf_old) as doc_old, fitz.open(
         pdf_new
     ) as doc_new, fitz.open() as final:
-        doc_new_resized = doc_new
-        if overlay:
-            total_steps = max(len(doc_old), len(doc_new_resized))
-        else:
-            total_steps = len(doc_old) + len(doc_new_resized)
-        done = 0
-
-        max_pages = max(len(doc_old), len(doc_new_resized))
-        for i in range(max_pages):
+        normalized = normalize_pdf_to_reference(pdf_old, pdf_new)
+        doc_new_resized = normalized.document
+        try:
             if overlay:
-                if i < len(doc_old):
-                    base_page = doc_old[i]
-                else:
-                    base_page = doc_new_resized[i]
+                total_steps = max(len(doc_old), len(doc_new_resized))
+            else:
+                total_steps = len(doc_old) + len(doc_new_resized)
+            done = 0
 
-                if base_page.rect.width == 0 or base_page.rect.height == 0:
-                    raise InvalidDimensionsError(
-                        f"page {i} has invalid size ({base_page.rect.width} x {base_page.rect.height})"
+            max_pages = max(len(doc_old), len(doc_new_resized))
+            for i in range(max_pages):
+                if overlay:
+                    if i < len(doc_old):
+                        base_page = doc_old[i]
+                    else:
+                        base_page = doc_new_resized[i]
+
+                    if base_page.rect.width == 0 or base_page.rect.height == 0:
+                        raise InvalidDimensionsError(
+                            f"page {i} has invalid size ({base_page.rect.width} x {base_page.rect.height})"
+                        )
+
+                    page_out = final.new_page(
+                        width=base_page.rect.width, height=base_page.rect.height
                     )
 
-                page_out = final.new_page(
-                    width=base_page.rect.width, height=base_page.rect.height
-                )
+                    if i < len(doc_old):
+                        page_out.show_pdf_page(page_out.rect, doc_old, i)
+                    if i < len(doc_new_resized):
+                        page_out.show_pdf_page(
+                            page_out.rect, doc_new_resized, i, overlay=True
+                        )
 
-                if i < len(doc_old):
-                    page_out.show_pdf_page(page_out.rect, doc_old, i)
-                if i < len(doc_new_resized):
-                    page_out.show_pdf_page(page_out.rect, doc_new_resized, i, overlay=True)
-
-                rem_pages = [page_out]
-                add_pages = [page_out]
-                done += 1
-                if progress_callback:
-                    progress_callback((done / total_steps) * 100)
-                if cancel_callback and cancel_callback():
-                    raise CancelledError()
+                    rem_pages = [page_out]
+                    add_pages = [page_out]
+                    done += 1
+                    if progress_callback:
+                        progress_callback((done / total_steps) * 100)
+                    if cancel_callback and cancel_callback():
+                        raise CancelledError()
             else:
                 rem_pages = []
                 add_pages = []
@@ -102,7 +107,9 @@ def gerar_pdf_com_destaques(
                         raise InvalidDimensionsError(
                             f"page {i} has invalid size ({old_page.rect.width} x {old_page.rect.height})"
                         )
-                    page_rem = final.new_page(width=old_page.rect.width, height=old_page.rect.height)
+                    page_rem = final.new_page(
+                        width=old_page.rect.width, height=old_page.rect.height
+                    )
                     page_rem.show_pdf_page(page_rem.rect, doc_old, i)
                     rem_pages.append(page_rem)
                     done += 1
@@ -117,7 +124,9 @@ def gerar_pdf_com_destaques(
                         raise InvalidDimensionsError(
                             f"page {i} has invalid size ({new_page_src.rect.width} x {new_page_src.rect.height})"
                         )
-                    page_add = final.new_page(width=new_page_src.rect.width, height=new_page_src.rect.height)
+                    page_add = final.new_page(
+                        width=new_page_src.rect.width, height=new_page_src.rect.height
+                    )
                     page_add.show_pdf_page(page_add.rect, doc_new_resized, i)
                     add_pages.append(page_add)
                     done += 1
@@ -128,9 +137,7 @@ def gerar_pdf_com_destaques(
 
             for page_ref, items, color in [
                 (p, removidos, color_remove) for p in rem_pages
-            ] + [
-                (p, adicionados, color_add) for p in add_pages
-            ]:
+            ] + [(p, adicionados, color_add) for p in add_pages]:
                 for item in items:
                     if item["pagina"] == i:
                         r = fitz.Rect(item["bbox"])
@@ -156,8 +163,10 @@ def gerar_pdf_com_destaques(
                                 overlay=True,
                             )
 
-        final.save(output_pdf)
-        if progress_callback:
-            progress_callback(100.0)
-        logger.info("PDF with highlights saved to %s", output_pdf)
+            final.save(output_pdf)
+            if progress_callback:
+                progress_callback(100.0)
+            logger.info("PDF with highlights saved to %s", output_pdf)
+        finally:
+            doc_new_resized.close()
         return
