@@ -7,8 +7,6 @@ from PySide6.QtWidgets import (
     QToolBar,
     QStatusBar,
     QWidget,
-    QToolButton,
-    QMenu,
     QPushButton,
     QFileDialog,
     QMessageBox,
@@ -19,12 +17,12 @@ from .utils import load_icon, asset_path
 from .compare_page import ComparePage
 from .history_page import HistoryPage
 from .admin_page import AdminPage
-from .settings_page import SettingsPage
+from .settings_dialog import SettingsDialog
 from ..utils import normalize_pdf_to_reference
 
 TRANSLATIONS = {
-    "en": {"history": "History", "help": "Help", "settings": "Settings", "language": "Language"},
-    "pt": {"history": "Hist\u00f3rico", "help": "Ajuda", "settings": "Configura\u00e7\u00f5es", "language": "Idioma"},
+    "en": {"history": "History", "help": "Help", "settings": "Settings"},
+    "pt": {"history": "Hist\u00f3rico", "help": "Ajuda", "settings": "Configura\u00e7\u00f5es"},
 }
 
 
@@ -35,6 +33,7 @@ class MainWindow(QMainWindow):
         self.resize(800, 600)
 
         self.lang = "en"
+        self.theme = "light"
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -42,18 +41,17 @@ class MainWindow(QMainWindow):
         self.compare_page = ComparePage(self)
         self.history_page = HistoryPage(self)
         self.admin_page = AdminPage(self)
-        self.settings_page = SettingsPage(self)
 
         self.stack.addWidget(self.compare_page)
         self.stack.addWidget(self.history_page)
         self.stack.addWidget(self.admin_page)
-        self.stack.addWidget(self.settings_page)
 
         self._create_toolbar()
         self.setStatusBar(QStatusBar())
         self._add_test_button()
 
         self.set_language(self.lang)
+        self.apply_theme(self.theme)
 
     def _create_toolbar(self) -> None:
         toolbar = QToolBar()
@@ -82,17 +80,6 @@ class MainWindow(QMainWindow):
         )
         self.action_help.triggered.connect(self.open_help)
 
-        # language toggle button
-        self.lang_button = QToolButton()
-        lang_menu = QMenu(self.lang_button)
-        act_en = lang_menu.addAction("EN")
-        act_pt = lang_menu.addAction("PT")
-        act_en.triggered.connect(lambda: self.set_language("en"))
-        act_pt.triggered.connect(lambda: self.set_language("pt"))
-        self.lang_button.setMenu(lang_menu)
-        self.lang_button.setPopupMode(QToolButton.InstantPopup)
-        toolbar.addWidget(self.lang_button)
-
         self.addToolBar(toolbar)
 
     def _add_test_button(self) -> None:
@@ -111,9 +98,15 @@ class MainWindow(QMainWindow):
         self.action_help.setToolTip(t["help"])
         self.action_settings.setText(t["settings"])
         self.action_settings.setToolTip(t["settings"])
-        self.lang_button.setText(t["language"])
         self.compare_page.set_language(self.lang)
-        self.settings_page.set_language(self.lang)
+
+    def apply_theme(self, theme: str) -> None:
+        self.theme = theme if theme in ("light", "dark") else "light"
+        fname = "style.qss" if self.theme == "light" else "style_dark.qss"
+        path = os.path.join(asset_path(), fname)
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                self.window().setStyleSheet(f.read())
 
     def open_help(self) -> None:
         from PySide6.QtWidgets import QMessageBox
@@ -121,7 +114,9 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Help", "Help is not implemented yet")
 
     def open_settings(self) -> None:
-        self.switch_page(self.settings_page)
+        dlg = SettingsDialog(self)
+        dlg.set_language(self.lang)
+        dlg.exec()
 
     def switch_page(self, page: QWidget) -> None:
         self.statusBar().showMessage(page.objectName(), 2000)
@@ -153,10 +148,6 @@ def main() -> None:
     from PySide6.QtWidgets import QApplication
 
     app = QApplication([])
-    style_path = os.path.join(asset_path(), "style.qss")
-    if os.path.exists(style_path):
-        with open(style_path, "r", encoding="utf-8") as f:
-            app.setStyleSheet(f.read())
     window = MainWindow()
     window.show()
     app.exec()
