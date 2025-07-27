@@ -3,24 +3,10 @@ import pytest
 pytest.importorskip("fitz")
 from pdf_diff import (
     _get_standard_label,
-    _page_orientation,
     _iou,
     _remove_unchanged,
     _remove_moved_same_text,
-    _remove_contained,
-    _round,
 )
-
-
-class DummyRect:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-
-
-def test_page_orientation():
-    assert _page_orientation(DummyRect(200, 100)) == "landscape"
-    assert _page_orientation(DummyRect(100, 200)) == "portrait"
 
 
 def test_get_standard_label():
@@ -42,11 +28,6 @@ def test_iou():
     assert _iou(a, c) == 0.0
 
 
-def test_round():
-    assert _round(1.2345, 2) == 1.23
-    assert _round(1.2355, 2) == 1.24
-
-
 def test_remove_unchanged():
     rem = [{"pagina": 1, "bbox": [0, 0, 1, 1], "texto": "a"}]
     add = [{"pagina": 1, "bbox": [0, 0, 1, 1], "texto": "a"}]
@@ -63,10 +44,3 @@ def test_remove_moved_same_text():
     assert a == []
 
 
-def test_remove_contained():
-    boxes = [
-        {"pagina": 1, "bbox": [0, 0, 10, 10]},
-        {"pagina": 1, "bbox": [2, 2, 8, 8]},
-    ]
-    filtered = _remove_contained(boxes)
-    assert filtered == [boxes[0]]

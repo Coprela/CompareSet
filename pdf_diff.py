@@ -57,11 +57,6 @@ class InvalidDimensionsError(Exception):
     pass
 
 
-def _page_orientation(rect: fitz.Rect) -> str:
-    """Return ``'landscape'`` or ``'portrait'`` for a page rectangle."""
-    return "landscape" if rect.width > rect.height else "portrait"
-
-
 def _extract_bboxes(
     doc: fitz.Document,
     transforms: Optional[List[Sequence[float]]] = None,
@@ -222,14 +217,24 @@ def _iou(
 
 def _load_pdf_without_signatures(path: str) -> fitz.Document:
     """Open a PDF removing digital signatures if present."""
+    signed = False
     try:
-        with open(path, "rb") as f:
-            data = f.read()
-        signed = b"/ByteRange" in data or b"/Type /Sig" in data
-    except Exception:
-        signed = False
+        with open(path, "rb") as fh:
+            while True:
+                chunk = fh.read(4096)
+                if not chunk:
+                    break
+                if b"/ByteRange" in chunk or b"/Type /Sig" in chunk:
+                    signed = True
+                    break
+    except Exception as exc:  # pragma: no cover - runtime only
+        logger.warning("Failed reading %s: %s", path, exc)
 
-    doc = fitz.open(path)
+    try:
+        doc = fitz.open(path)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to load PDF: {exc}") from exc
+
     if not signed:
         return doc
 
@@ -239,14 +244,12 @@ def _load_pdf_without_signatures(path: str) -> fitz.Document:
             new_page = cleaned.new_page(width=page.rect.width, height=page.rect.height)
             new_page.show_pdf_page(new_page.rect, doc, i)
         return cleaned
+    except Exception as exc:
+        doc.close()
+        cleaned.close()
+        raise RuntimeError(f"Failed to load signed PDF: {exc}") from exc
     finally:
         doc.close()
-
-
-def _round(value: float, digits: int = 1) -> float:
-    """Round coordinates to a visually safe precision."""
-    return round(float(value), digits)
-
 
 def _compare_page(
     old_boxes: List[Tuple[float, float, float, float, str]],
@@ -374,36 +377,6 @@ def _remove_moved_same_text(
 
     filtered_add = [a for i, a in enumerate(adicionados) if i not in used_add]
     return filtered_rem, filtered_add
-
-
-def _remove_contained(boxes: List[Dict], eps: float = 0.01) -> List[Dict]:
-    """Remove boxes fully contained within larger ones."""
-
-    def _contains(a: List[float], b: List[float]) -> bool:
-        return (
-            a[0] <= b[0] + eps
-            and a[1] <= b[1] + eps
-            and a[2] >= b[2] - eps
-            and a[3] >= b[3] - eps
-        )
-
-    filtered: List[Dict] = []
-    for i, box in enumerate(boxes):
-        contained = False
-        for j, other in enumerate(boxes):
-            if i == j:
-                continue
-            if _contains(other["bbox"], box["bbox"]):
-                if (other["bbox"][2] - other["bbox"][0]) * (
-                    other["bbox"][3] - other["bbox"][1]
-                ) <= (box["bbox"][2] - box["bbox"][0]) * (
-                    box["bbox"][3] - box["bbox"][1]
-                ):
-                    contained = True
-                    break
-        if not contained:
-            filtered.append(box)
-    return filtered
 
 
 def comparar_pdfs(
@@ -536,8 +509,6 @@ def comparar_pdfs(
                 removidos, adicionados = _remove_moved_same_text(
                     removidos, adicionados, dist=pos_tol
                 )
-                removidos = _remove_contained(removidos)
-                adicionados = _remove_contained(adicionados)
                 result = {
                     "removidos": removidos,
                     "adicionados": adicionados,

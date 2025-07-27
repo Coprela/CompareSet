@@ -7,6 +7,7 @@ from typing import List
 import logging
 
 import fitz
+from pdf_diff import InvalidDimensionsError
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,11 @@ def _content_bbox(page: fitz.Page) -> fitz.Rect | None:
                 r = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
         if r:
             boxes.append(fitz.Rect(r))
+    # images
+    for img in page.get_images(full=True):
+        xref = img[0]
+        for rect in page.get_image_rects(xref):
+            boxes.append(fitz.Rect(rect))
     # text blocks
     for block in page.get_text("dict").get("blocks", []):
         boxes.append(fitz.Rect(block["bbox"]))
@@ -66,6 +72,18 @@ def normalize_pdf_to_reference(pdf_ref_path: str, pdf_target_path: str) -> Norma
         for i in range(max_pages):
             ref_page = doc_ref[i] if i < len(doc_ref) else None
             tgt_page = doc_tgt[i] if i < len(doc_tgt) else None
+
+            for p in (ref_page, tgt_page):
+                if p and (p.rect.width <= 0 or p.rect.height <= 0):
+                    logger.error(
+                        "Invalid PDF dimensions on page %d: %.2fx%.2f",
+                        i,
+                        p.rect.width,
+                        p.rect.height,
+                    )
+                    raise InvalidDimensionsError(
+                        f"Invalid page dimensions: {p.rect.width}x{p.rect.height}"
+                    )
 
             if ref_page is None and tgt_page is None:
                 # nothing to do

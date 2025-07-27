@@ -3,9 +3,8 @@ import pytest
 pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QWidget
 
-from compareset.ui.compare_page import ComparePage
+from compareset.ui.compare_page import ComparePage, ComparisonThread
 import compareset.ui.compare_page as compare_page
-import main_interface
 
 
 class DummyMain:
@@ -47,7 +46,7 @@ def test_compare_page_overlay(monkeypatch, tmp_path):
 
 def test_comparison_thread_overlay(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        main_interface,
+        compare_page,
         "comparar_pdfs",
         lambda *a, **k: {"removidos": [1], "adicionados": []},
     )
@@ -56,8 +55,8 @@ def test_comparison_thread_overlay(monkeypatch, tmp_path):
     def fake_highlight(*args, **kwargs):
         captured["overlay"] = kwargs.get("mode", "overlay") == "overlay"
 
-    monkeypatch.setattr(main_interface, "compare_pdfs", fake_highlight)
-    thread = main_interface.ComparisonThread(
+    monkeypatch.setattr(compare_page, "compare_pdfs", fake_highlight)
+    thread = ComparisonThread(
         "old.pdf",
         "new.pdf",
         str(tmp_path / "out.pdf"),
