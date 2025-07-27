@@ -13,7 +13,11 @@ from PySide6.QtCore import Qt, QUrl, QThread, Signal
 from PySide6.QtGui import QDesktopServices
 
 from pdf_diff import comparar_pdfs, CancelledError, InvalidDimensionsError
-from pdf_highlighter import gerar_pdf_com_destaques
+from pdf_highlighter import (
+    compare_pdfs as highlight_pdfs,
+    COLOR_ADD_DEFAULT,
+    COLOR_REMOVE_DEFAULT,
+)
 
 from .utils import load_ui, root_path
 
@@ -66,16 +70,18 @@ class ComparisonThread(QThread):
                 self.progress.emit(100.0)
                 self.finished.emit("no_diffs", "")
                 return
-            gerar_pdf_com_destaques(
+            highlight_pdfs(
                 self.old_pdf,
                 self.new_pdf,
-                data["removidos"],
-                data["adicionados"],
-                self.output_pdf,
-                overlay=self.overlay,
-                progress_callback=lambda p: self.progress.emit(50 + p / 2),
-                cancel_callback=self.is_cancelled,
+                mode="overlay" if self.overlay else "split",
+                color_add=COLOR_ADD_DEFAULT,
+                color_remove=COLOR_REMOVE_DEFAULT,
+                output_path=self.output_pdf,
             )
+            self.progress.emit(100.0)
+            if self.is_cancelled():
+                self.finished.emit("cancelled", "")
+                return
             if self.is_cancelled():
                 self.finished.emit("cancelled", "")
             else:
@@ -242,13 +248,13 @@ class ComparePage(QWidget):
             if not result["removidos"] and not result["adicionados"]:
                 QMessageBox.information(self, "Result", "No differences found")
                 return
-            gerar_pdf_com_destaques(
+            highlight_pdfs(
                 self.old_path,
                 self.new_path,
-                result["removidos"],
-                result["adicionados"],
-                out,
-                overlay=self.overlay_chk.isChecked(),
+                mode="overlay" if self.overlay_chk.isChecked() else "split",
+                output_path=out,
+                color_add=COLOR_ADD_DEFAULT,
+                color_remove=COLOR_REMOVE_DEFAULT,
             )
             QMessageBox.information(self, "Result", f"Comparison PDF saved to: {out}")
         except CancelledError:

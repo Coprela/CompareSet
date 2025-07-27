@@ -26,9 +26,9 @@ def test_compare_page_overlay(monkeypatch, tmp_path):
     overlay = {}
 
     def fake_save(*args, **kwargs):
-        overlay["value"] = kwargs.get("overlay", True)
+        overlay["value"] = kwargs.get("mode", "overlay") == "overlay"
 
-    monkeypatch.setattr(compare_page, "gerar_pdf_com_destaques", fake_save)
+    monkeypatch.setattr(compare_page, "compare_pdfs", fake_save)
     monkeypatch.setattr(
         compare_page.QFileDialog,
         "getSaveFileName",
@@ -54,9 +54,9 @@ def test_comparison_thread_overlay(monkeypatch, tmp_path):
     captured = {}
 
     def fake_highlight(*args, **kwargs):
-        captured["overlay"] = kwargs.get("overlay", True)
+        captured["overlay"] = kwargs.get("mode", "overlay") == "overlay"
 
-    monkeypatch.setattr(main_interface, "gerar_pdf_com_destaques", fake_highlight)
+    monkeypatch.setattr(main_interface, "compare_pdfs", fake_highlight)
     thread = main_interface.ComparisonThread(
         "old.pdf",
         "new.pdf",
