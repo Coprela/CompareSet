@@ -247,10 +247,14 @@ def generate_recolored_svgs(
 # ---------------------------------------------------------------------------
 
 def _svg_to_pdf(svg_path: str, pdf_path: str) -> None:
+    """Convert ``svg_path`` to ``pdf_path`` using CairoSVG."""
     try:
         import cairosvg  # type: ignore
     except Exception as exc:  # pragma: no cover - runtime only
-        raise RuntimeError("cairosvg required to export PDF") from exc
+        raise RuntimeError(
+            "cairosvg and the cairo library are required to export PDF"
+        ) from exc
+
     cairosvg.svg2pdf(url=svg_path, write_to=pdf_path)
 
 
