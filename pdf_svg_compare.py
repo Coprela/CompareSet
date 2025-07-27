@@ -8,6 +8,9 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Tuple
 
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPDF
+
 import fitz  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -56,7 +59,9 @@ def _extract_page_elements(page: fitz.Page) -> List[Rect]:
         xref = img[0]
         for r in page.get_image_rects(xref):
             rect = r if isinstance(r, fitz.Rect) else fitz.Rect(r)
-            boxes.append((float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)))
+            boxes.append(
+                (float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1))
+            )
 
     for block in page.get_text("blocks"):
         if len(block) >= 4:
@@ -66,7 +71,9 @@ def _extract_page_elements(page: fitz.Page) -> List[Rect]:
     return boxes
 
 
-def _compare_elements(old: List[Rect], new: List[Rect], thr: float = 0.9) -> Tuple[List[Rect], List[Rect]]:
+def _compare_elements(
+    old: List[Rect], new: List[Rect], thr: float = 0.9
+) -> Tuple[List[Rect], List[Rect]]:
     """Return removed and added bounding boxes based on IoU."""
     removed: List[Rect] = []
     added: List[Rect] = []
@@ -127,6 +134,7 @@ def compare_pdfs(pdf_old: str, pdf_new: str) -> Dict[int, Dict[str, List[Rect]]]
 # ---------------------------------------------------------------------------
 # SVG utilities
 # ---------------------------------------------------------------------------
+
 
 def export_svgs(pdf_path: str, prefix: str) -> List[str]:
     """Export each page of ``pdf_path`` to an SVG file."""
@@ -246,16 +254,11 @@ def generate_recolored_svgs(
 # SVG to PDF and final composition
 # ---------------------------------------------------------------------------
 
-def _svg_to_pdf(svg_path: str, pdf_path: str) -> None:
-    """Convert ``svg_path`` to ``pdf_path`` using CairoSVG."""
-    try:
-        import cairosvg  # type: ignore
-    except Exception as exc:  # pragma: no cover - runtime only
-        raise RuntimeError(
-            "cairosvg and the cairo library are required to export PDF"
-        ) from exc
 
-    cairosvg.svg2pdf(url=svg_path, write_to=pdf_path)
+def _svg_to_pdf(svg_path: str, pdf_path: str) -> None:
+    """Convert ``svg_path`` to ``pdf_path`` using svglib and reportlab."""
+    drawing = svg2rlg(svg_path)
+    renderPDF.drawToFile(drawing, pdf_path)
 
 
 def generate_colored_comparison(
@@ -298,17 +301,23 @@ def generate_colored_comparison(
             if mode == "overlay":
                 base = old_pdf or new_pdf
                 assert base is not None
-                page_out = final.new_page(width=base[0].rect.width, height=base[0].rect.height)
+                page_out = final.new_page(
+                    width=base[0].rect.width, height=base[0].rect.height
+                )
                 if old_pdf:
                     page_out.show_pdf_page(page_out.rect, old_pdf, 0)
                 if new_pdf:
                     page_out.show_pdf_page(page_out.rect, new_pdf, 0, overlay=True)
             else:
                 if old_pdf:
-                    page = final.new_page(width=old_pdf[0].rect.width, height=old_pdf[0].rect.height)
+                    page = final.new_page(
+                        width=old_pdf[0].rect.width, height=old_pdf[0].rect.height
+                    )
                     page.show_pdf_page(page.rect, old_pdf, 0)
                 if new_pdf:
-                    page = final.new_page(width=new_pdf[0].rect.width, height=new_pdf[0].rect.height)
+                    page = final.new_page(
+                        width=new_pdf[0].rect.width, height=new_pdf[0].rect.height
+                    )
                     page.show_pdf_page(page.rect, new_pdf, 0)
         finally:
             if old_pdf:

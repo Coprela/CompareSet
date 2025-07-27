@@ -4,4 +4,5 @@ pytest
 PyInstaller
 python-dotenv
 requests
-cairosvg
+svglib
+reportlab

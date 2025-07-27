@@ -17,7 +17,8 @@ python run_app.py
 Windows users can simply double-click ``run_app.py`` after installing the
 requirements; no virtual environment is required.
 PyMuPDF 1.22 or newer is required for PDF processing. Exporting the final
-comparison PDF relies on the `cairosvg` package and the system `cairo` library.
+comparison PDF relies on the pure Python packages `svglib` and `reportlab` for
+SVG to PDF conversion.
 The interface layouts are defined as Qt Designer `.ui` files in `src/compareset/ui` and styled by `assets/style.qss` for a consistent look.
 Pages from the newer document are automatically normalized to the coordinate
 space of the reference PDF so highlights align correctly.
