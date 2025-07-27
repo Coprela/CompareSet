@@ -101,35 +101,38 @@ def _extract_bboxes(
                         "Transform %d contains non-numeric value %r" % (idx, v)
                     )
     for i, page in enumerate(doc):
+        tx = ty = 0.0
+        matrix = None
         if transforms and i < len(transforms):
             t = transforms[i]
             if len(t) == 6:
-                try:
-                    matrix = fitz.Matrix(*t)
-                except Exception as exc:
-                    raise ValueError(
-                        "Transform %d must contain 6 numeric values" % i
-                    ) from exc
-                tx = ty = 0.0
-                rot = None
-            elif len(t) == 5:
-                sx, sy, tx, ty, rot = t
-                try:
-                    matrix = fitz.Matrix(sx, sy)
-                except Exception as exc:
-                    raise ValueError(
-                        "Transform %d must contain numeric scale values" % i
-                    ) from exc
-            else:  # len == 4
-                sx, sy, tx, ty = t
-                rot = 0.0
-                matrix = fitz.Matrix(sx, sy)
-        else:
-            tx = ty = 0.0
-            rot = None
-            matrix = fitz.Matrix(1.0, 1.0)
-        if rot is not None and rot:
-            matrix = matrix.preRotate(rot)
+                a, b, c, d, tx, ty = t
+                if not (
+                    a == 1 and b == 0 and c == 0 and d == 1 and tx == 0 and ty == 0
+                ):
+                    try:
+                        matrix = fitz.Matrix(a, b, c, d, tx, ty)
+                    except Exception as exc:
+                        raise ValueError(
+                            "Transform %d must contain 6 numeric values" % i
+                        ) from exc
+            elif len(t) in (4, 5):
+                sx, sy, tx, ty = t[:4]
+                rot = t[4] if len(t) == 5 else 0.0
+                if sx != 1 or sy != 1 or rot:
+                    try:
+                        matrix = fitz.Matrix(sx, sy)
+                    except Exception as exc:
+                        raise ValueError(
+                            "Transform %d must contain numeric scale values" % i
+                        ) from exc
+                    if rot:
+                        matrix = matrix.preRotate(rot)
+            else:
+                raise ValueError(
+                    "Transform %d must be a sequence of four, five or six numeric values"
+                    % i
+                )
         bboxes = []
         if not ignore_geometry:
             # Bounding boxes from drawing objects (no associated text)
@@ -148,7 +151,8 @@ def _extract_bboxes(
                 if r:
                     if not isinstance(r, fitz.Rect):
                         r = fitz.Rect(r)
-                    r = matrix * r
+                    if matrix:
+                        r = matrix * r
                     x0 = r.x0 + tx
                     y0 = r.y0 + ty
                     x1 = r.x1 + tx
@@ -165,7 +169,7 @@ def _extract_bboxes(
                 for r in page.get_image_rects(xref):
                     if not isinstance(r, fitz.Rect):
                         r = fitz.Rect(r)
-                    r_t = matrix * r
+                    r_t = matrix * r if matrix else r
                     bboxes.append(
                         (
                             r_t.x0 + tx,
@@ -182,7 +186,8 @@ def _extract_bboxes(
                 if len(word) >= 5:
                     x0, y0, x1, y1, text = word[:5]
                     r = fitz.Rect(float(x0), float(y0), float(x1), float(y1))
-                    r = matrix * r
+                    if matrix:
+                        r = matrix * r
                     bboxes.append(
                         (
                             r.x0 + tx,
