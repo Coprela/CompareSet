@@ -89,19 +89,19 @@ def test_extract_vectors_handles_none_width(monkeypatch, tmp_path):
 
 def test_vectors_equal_handles_points():
     vec1 = pdf_highlighter.Vector(
-        items=[("l", fitz.Point(0, 0))],
-        rect=fitz.Rect(0, 0, 1, 1),
+        path=[("l", fitz.Point(0, 0))],
+        bbox=fitz.Rect(0, 0, 1, 1),
         width=1.0,
-        stroke=None,
+        color=None,
         fill=None,
         even_odd=False,
     )
 
     vec2 = pdf_highlighter.Vector(
-        items=[("l", (0, 0))],
-        rect=fitz.Rect(0, 0, 1, 1),
+        path=[("l", (0, 0))],
+        bbox=fitz.Rect(0, 0, 1, 1),
         width=1.0,
-        stroke=None,
+        color=None,
         fill=None,
         even_odd=False,
     )
