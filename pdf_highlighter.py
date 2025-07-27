@@ -146,29 +146,57 @@ def _compare_vectors(
 def _draw_vector(page: fitz.Page, vec: Vector, color: Tuple[float, float, float]):
     """Draw ``vec`` on ``page`` with stroke color ``color``."""
 
-    path = fitz.Path()
+    # ``fitz.Path`` was introduced in more recent versions of PyMuPDF. Older
+    # releases only provide drawing capabilities via the :class:`Shape` API.
+    use_path = hasattr(fitz, "Path") and hasattr(page, "draw_path")
+
+    if use_path:
+        path = fitz.Path()
+        move_to = path.move_to
+        line_to = path.line_to
+        curve_to = path.curve_to
+        rect = path.rect
+        close_path = path.close_path
+    else:  # fallback for old PyMuPDF versions
+        shape = page.new_shape()
+        move_to = shape.move_to
+        line_to = shape.line_to
+        curve_to = shape.curve_to
+        rect = shape.draw_rect
+        close_path = shape.close_path
+
     for item in vec.items:
         op = item[0]
         args = item[1:]
         if op == "m":
-            path.move_to(args[0], args[1])
+            move_to(args[0], args[1])
         elif op == "l":
-            path.line_to(args[0], args[1])
+            line_to(args[0], args[1])
         elif op == "c":
-            path.curve_to(args[0], args[1], args[2], args[3], args[4], args[5])
+            curve_to(args[0], args[1], args[2], args[3], args[4], args[5])
         elif op == "re":
             r = fitz.Rect(args)
-            path.rect(r.x0, r.y0, r.x1, r.y1)
+            rect(r.x0, r.y0, r.x1, r.y1)
         elif op == "h":
-            path.close_path()
+            close_path()
         # unsupported commands are ignored
-    page.draw_path(
-        path,
-        color=color if vec.width > 0 else None,
-        fill=color if vec.fill else None,
-        width=vec.width,
-        even_odd=vec.even_odd,
-    )
+
+    if use_path:
+        page.draw_path(
+            path,
+            color=color if vec.width > 0 else None,
+            fill=color if vec.fill else None,
+            width=vec.width,
+            even_odd=vec.even_odd,
+        )
+    else:
+        shape.finish(
+            color=color if vec.width > 0 else None,
+            fill=color if vec.fill else None,
+            width=vec.width,
+            rule=1 if vec.even_odd else 0,
+        )
+        shape.commit()
 
 
 # ---------------------------------------------------------------------------
