@@ -31,7 +31,11 @@ from version_check import (
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from pdf_diff import comparar_pdfs, CancelledError
-from pdf_highlighter import gerar_pdf_com_destaques
+from pdf_highlighter import (
+    compare_pdfs as highlight_pdfs,
+    COLOR_ADD_DEFAULT,
+    COLOR_REMOVE_DEFAULT,
+)
 
 load_dotenv()
 
@@ -108,16 +112,18 @@ class ComparisonThread(QtCore.QThread):
                 self.progress.emit(100.0)
                 self.finished.emit("no_diffs", "")
                 return
-            gerar_pdf_com_destaques(
+            highlight_pdfs(
                 self.old_pdf,
                 self.new_pdf,
-                dados["removidos"],
-                dados["adicionados"],
-                self.output_pdf,
-                overlay=self.overlay,
-                progress_callback=lambda p: self.progress.emit(50 + p / 2),
-                cancel_callback=self.is_cancelled,
+                mode="overlay" if self.overlay else "split",
+                output_path=self.output_pdf,
+                color_add=COLOR_ADD_DEFAULT,
+                color_remove=COLOR_REMOVE_DEFAULT,
             )
+            self.progress.emit(100.0)
+            if self.is_cancelled():
+                self.finished.emit("cancelled", "")
+                return
             if self.is_cancelled():
                 self.finished.emit("cancelled", "")
             else:

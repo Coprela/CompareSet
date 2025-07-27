@@ -2,7 +2,7 @@ import pytest
 
 fitz = pytest.importorskip("fitz")
 
-from pdf_highlighter import gerar_pdf_com_destaques
+from pdf_highlighter import compare_pdfs
 from pdf_diff import InvalidDimensionsError
 
 
@@ -18,13 +18,7 @@ def test_generate_highlights(tmp_path):
         doc.save(path)
         doc.close()
 
-    gerar_pdf_com_destaques(
-        str(old),
-        str(new),
-        [],
-        [],
-        str(output),
-    )
+    compare_pdfs(str(old), str(new), output_path=str(output))
 
     assert output.exists()
 
@@ -41,14 +35,7 @@ def test_generate_highlights_separate(tmp_path):
         doc.save(path)
         doc.close()
 
-    gerar_pdf_com_destaques(
-        str(old),
-        str(new),
-        [],
-        [],
-        str(output),
-        overlay=False,
-    )
+    compare_pdfs(str(old), str(new), mode="split", output_path=str(output))
 
     doc_out = fitz.open(str(output))
     assert len(doc_out) == 2
@@ -71,10 +58,4 @@ def test_highlighter_invalid_dimensions(tmp_path):
     doc_new.close()
 
     with pytest.raises(InvalidDimensionsError):
-        gerar_pdf_com_destaques(
-            str(old),
-            str(new),
-            [],
-            [],
-            str(output),
-        )
+        compare_pdfs(str(old), str(new), output_path=str(output))
