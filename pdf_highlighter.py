@@ -58,11 +58,13 @@ def _extract_vectors(page: fitz.Page) -> List[Vector]:
             r = rect if isinstance(rect, fitz.Rect) else fitz.Rect(rect)
         else:
             r = fitz.Rect(0, 0, 0, 0)
+        width_val = drawing.get("width")
+        width = float(width_val) if width_val is not None else 1.0
         vectors.append(
             Vector(
                 items=list(drawing.get("items", [])),
                 rect=r,
-                width=float(drawing.get("width", 1)),
+                width=width,
                 stroke=drawing.get("color"),
                 fill=drawing.get("fill"),
                 even_odd=bool(drawing.get("even_odd", False)),
