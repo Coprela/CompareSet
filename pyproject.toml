@@ -11,6 +11,8 @@ dependencies = [
     "requests",
     "python-dotenv",
     "pyarmor==7.6.1",
+    "svglib",
+    "reportlab",
 ]
 
 [tool.setuptools]

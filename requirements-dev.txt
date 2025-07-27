@@ -4,3 +4,5 @@ pytest
 PyInstaller
 python-dotenv
 requests
+svglib
+reportlab
