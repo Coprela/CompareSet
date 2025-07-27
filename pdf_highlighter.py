@@ -15,6 +15,7 @@ import logging
 import fitz  # type: ignore
 
 from compareset.utils import normalize_pdf_to_reference
+from pdf_diff import InvalidDimensionsError
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,8 @@ class Vector:
     stroke: Tuple[float, float, float] | None
     fill: Tuple[float, float, float] | None
     even_odd: bool
+    type: str = "vector"
+    xref: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +73,22 @@ def _extract_vectors(page: fitz.Page) -> List[Vector]:
                 even_odd=bool(drawing.get("even_odd", False)),
             )
         )
+    for img in page.get_images(full=True):
+        xref = img[0]
+        bbox = page.get_image_rects(xref)
+        for rect in bbox:
+            vectors.append(
+                Vector(
+                    items=[],
+                    rect=fitz.Rect(rect),
+                    width=1.0,
+                    stroke=None,
+                    fill=None,
+                    even_odd=False,
+                    type="image",
+                    xref=xref,
+                )
+            )
     return vectors
 
 
@@ -100,6 +119,8 @@ def _param_to_list(value: object) -> List[float]:
 
 def _vectors_equal(a: Vector, b: Vector, eps: float = 0.1) -> bool:
     """Return ``True`` when two vectors are considered equal."""
+    if a.type != b.type:
+        return False
 
     if len(a.items) != len(b.items):
         return False
@@ -114,6 +135,16 @@ def _vectors_equal(a: Vector, b: Vector, eps: float = 0.1) -> bool:
             for xa, xb in zip(list_a, list_b):
                 if abs(xa - xb) > eps:
                     return False
+    if not a.items and not b.items:
+        ra = a.rect
+        rb = b.rect
+        if (
+            abs(ra.x0 - rb.x0) > eps
+            or abs(ra.y0 - rb.y0) > eps
+            or abs(ra.x1 - rb.x1) > eps
+            or abs(ra.y1 - rb.y1) > eps
+        ):
+            return False
     return True
 
 
@@ -182,6 +213,10 @@ def _draw_vector(page: fitz.Page, vec: Vector, color: Tuple[float, float, float]
             close_path()
         # unsupported commands are ignored
 
+    if vec.type == "image" and not vec.items:
+        page.draw_rect(vec.rect, color=color, width=1.0)
+        return
+
     if use_path:
         page.draw_path(
             path,
@@ -224,6 +259,8 @@ def compare_pdfs(
     if mode not in {"overlay", "split"}:
         raise ValueError("mode must be 'overlay' or 'split'")
 
+    logger.info("Comparing %s vs %s", pdf_old, pdf_new)
+
     with fitz.open(pdf_old) as doc_old, fitz.open() as final:
         normalized = normalize_pdf_to_reference(pdf_old, pdf_new)
         doc_new = normalized.document
@@ -232,6 +269,18 @@ def compare_pdfs(
             for i in range(max_pages):
                 old_page = doc_old[i] if i < len(doc_old) else None
                 new_page = doc_new[i] if i < len(doc_new) else None
+
+                for p in (old_page, new_page):
+                    if p and (p.rect.width <= 0 or p.rect.height <= 0):
+                        logger.error(
+                            "Invalid PDF dimensions on page %d: %.2fx%.2f",
+                            i,
+                            p.rect.width,
+                            p.rect.height,
+                        )
+                        raise InvalidDimensionsError(
+                            f"Invalid page dimensions: {p.rect.width}x{p.rect.height}"
+                        )
 
                 old_vecs = _extract_vectors(old_page) if old_page else []
                 new_vecs = _extract_vectors(new_page) if new_page else []

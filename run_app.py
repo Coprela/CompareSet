@@ -27,5 +27,8 @@ def _load_env() -> None:
 
 if __name__ == "__main__":
     _load_env()
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
     main()
