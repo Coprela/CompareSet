@@ -1,0 +1,28 @@
+{
+  "users": [
+    {
+      "username": "antsilva",
+      "name": "Anthony Silva",
+      "email": "anthony.silva@technipfmc.com",
+      "active": true,
+      "added": 0.0
+    },
+    {
+      "username": "example",
+      "name": "Example User",
+      "email": "example@example.com",
+      "active": false,
+      "added": 0.0
+    },
+    {
+      "username": "teste",
+      "name": "",
+      "email": "",
+      "active": false,
+      "added": 1753126157.8544452
+    }
+  ],
+  "admins": [
+    "doliveira12"
+  ]
+}
