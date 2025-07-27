@@ -210,6 +210,38 @@ def recolor_svg(svg_path: str, diffs: List[Rect], color: str, output_path: str) 
     tree.write(output_path)
 
 
+def generate_recolored_svgs(
+    pdf_old: str,
+    pdf_new: str,
+    *,
+    color_add: str = "rgb(0,255,0)",
+    color_remove: str = "rgb(255,0,0)",
+    prefix_old: str = "old_color",
+    prefix_new: str = "new_color",
+) -> Tuple[List[str], List[str]]:
+    """Return recolored SVG pages for ``pdf_old`` and ``pdf_new``."""
+    logger.info("Comparing PDFs %s vs %s", pdf_old, pdf_new)
+    diffs = compare_pdfs(pdf_old, pdf_new)
+    logger.info("Exporting SVGs")
+    old_svgs = export_svgs(pdf_old, "old")
+    new_svgs = export_svgs(pdf_new, "new")
+    recolored_old: List[str] = []
+    recolored_new: List[str] = []
+    logger.info("Recoloring old document SVGs")
+    for i, path in enumerate(old_svgs):
+        out = f"{prefix_old}_{i+1}.svg"
+        diff_rects = diffs.get(i, {}).get("removed", [])
+        recolor_svg(path, diff_rects, color_remove, out)
+        recolored_old.append(out)
+    logger.info("Recoloring new document SVGs")
+    for i, path in enumerate(new_svgs):
+        out = f"{prefix_new}_{i+1}.svg"
+        diff_rects = diffs.get(i, {}).get("added", [])
+        recolor_svg(path, diff_rects, color_add, out)
+        recolored_new.append(out)
+    return recolored_old, recolored_new
+
+
 # ---------------------------------------------------------------------------
 # SVG to PDF and final composition
 # ---------------------------------------------------------------------------
@@ -235,22 +267,12 @@ def generate_colored_comparison(
     if mode not in {"overlay", "split"}:
         raise ValueError("mode must be 'overlay' or 'split'")
 
-    diffs = compare_pdfs(pdf_old, pdf_new)
-    old_svgs = export_svgs(pdf_old, "old")
-    new_svgs = export_svgs(pdf_new, "new")
-
-    recolored_old = []
-    recolored_new = []
-    for i, path in enumerate(old_svgs):
-        out = f"old_color_{i+1}.svg"
-        diff_rects = diffs.get(i, {}).get("removed", [])
-        recolor_svg(path, diff_rects, color_remove, out)
-        recolored_old.append(out)
-    for i, path in enumerate(new_svgs):
-        out = f"new_color_{i+1}.svg"
-        diff_rects = diffs.get(i, {}).get("added", [])
-        recolor_svg(path, diff_rects, color_add, out)
-        recolored_new.append(out)
+    recolored_old, recolored_new = generate_recolored_svgs(
+        pdf_old,
+        pdf_new,
+        color_add=color_add,
+        color_remove=color_remove,
+    )
 
     old_pdfs = []
     new_pdfs = []
