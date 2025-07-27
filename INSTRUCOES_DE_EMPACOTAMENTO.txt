@@ -1,0 +1,120 @@
+================================================================================
+Guia de Empacotamento do CompareSet
+================================================================================
+
+1. Introdução e propósito do documento
+--------------------------------------
+Este guia descreve como empacotar a aplicação **CompareSet** em um executável
+``.exe`` único para Windows. O objetivo é permitir a execução sem instalar
+Python ou dependências. Destina-se a desenvolvedores que precisam gerar e
+distribuir o executável para usuários finais.
+
+2. Pré‑requisitos da máquina de desenvolvimento
+-----------------------------------------------
+- **Python 3.8 ou superior** instalado e adicionado ao ``PATH``.
+- **Git** para clonar o repositório.
+- **Ambiente virtual (opcional)** para isolar dependências.
+- Instalar os pacotes necessários:
+  ```bash
+  pip install -r requirements.txt
+  pip install pyinstaller pyarmor==7.6.1
+  ```
+  A versão do PyArmor 7 é recomendada para compatibilidade com o script de
+  empacotamento.
+
+3. Estrutura de pastas recomendada
+----------------------------------
+O projeto segue o padrão ``src`` e deve permanecer organizado da seguinte forma:
+```
+CompareSet/
+├─ assets/
+│  └─ icons/
+├─ src/
+│  └─ compareset/
+│     ├─ ui/
+│     ├─ utils/
+│     └─ ...
+├─ build_package.py
+├─ run_app.py
+└─ ...
+```
+Mantenha esta estrutura para que o comando de empacotamento funcione corretamente.
+
+4. Comando PyInstaller para gerar o ``.exe``
+-------------------------------------------
+O script ``build_package.py`` já automatiza o processo, mas o comando equivalente
+do PyInstaller é:
+```bash
+pyinstaller run_app.py \
+  --name "CompareSet 0.2.1-beta" \
+  --onefile --windowed \
+  --add-data "assets\\icons\\Icon - Improvement.png;assets/icons" \
+  --add-data "assets\\icons\\Icon - Question Mark Help.png;assets/icons" \
+  --add-data "assets\\icons\\Icon - Gear.png;assets/icons" \
+  --add-data "assets\\icons\\Icon - History.png;assets/icons" \
+  --add-data "assets\\icons\\Icon - Administration.png;assets/icons" \
+  --add-data "assets\\icons\\Icon - CompareSet.ico;assets/icons" \
+  --add-data "LICENSE;." \
+  --add-data "LICENSE_EN.txt;." \
+  --add-data "LICENSE_PT.txt;." \
+  --icon "assets\\icons\\Icon - CompareSet.ico"
+```
+Execute ``python build_package.py`` para simplificar o processo. O script também
+tenta ofuscar o código com PyArmor e permite assinar o executável caso variáveis
+``SIGNTOOL``, ``SIGN_CERT`` e ``SIGN_PASS`` estejam configuradas.
+
+5. Arquivos criados em tempo de execução
+---------------------------------------
+Ao rodar o executável, são criados alguns arquivos no diretório ao lado do
+``.exe`` (ou em pastas definidas por variáveis de ambiente):
+- ``logs/`` – registro de acessos (``ACCESS_LOG`` ou ``COMPARESET_LOGS``).
+- ``data/`` – banco de usuários (``USERS_FILE`` ou ``COMPARESET_DATA``).
+- ``master.key`` – chave opcional para modo administrador (``MASTER_KEY_FILE``).
+Esses arquivos são gerados automaticamente e podem ser movidos mudando as
+variáveis de ambiente correspondentes.
+
+6. Modo master admin
+--------------------
+Recursos de administração ficam acessíveis quando ``ADMIN_MODE=1`` é definido.
+Para autenticação de mestre, use uma das opções abaixo:
+- Defina ``MASTER_TOKEN`` com a senha em texto puro.
+- Ou defina ``MASTER_TOKEN_HASH`` com a senha já codificada.
+- Alternativamente, coloque o hash em ``master.key`` (caminho ajustável via
+  ``MASTER_KEY_FILE``).
+O token é comparado em tempo de execução para liberar privilégios de mestre.
+
+7. Verificando o executável em outras máquinas
+----------------------------------------------
+1. Copie apenas o arquivo ``CompareSet 0.2.1-beta.exe`` para outro computador.
+2. Execute o ``.exe`` diretamente (não é necessário instalar nada).
+3. Verifique se as janelas abrem normalmente e se os arquivos de ``logs`` e
+   ``data`` são criados ao lado do executável.
+4. Caso utilize recursos de administração, configure as variáveis de ambiente
+   necessárias no sistema destino.
+
+8. Observações sobre verificação de versão via GitHub
+----------------------------------------------------
+A aplicação consulta arquivos JSON no GitHub para verificar novas versões e
+carregar listas de usuários. Essas operações são **apenas leitura** e exigem um
+``GITHUB_TOKEN`` com permissão de ``Contents: Read``. Os nomes dos arquivos e do
+repositório podem ser ajustados via ``GITHUB_REPO``, ``GITHUB_PATH_PREFIX`` e
+``LATEST_VERSION_FILE``.
+
+9. Distribuição segura do executável
+------------------------------------
+- Assine o ``.exe`` com um certificado válido para evitar avisos de segurança.
+- Distribua o arquivo em um pacote ``.zip`` acompanhado das licenças.
+- Informe aos usuários que não é necessário instalar o Python – basta executar o
+  arquivo fornecido.
+- Evite enviar arquivos de configuração pessoais ou o banco de usuários junto ao
+  executável.
+
+10. Lembretes finais e boas práticas
+------------------------------------
+- Mantenha o repositório atualizado antes de gerar novas versões.
+- Teste o ``.exe`` em uma máquina limpa para garantir que não há dependências
+  ocultas.
+- Documente quais variáveis de ambiente são usadas, facilitando a configuração
+  futura.
+- Para suporte ou melhorias, consulte a pasta ``docs/`` e o ``README.md``.
+
