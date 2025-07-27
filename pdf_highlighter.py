@@ -160,11 +160,11 @@ def _draw_vector(page: fitz.Page, vec: Vector, color: Tuple[float, float, float]
     else:  # fallback for old PyMuPDF versions
         shape = page.new_shape()
         # method names changed from camelCase to snake_case in PyMuPDF
-        move_to = getattr(shape, "move_to", None) or getattr(shape, "moveTo")
-        line_to = getattr(shape, "line_to", None) or getattr(shape, "lineTo")
-        curve_to = getattr(shape, "curve_to", None) or getattr(shape, "curveTo")
-        rect = getattr(shape, "draw_rect", None) or getattr(shape, "drawRect")
-        close_path = getattr(shape, "close_path", None) or getattr(shape, "closePath")
+        move_to = getattr(shape, "move_to", None) or getattr(shape, "moveTo", None)
+        line_to = getattr(shape, "line_to", None) or getattr(shape, "lineTo", None)
+        curve_to = getattr(shape, "curve_to", None) or getattr(shape, "curveTo", None)
+        rect = getattr(shape, "draw_rect", None) or getattr(shape, "drawRect", None)
+        close_path = getattr(shape, "close_path", None) or getattr(shape, "closePath", None)
 
     for item in vec.items:
         op = item[0]
