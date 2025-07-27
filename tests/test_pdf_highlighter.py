@@ -107,3 +107,8 @@ def test_vectors_equal_handles_points():
     )
 
     assert pdf_highlighter._vectors_equal(vec1, vec2)
+
+
+def test_param_to_list_handles_quad():
+    q = fitz.Quad(0, 0, 1, 0, 1, 1, 0, 1)
+    assert pdf_highlighter._param_to_list(q) == [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]
