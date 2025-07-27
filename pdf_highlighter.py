@@ -73,6 +73,26 @@ def _extract_vectors(page: fitz.Page) -> List[Vector]:
     return vectors
 
 
+def _param_to_list(value: object) -> List[float]:
+    """Return ``value`` as a flat list of floats."""
+
+    if isinstance(value, fitz.Point):
+        return [float(value.x), float(value.y)]
+    if isinstance(value, fitz.Rect):
+        return [
+            float(value.x0),
+            float(value.y0),
+            float(value.x1),
+            float(value.y1),
+        ]
+    if isinstance(value, (list, tuple)):
+        vals: List[float] = []
+        for v in value:
+            vals.extend(_param_to_list(v))
+        return vals
+    return [float(value)]
+
+
 def _vectors_equal(a: Vector, b: Vector, eps: float = 0.1) -> bool:
     """Return ``True`` when two vectors are considered equal."""
 
@@ -82,14 +102,12 @@ def _vectors_equal(a: Vector, b: Vector, eps: float = 0.1) -> bool:
         if it_a[0] != it_b[0] or len(it_a) != len(it_b):
             return False
         for pa, pb in zip(it_a[1:], it_b[1:]):
-            if isinstance(pa, (list, tuple)) and isinstance(pb, (list, tuple)):
-                if len(pa) != len(pb):
-                    return False
-                for xa, xb in zip(pa, pb):
-                    if abs(float(xa) - float(xb)) > eps:
-                        return False
-            else:
-                if abs(float(pa) - float(pb)) > eps:
+            list_a = _param_to_list(pa)
+            list_b = _param_to_list(pb)
+            if len(list_a) != len(list_b):
+                return False
+            for xa, xb in zip(list_a, list_b):
+                if abs(xa - xb) > eps:
                     return False
     return True
 
