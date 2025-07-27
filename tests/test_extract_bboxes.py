@@ -39,9 +39,9 @@ def test_extract_bboxes_error_uses_page_index(monkeypatch):
         doc.new_page()
 
     transforms = [
-        (1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
-        (1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
-        (1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+        (2.0, 2.0, 0.0, 0.0),
+        (2.0, 2.0, 0.0, 0.0),
+        (2.0, 2.0, 0.0, 0.0),
     ]
 
     original_matrix = fitz.Matrix
