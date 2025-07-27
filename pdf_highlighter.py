@@ -86,16 +86,10 @@ def _param_to_list(value: object) -> List[float]:
             float(value.y1),
         ]
     if hasattr(fitz, "Quad") and isinstance(value, fitz.Quad):
-        return [
-            float(value.p1.x),
-            float(value.p1.y),
-            float(value.p2.x),
-            float(value.p2.y),
-            float(value.p3.x),
-            float(value.p3.y),
-            float(value.p4.x),
-            float(value.p4.y),
-        ]
+        vals: List[float] = []
+        for pt in value:
+            vals.extend(_param_to_list(pt))
+        return vals
     if isinstance(value, (list, tuple)):
         vals: List[float] = []
         for v in value:
