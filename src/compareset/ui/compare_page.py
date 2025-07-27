@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import logging
+import traceback
+
 from PySide6.QtWidgets import (
     QWidget,
     QFileDialog,
@@ -80,7 +83,10 @@ class ComparisonThread(QThread):
         except CancelledError:
             self.finished.emit("cancelled", "")
         except Exception as exc:  # pragma: no cover - simplified
+            logging.exception("Unexpected error during comparison")
+            traceback.print_exc()
             self.finished.emit("error", str(exc))
+
 
 TRANSLATIONS = {
     "en": {
@@ -213,7 +219,9 @@ class ComparePage(QWidget):
         if self.btn_cancel:
             self.btn_cancel.setText("Cancel" if self.lang == "en" else "Cancelar")
         if self.btn_view:
-            self.btn_view.setText("View result" if self.lang == "en" else "Ver resultado")
+            self.btn_view.setText(
+                "View result" if self.lang == "en" else "Ver resultado"
+            )
         if self.btn_license:
             self.btn_license.setText(t["license"])
 
@@ -253,6 +261,8 @@ class ComparePage(QWidget):
                 "possuem conteúdo visível e dimensões válidas.",
             )
         except Exception as exc:
+            logging.exception("Unexpected error during comparison")
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", str(exc))
 
     # --- async interface used by the GUI ---
@@ -260,7 +270,9 @@ class ComparePage(QWidget):
         if not self.old_path or not self.new_path:
             QMessageBox.warning(self, "Error", "Select both PDFs for comparison")
             return
-        out, _ = QFileDialog.getSaveFileName(self, "Save comparison PDF", filter="PDF Files (*.pdf)")
+        out, _ = QFileDialog.getSaveFileName(
+            self, "Save comparison PDF", filter="PDF Files (*.pdf)"
+        )
         if not out:
             return
         self.output_path = out
@@ -330,5 +342,7 @@ class ComparePage(QWidget):
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read()
         except Exception:
+            logging.exception("Failed to read license file")
+            traceback.print_exc()
             text = t.get("not_found", "License not found")
         QMessageBox.information(self, t.get("license", "License"), text)

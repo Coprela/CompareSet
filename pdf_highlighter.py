@@ -161,6 +161,8 @@ def gerar_pdf_com_destaques(
                                 overlay=True,
                             )
 
+            # Save only once after all pages are processed. Saving inside the loop
+            # invalidates page objects, leading to AttributeError.
             final.save(output_pdf)
             if progress_callback:
                 progress_callback(100.0)
