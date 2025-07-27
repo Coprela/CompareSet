@@ -27,10 +27,10 @@ COLOR_ADD_DEFAULT: Tuple[float, float, float] = (0, 0.8, 0)
 class Vector:
     """Information about a drawing object."""
 
-    items: List[Tuple]
-    rect: fitz.Rect
+    path: List[Tuple]
+    bbox: fitz.Rect
     width: float
-    stroke: Tuple[float, float, float] | None
+    color: Tuple[float, float, float] | None
     fill: Tuple[float, float, float] | None
     even_odd: bool
     type: str = "vector"
@@ -65,10 +65,10 @@ def _extract_vectors(page: fitz.Page) -> List[Vector]:
         width = float(width_val) if width_val is not None else 1.0
         vectors.append(
             Vector(
-                items=list(drawing.get("items", [])),
-                rect=r,
+                path=list(drawing.get("items", [])),
+                bbox=r,
                 width=width,
-                stroke=drawing.get("color"),
+                color=drawing.get("color"),
                 fill=drawing.get("fill"),
                 even_odd=bool(drawing.get("even_odd", False)),
             )
@@ -79,10 +79,10 @@ def _extract_vectors(page: fitz.Page) -> List[Vector]:
         for rect in bbox:
             vectors.append(
                 Vector(
-                    items=[],
-                    rect=fitz.Rect(rect),
+                    path=[],
+                    bbox=fitz.Rect(rect),
                     width=1.0,
-                    stroke=None,
+                    color=None,
                     fill=None,
                     even_odd=False,
                     type="image",
@@ -122,9 +122,9 @@ def _vectors_equal(a: Vector, b: Vector, eps: float = 0.1) -> bool:
     if a.type != b.type:
         return False
 
-    if len(a.items) != len(b.items):
+    if len(a.path) != len(b.path):
         return False
-    for it_a, it_b in zip(a.items, b.items):
+    for it_a, it_b in zip(a.path, b.path):
         if it_a[0] != it_b[0] or len(it_a) != len(it_b):
             return False
         for pa, pb in zip(it_a[1:], it_b[1:]):
@@ -135,9 +135,9 @@ def _vectors_equal(a: Vector, b: Vector, eps: float = 0.1) -> bool:
             for xa, xb in zip(list_a, list_b):
                 if abs(xa - xb) > eps:
                     return False
-    if not a.items and not b.items:
-        ra = a.rect
-        rb = b.rect
+    if not a.path and not b.path:
+        ra = a.bbox
+        rb = b.bbox
         if (
             abs(ra.x0 - rb.x0) > eps
             or abs(ra.y0 - rb.y0) > eps
@@ -197,7 +197,7 @@ def _draw_vector(page: fitz.Page, vec: Vector, color: Tuple[float, float, float]
         rect = getattr(shape, "draw_rect", None) or getattr(shape, "drawRect", None)
         close_path = getattr(shape, "close_path", None) or getattr(shape, "closePath", None)
 
-    for item in vec.items:
+    for item in vec.path:
         op = item[0]
         args = item[1:]
         if op == "m":
@@ -213,8 +213,8 @@ def _draw_vector(page: fitz.Page, vec: Vector, color: Tuple[float, float, float]
             close_path()
         # unsupported commands are ignored
 
-    if vec.type == "image" and not vec.items:
-        page.draw_rect(vec.rect, color=color, width=1.0)
+    if vec.type == "image" and not vec.path:
+        page.draw_rect(vec.bbox, color=color, width=1.0)
         return
 
     if use_path:
@@ -226,11 +226,15 @@ def _draw_vector(page: fitz.Page, vec: Vector, color: Tuple[float, float, float]
             even_odd=vec.even_odd,
         )
     else:
+        # PyMuPDF >=1.22 removed the ``rule`` parameter from ``Shape.finish``.
+        # Set the fill rule beforehand when needed and call ``finish`` without
+        # the argument.
+        if vec.even_odd:
+            shape.fill(fill_rule=getattr(fitz, "FILL_EVEN_ODD", 1))
         shape.finish(
             color=color if vec.width > 0 else None,
             fill=color if vec.fill else None,
             width=vec.width,
-            rule=1 if vec.even_odd else 0,
         )
         shape.commit()
 
@@ -291,6 +295,14 @@ def compare_pdfs(
                         "page %d: %d removed, %d added", i, len(removed), len(added)
                     )
 
+                # modify source pages so changed vectors appear with new colors
+                if old_page:
+                    for vec in removed:
+                        _draw_vector(old_page, vec, color_remove)
+                if new_page:
+                    for vec in added:
+                        _draw_vector(new_page, vec, color_add)
+
                 if mode == "overlay":
                     base = old_page if old_page else new_page
                     page_out = final.new_page(
@@ -300,25 +312,17 @@ def compare_pdfs(
                         page_out.show_pdf_page(page_out.rect, doc_old, i)
                     if new_page:
                         page_out.show_pdf_page(page_out.rect, doc_new, i, overlay=True)
-                    for vec in removed:
-                        _draw_vector(page_out, vec, color_remove)
-                    for vec in added:
-                        _draw_vector(page_out, vec, color_add)
                 else:  # split
                     if old_page:
                         page_rem = final.new_page(
                             width=old_page.rect.width, height=old_page.rect.height
                         )
                         page_rem.show_pdf_page(page_rem.rect, doc_old, i)
-                        for vec in removed:
-                            _draw_vector(page_rem, vec, color_remove)
                     if new_page:
                         page_add = final.new_page(
                             width=new_page.rect.width, height=new_page.rect.height
                         )
                         page_add.show_pdf_page(page_add.rect, doc_new, i)
-                        for vec in added:
-                            _draw_vector(page_add, vec, color_add)
             final.save(output_path)
             logger.info("comparison saved to %s", output_path)
         finally:
