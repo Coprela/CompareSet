@@ -59,3 +59,28 @@ def test_highlighter_invalid_dimensions(tmp_path):
 
     with pytest.raises(InvalidDimensionsError):
         compare_pdfs(str(old), str(new), output_path=str(output))
+
+
+def test_extract_vectors_handles_none_width(monkeypatch, tmp_path):
+    old = tmp_path / "old.pdf"
+    new = tmp_path / "new.pdf"
+    out = tmp_path / "out.pdf"
+
+    for path in [old, new]:
+        doc = fitz.open()
+        page = doc.new_page()
+        page.draw_rect(fitz.Rect(0, 0, 50, 50))
+        doc.save(path)
+        doc.close()
+
+    original = fitz.Page.get_drawings
+
+    def fake_get_drawings(self, *args, **kwargs):
+        drawings = original(self, *args, **kwargs)
+        for d in drawings:
+            d["width"] = None
+        return drawings
+
+    monkeypatch.setattr(fitz.Page, "get_drawings", fake_get_drawings)
+
+    compare_pdfs(str(old), str(new), output_path=str(out))
