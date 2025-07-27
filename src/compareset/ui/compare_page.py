@@ -12,12 +12,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QUrl, QThread, Signal
 from PySide6.QtGui import QDesktopServices
 
-from pdf_diff import comparar_pdfs, CancelledError, InvalidDimensionsError
-from pdf_highlighter import (
-    compare_pdfs as highlight_pdfs,
-    COLOR_ADD_DEFAULT,
-    COLOR_REMOVE_DEFAULT,
+from pdf_svg_compare import (
+    generate_colored_comparison,
+    generate_recolored_svgs,
 )
+from pdf_svg_compare import logger as compare_logger
 
 from .utils import load_ui, root_path
 
@@ -33,16 +32,12 @@ class ComparisonThread(QThread):
         old_pdf: str,
         new_pdf: str,
         output_pdf: str,
-        ignore_geometry: bool,
-        ignore_text: bool,
         overlay: bool,
     ) -> None:
         super().__init__()
         self.old_pdf = old_pdf
         self.new_pdf = new_pdf
         self.output_pdf = output_pdf
-        self.ignore_geometry = ignore_geometry
-        self.ignore_text = ignore_text
         self.overlay = overlay
         self._cancelled = False
 
@@ -54,40 +49,17 @@ class ComparisonThread(QThread):
 
     def run(self) -> None:  # pragma: no cover - tested via main_interface
         try:
-            data = comparar_pdfs(
-                self.old_pdf,
-                self.new_pdf,
-                adaptive=True,
-                ignore_geometry=self.ignore_geometry,
-                ignore_text=self.ignore_text,
-                progress_callback=lambda p: self.progress.emit(p / 2),
-                cancel_callback=self.is_cancelled,
-            )
-            if self.is_cancelled():
-                self.finished.emit("cancelled", "")
-                return
-            if not data["removidos"] and not data["adicionados"]:
-                self.progress.emit(100.0)
-                self.finished.emit("no_diffs", "")
-                return
-            highlight_pdfs(
+            generate_colored_comparison(
                 self.old_pdf,
                 self.new_pdf,
                 mode="overlay" if self.overlay else "split",
-                color_add=COLOR_ADD_DEFAULT,
-                color_remove=COLOR_REMOVE_DEFAULT,
                 output_path=self.output_pdf,
             )
             self.progress.emit(100.0)
             if self.is_cancelled():
                 self.finished.emit("cancelled", "")
-                return
-            if self.is_cancelled():
-                self.finished.emit("cancelled", "")
             else:
                 self.finished.emit("success", self.output_pdf)
-        except CancelledError:
-            self.finished.emit("cancelled", "")
         except Exception as exc:  # pragma: no cover - simplified
             logging.exception("Unexpected error during comparison")
             traceback.print_exc()
@@ -241,31 +213,14 @@ class ComparePage(QWidget):
         if not out:
             return
         try:
-            result = comparar_pdfs(
-                self.old_path,
-                self.new_path,
-            )
-            if not result["removidos"] and not result["adicionados"]:
-                QMessageBox.information(self, "Result", "No differences found")
-                return
-            highlight_pdfs(
+            generate_colored_comparison(
                 self.old_path,
                 self.new_path,
                 mode="overlay" if self.overlay_chk.isChecked() else "split",
                 output_path=out,
-                color_add=COLOR_ADD_DEFAULT,
-                color_remove=COLOR_REMOVE_DEFAULT,
             )
+            compare_logger.info("Comparison finished")
             QMessageBox.information(self, "Result", f"Comparison PDF saved to: {out}")
-        except CancelledError:
-            QMessageBox.information(self, "Result", "Operation cancelled")
-        except InvalidDimensionsError:
-            QMessageBox.warning(
-                self,
-                "Erro",
-                "Não foi possível comparar as páginas. Verifique se ambos os PDFs "
-                "possuem conteúdo visível e dimensões válidas.",
-            )
         except Exception as exc:
             logging.exception("Unexpected error during comparison")
             traceback.print_exc()
@@ -293,8 +248,6 @@ class ComparePage(QWidget):
             self.old_path,
             self.new_path,
             out,
-            ignore_geometry=not self.geom_chk.isChecked(),
-            ignore_text=not self.text_chk.isChecked(),
             overlay=self.overlay_chk.isChecked(),
         )
         self.thread.progress.connect(self.update_progress)
