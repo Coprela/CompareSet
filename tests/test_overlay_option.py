@@ -21,6 +21,8 @@ def test_compare_page_overlay(monkeypatch, tmp_path):
 
     def fake_save(*args, **kwargs):
         overlay["value"] = kwargs.get("mode", "overlay") == "overlay"
+        overlay["text"] = kwargs.get("compare_text", False)
+        overlay["geom"] = kwargs.get("compare_geom", False)
 
     monkeypatch.setattr(compare_page, "generate_colored_comparison", fake_save)
     monkeypatch.setattr(
@@ -33,6 +35,8 @@ def test_compare_page_overlay(monkeypatch, tmp_path):
     page.overlay_chk.setChecked(False)
     page.compare_pdfs()
     assert overlay["value"] is False
+    assert overlay["text"] is True
+    assert overlay["geom"] is True
 
     page.overlay_chk.setChecked(True)
     page.compare_pdfs()
@@ -51,6 +55,9 @@ def test_comparison_thread_overlay(monkeypatch, tmp_path):
         "new.pdf",
         str(tmp_path / "out.pdf"),
         overlay=False,
+        compare_text=True,
+        compare_geom=True,
+        iou_threshold=0.6,
     )
     thread.run()
     assert captured["overlay"] is False
