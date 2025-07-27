@@ -8,6 +8,7 @@ import logging
 
 import fitz
 from compareset.utils import normalize_pdf_to_reference
+from compareset.errors import InvalidDimensionsError
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +52,6 @@ class CancelledError(Exception):
     pass
 
 
-class InvalidDimensionsError(Exception):
-    """Raised when PDF pages have invalid sizes."""
-
-    pass
 
 
 def _extract_bboxes(

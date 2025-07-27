@@ -15,7 +15,7 @@ import logging
 import fitz  # type: ignore
 
 from compareset.utils import normalize_pdf_to_reference
-from pdf_diff import InvalidDimensionsError
+from compareset.errors import InvalidDimensionsError
 
 logger = logging.getLogger(__name__)
 

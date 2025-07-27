@@ -7,7 +7,7 @@ from typing import List
 import logging
 
 import fitz
-from pdf_diff import InvalidDimensionsError
+from compareset.errors import InvalidDimensionsError
 
 logger = logging.getLogger(__name__)
 

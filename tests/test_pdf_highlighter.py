@@ -4,7 +4,7 @@ fitz = pytest.importorskip("fitz")
 
 import pdf_highlighter
 from pdf_highlighter import compare_pdfs
-from pdf_diff import InvalidDimensionsError
+from compareset.errors import InvalidDimensionsError
 
 
 def test_generate_highlights(tmp_path):
