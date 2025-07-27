@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -26,4 +27,5 @@ def _load_env() -> None:
 
 if __name__ == "__main__":
     _load_env()
+    logging.basicConfig(level=logging.INFO)
     main()
