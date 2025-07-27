@@ -2,6 +2,7 @@ import pytest
 
 fitz = pytest.importorskip("fitz")
 
+import pdf_highlighter
 from pdf_highlighter import compare_pdfs
 from pdf_diff import InvalidDimensionsError
 
@@ -84,3 +85,25 @@ def test_extract_vectors_handles_none_width(monkeypatch, tmp_path):
     monkeypatch.setattr(fitz.Page, "get_drawings", fake_get_drawings)
 
     compare_pdfs(str(old), str(new), output_path=str(out))
+
+
+def test_vectors_equal_handles_points():
+    vec1 = pdf_highlighter.Vector(
+        items=[("l", fitz.Point(0, 0))],
+        rect=fitz.Rect(0, 0, 1, 1),
+        width=1.0,
+        stroke=None,
+        fill=None,
+        even_odd=False,
+    )
+
+    vec2 = pdf_highlighter.Vector(
+        items=[("l", (0, 0))],
+        rect=fitz.Rect(0, 0, 1, 1),
+        width=1.0,
+        stroke=None,
+        fill=None,
+        even_odd=False,
+    )
+
+    assert pdf_highlighter._vectors_equal(vec1, vec2)
