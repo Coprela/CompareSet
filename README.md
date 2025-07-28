@@ -19,9 +19,9 @@ requirements; no virtual environment is required.
 PyMuPDF 1.22 or newer is required for PDF processing.
 The interface layouts are defined as Qt Designer `.ui` files in `src/compareset/ui` and styled by `assets/style.qss` for a consistent look.
 Pages from the newer document are automatically normalized to the coordinate
-space of the reference PDF so highlights align correctly. The difference
-detection uses an IoU threshold (default 0.6) which can be adjusted in the
-application settings.
+space of the reference PDF so highlights align correctly. Differences are now
+detected through an SVG recoloring pipeline and there is no IoU threshold to
+configure.
 
 The former monolithic script ``main_interface.py`` is deprecated and kept only
 for reference. Use ``python -m compareset`` or the ``run_app.py`` helper as the
