@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import tempfile
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Tuple
 
@@ -226,24 +228,29 @@ def generate_recolored_svgs(
     color_remove: str = "rgb(255,0,0)",
     prefix_old: str = "old_color",
     prefix_new: str = "new_color",
+    temp_dir: str | None = None,
 ) -> Tuple[List[str], List[str]]:
     """Return recolored SVG pages for ``pdf_old`` and ``pdf_new``."""
     logger.info("Comparing PDFs %s vs %s", pdf_old, pdf_new)
     diffs = compare_pdfs(pdf_old, pdf_new)
     logger.info("Exporting SVGs")
-    old_svgs = export_svgs(pdf_old, "old")
-    new_svgs = export_svgs(pdf_new, "new")
+    svg_old_prefix = os.path.join(temp_dir, "old") if temp_dir else "old"
+    svg_new_prefix = os.path.join(temp_dir, "new") if temp_dir else "new"
+    old_svgs = export_svgs(pdf_old, svg_old_prefix)
+    new_svgs = export_svgs(pdf_new, svg_new_prefix)
     recolored_old: List[str] = []
     recolored_new: List[str] = []
     logger.info("Recoloring old document SVGs")
+    output_old_prefix = os.path.join(temp_dir, prefix_old) if temp_dir else prefix_old
     for i, path in enumerate(old_svgs):
-        out = f"{prefix_old}_{i+1}.svg"
+        out = f"{output_old_prefix}_{i+1}.svg"
         diff_rects = diffs.get(i, {}).get("removed", [])
         recolor_svg(path, diff_rects, color_remove, out)
         recolored_old.append(out)
     logger.info("Recoloring new document SVGs")
+    output_new_prefix = os.path.join(temp_dir, prefix_new) if temp_dir else prefix_new
     for i, path in enumerate(new_svgs):
-        out = f"{prefix_new}_{i+1}.svg"
+        out = f"{output_new_prefix}_{i+1}.svg"
         diff_rects = diffs.get(i, {}).get("added", [])
         recolor_svg(path, diff_rects, color_add, out)
         recolored_new.append(out)
@@ -274,57 +281,62 @@ def generate_colored_comparison(
     if mode not in {"overlay", "split"}:
         raise ValueError("mode must be 'overlay' or 'split'")
 
-    recolored_old, recolored_new = generate_recolored_svgs(
-        pdf_old,
-        pdf_new,
-        color_add=color_add,
-        color_remove=color_remove,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        recolored_old, recolored_new = generate_recolored_svgs(
+            pdf_old,
+            pdf_new,
+            color_add=color_add,
+            color_remove=color_remove,
+            temp_dir=tmpdir,
+            prefix_old=os.path.join(tmpdir, "old_color"),
+            prefix_new=os.path.join(tmpdir, "new_color"),
+        )
 
-    old_pdfs = []
-    new_pdfs = []
-    for i, svg in enumerate(recolored_old):
-        pdf = f"old_{i+1}.pdf"
-        _svg_to_pdf(svg, pdf)
-        old_pdfs.append(pdf)
-    for i, svg in enumerate(recolored_new):
-        pdf = f"new_{i+1}.pdf"
-        _svg_to_pdf(svg, pdf)
-        new_pdfs.append(pdf)
+        old_pdfs = []
+        new_pdfs = []
+        for i, svg in enumerate(recolored_old):
+            pdf = os.path.join(tmpdir, f"old_{i+1}.pdf")
+            _svg_to_pdf(svg, pdf)
+            old_pdfs.append(pdf)
+        for i, svg in enumerate(recolored_new):
+            pdf = os.path.join(tmpdir, f"new_{i+1}.pdf")
+            _svg_to_pdf(svg, pdf)
+            new_pdfs.append(pdf)
 
-    final = fitz.open()
-    max_pages = max(len(old_pdfs), len(new_pdfs))
-    for i in range(max_pages):
-        old_pdf = fitz.open(old_pdfs[i]) if i < len(old_pdfs) else None
-        new_pdf = fitz.open(new_pdfs[i]) if i < len(new_pdfs) else None
-        try:
-            if mode == "overlay":
-                base = old_pdf or new_pdf
-                assert base is not None
-                page_out = final.new_page(
-                    width=base[0].rect.width, height=base[0].rect.height
-                )
-                if old_pdf:
-                    page_out.show_pdf_page(page_out.rect, old_pdf, 0)
-                if new_pdf:
-                    page_out.show_pdf_page(page_out.rect, new_pdf, 0, overlay=True)
-            else:
-                if old_pdf:
-                    page = final.new_page(
-                        width=old_pdf[0].rect.width, height=old_pdf[0].rect.height
+        final = fitz.open()
+        max_pages = max(len(old_pdfs), len(new_pdfs))
+        for i in range(max_pages):
+            old_pdf = fitz.open(old_pdfs[i]) if i < len(old_pdfs) else None
+            new_pdf = fitz.open(new_pdfs[i]) if i < len(new_pdfs) else None
+            try:
+                if mode == "overlay":
+                    base = old_pdf or new_pdf
+                    assert base is not None
+                    page_out = final.new_page(
+                        width=base[0].rect.width, height=base[0].rect.height
                     )
-                    page.show_pdf_page(page.rect, old_pdf, 0)
+                    if old_pdf:
+                        page_out.show_pdf_page(page_out.rect, old_pdf, 0)
+                    if new_pdf:
+                        page_out.show_pdf_page(page_out.rect, new_pdf, 0, overlay=True)
+                else:
+                    if old_pdf:
+                        page = final.new_page(
+                            width=old_pdf[0].rect.width, height=old_pdf[0].rect.height
+                        )
+                        page.show_pdf_page(page.rect, old_pdf, 0)
+                    if new_pdf:
+                        page = final.new_page(
+                            width=new_pdf[0].rect.width, height=new_pdf[0].rect.height
+                        )
+                        page.show_pdf_page(page.rect, new_pdf, 0)
+            finally:
+                if old_pdf:
+                    old_pdf.close()
                 if new_pdf:
-                    page = final.new_page(
-                        width=new_pdf[0].rect.width, height=new_pdf[0].rect.height
-                    )
-                    page.show_pdf_page(page.rect, new_pdf, 0)
-        finally:
-            if old_pdf:
-                old_pdf.close()
-            if new_pdf:
-                new_pdf.close()
+                    new_pdf.close()
 
-    final.save(output_path)
-    final.close()
+        final.save(output_path)
+        final.close()
+
     logger.info("colored comparison saved to %s", output_path)
