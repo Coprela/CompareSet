@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QUrl, QThread, Signal
 from PySide6.QtGui import QDesktopServices
 
-from pdf_highlighter import generate_colored_comparison
-from pdf_highlighter import logger as compare_logger
+from pdf_svg_compare import generate_colored_comparison
+from pdf_svg_compare import logger as compare_logger
 
 from .utils import load_ui, root_path
 
