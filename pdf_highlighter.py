@@ -74,6 +74,31 @@ def _extract_text(page: fitz.Page | None) -> List[Dict[str, Any]]:
     return blocks
 
 
+def _extract_chars(page: fitz.Page | None) -> List[Dict[str, Any]]:
+    """Return individual characters with bounding boxes from ``page``."""
+    chars: List[Dict[str, Any]] = []
+    if page is None:
+        return chars
+    data = page.get_text("rawdict")
+    for block in data.get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                for ch in span.get("chars", []):
+                    rect = fitz.Rect(ch["bbox"])
+                    chars.append(
+                        {
+                            "bbox": (
+                                float(rect.x0),
+                                float(rect.y0),
+                                float(rect.x1),
+                                float(rect.y1),
+                            ),
+                            "text": ch.get("c", ""),
+                        }
+                    )
+    return chars
+
+
 def _extract_vectors(page: fitz.Page | None) -> List[Rect]:
     boxes: List[Rect] = []
     if page is None:
@@ -152,8 +177,13 @@ def compare_pdfs(
     iou_threshold: float = 0.6,
     compare_text: bool = True,
     compare_geom: bool = True,
+    char_level: bool = False,
 ) -> Tuple[Dict[int, List[Diff]], fitz.Document]:
-    """Compare two PDFs and return differences and normalized new document."""
+    """Compare two PDFs and return differences and normalized new document.
+
+    If ``char_level`` is ``True``, text differences are detected per character
+    instead of per text block.
+    """
     normalized = normalize_pdf_to_reference(pdf_old, pdf_new)
     diffs: Dict[int, List[Diff]] = {}
     with fitz.open(pdf_old) as doc_old:
@@ -168,8 +198,9 @@ def compare_pdfs(
             old_vec: List[Rect] = []
             new_vec: List[Rect] = []
             if compare_text:
-                old_text = _extract_text(old_page)
-                new_text = _extract_text(new_page)
+                extractor = _extract_chars if char_level else _extract_text
+                old_text = extractor(old_page)
+                new_text = extractor(new_page)
                 rem_t, add_t = _compare_text_blocks(old_text, new_text, iou_threshold)
                 for r in rem_t:
                     page_diffs.append(
@@ -319,14 +350,20 @@ def generate_colored_comparison(
     iou_threshold: float = 0.6,
     compare_text: bool = True,
     compare_geom: bool = True,
+    char_level: bool = False,
 ) -> None:
-    """Generate a comparison PDF with highlights."""
+    """Generate a comparison PDF with highlights.
+
+    When ``char_level`` is ``True`` added and removed characters are
+    highlighted individually.
+    """
     diffs, norm_doc = compare_pdfs(
         pdf_old,
         pdf_new,
         iou_threshold=iou_threshold,
         compare_text=compare_text,
         compare_geom=compare_geom,
+        char_level=char_level,
     )
     with fitz.open(pdf_old) as doc_old:
         doc_new = norm_doc
