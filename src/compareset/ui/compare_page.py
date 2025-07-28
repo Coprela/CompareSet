@@ -30,18 +30,12 @@ class ComparisonThread(QThread):
         new_pdf: str,
         output_pdf: str,
         overlay: bool,
-        compare_text: bool,
-        compare_geom: bool,
-        iou_threshold: float,
     ) -> None:
         super().__init__()
         self.old_pdf = old_pdf
         self.new_pdf = new_pdf
         self.output_pdf = output_pdf
         self.overlay = overlay
-        self.compare_text = compare_text
-        self.compare_geom = compare_geom
-        self.iou_threshold = iou_threshold
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -57,9 +51,6 @@ class ComparisonThread(QThread):
                 self.new_pdf,
                 mode="overlay" if self.overlay else "split",
                 output_path=self.output_pdf,
-                iou_threshold=self.iou_threshold,
-                compare_text=self.compare_text,
-                compare_geom=self.compare_geom,
             )
             self.progress.emit(100.0)
             if self.is_cancelled():
@@ -78,9 +69,6 @@ TRANSLATIONS = {
         "select_new": "Select new PDF",
         "swap": "Swap",
         "compare": "Compare",
-        "text": "Text",
-        "geom": "Geometry",
-        "iou": "IoU threshold",
         "overlay": "Overlay pages",
         "license": "License",
         "not_found": "License file not found.",
@@ -90,9 +78,6 @@ TRANSLATIONS = {
         "select_new": "Selecionar PDF novo",
         "swap": "Inverter",
         "compare": "Comparar",
-        "text": "Texto",
-        "geom": "Elementos geom\u00e9tricos",
-        "iou": "Limiar IoU",
         "overlay": "Sobrepor páginas",
         "license": "Licença",
         "not_found": "Arquivo de licença não encontrado.",
@@ -112,10 +97,7 @@ class ComparePage(QWidget):
         self.edit_new = self.findChild(QWidget, "editNew")
         self.btn_new = self.findChild(QWidget, "btnNew")
         self.btn_swap = self.findChild(QWidget, "btnSwap")
-        self.text_chk = self.findChild(QWidget, "textChk")
-        self.geom_chk = self.findChild(QWidget, "geomChk")
         self.overlay_chk = self.findChild(QWidget, "overlayChk")
-        self.iou_spin = self.findChild(QWidget, "iouSpin")
         self.btn_compare = self.findChild(QWidget, "btnCompare")
         self.progress = self.findChild(QWidget, "progressBar")
         self.label_status = self.findChild(QWidget, "labelStatus")
@@ -140,8 +122,6 @@ class ComparePage(QWidget):
             self.btn_license.setStyleSheet(
                 "QPushButton{background:transparent;color:#888;border:none;padding:0px;}"
             )
-        self.text_chk.stateChanged.connect(self._ensure_elements)
-        self.geom_chk.stateChanged.connect(self._ensure_elements)
 
         if self.btn_cancel:
             self.btn_cancel.setStyleSheet(
@@ -155,17 +135,6 @@ class ComparePage(QWidget):
 
         self.lang = "en"
         self.set_language(self.lang)
-
-        if self.iou_spin and not self.iou_spin.value():
-            self.iou_spin.setValue(0.6)
-
-    def _ensure_elements(self):
-        if not (self.text_chk.isChecked() or self.geom_chk.isChecked()):
-            sender = self.sender()
-            if sender == self.text_chk:
-                self.text_chk.setChecked(True)
-            else:
-                self.geom_chk.setChecked(True)
 
     def select_old(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -203,10 +172,6 @@ class ComparePage(QWidget):
         self.btn_new.setText(t["select_new"])
         self.btn_swap.setText(t["swap"])
         self.btn_compare.setText(t["compare"])
-        self.text_chk.setText(t["text"])
-        self.geom_chk.setText(t["geom"])
-        if self.iou_spin:
-            self.iou_spin.setPrefix(t["iou"] + ": ")
         self.overlay_chk.setText(t["overlay"])
         if self.btn_cancel:
             self.btn_cancel.setText("Cancel" if self.lang == "en" else "Cancelar")
@@ -232,9 +197,6 @@ class ComparePage(QWidget):
                 self.new_path,
                 mode="overlay" if self.overlay_chk.isChecked() else "split",
                 output_path=out,
-                iou_threshold=float(self.iou_spin.value()) if self.iou_spin else 0.6,
-                compare_text=self.text_chk.isChecked(),
-                compare_geom=self.geom_chk.isChecked(),
             )
             compare_logger.info("Comparison finished")
             QMessageBox.information(self, "Result", f"Comparison PDF saved to: {out}")
@@ -266,9 +228,6 @@ class ComparePage(QWidget):
             self.new_path,
             out,
             overlay=self.overlay_chk.isChecked(),
-            compare_text=self.text_chk.isChecked(),
-            compare_geom=self.geom_chk.isChecked(),
-            iou_threshold=float(self.iou_spin.value()) if self.iou_spin else 0.6,
         )
         self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)
