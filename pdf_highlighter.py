@@ -291,15 +291,13 @@ def _apply_page_highlights(
     for diff in diffs:
         rect = fitz.Rect(diff["bbox"])
         color = col_add if diff["status"] == "added" else col_rem
+        shape = page.new_shape()
+        shape.draw_rect(rect)
         if diff["type"] == "text":
-            annot = page.add_highlight_annot(rect)
-            annot.set_colors(stroke=color, fill=color)
-            annot.update()
+            shape.finish(color=color, fill=color, width=0)
         else:
-            shape = page.new_shape()
-            shape.draw_rect(rect)
             shape.finish(color=color, width=1)
-            shape.commit()
+        shape.commit()
         logger.debug(
             "Page %d: highlighted %s %s", page.number, diff["status"], diff["type"]
         )
