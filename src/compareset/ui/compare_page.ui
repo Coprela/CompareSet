@@ -56,30 +56,6 @@
     </layout>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="elementsLayout">
-     <item>
-      <widget class="QCheckBox" name="textChk">
-       <property name="text">
-        <string>Text</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QCheckBox" name="geomChk">
-       <property name="text">
-        <string>Geometry</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-    <item>
     <widget class="QCheckBox" name="overlayChk">
       <property name="text">
        <string>Overlay pages</string>
@@ -87,25 +63,6 @@
       <property name="checked">
        <bool>true</bool>
       </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QDoubleSpinBox" name="iouSpin">
-     <property name="decimals">
-      <number>2</number>
-     </property>
-     <property name="minimum">
-      <double>0.10</double>
-     </property>
-     <property name="maximum">
-      <double>1.00</double>
-     </property>
-     <property name="singleStep">
-      <double>0.05</double>
-     </property>
-     <property name="value">
-      <double>0.60</double>
-     </property>
     </widget>
    </item>
    <item>
