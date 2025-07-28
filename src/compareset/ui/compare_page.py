@@ -30,18 +30,12 @@ class ComparisonThread(QThread):
         new_pdf: str,
         output_pdf: str,
         overlay: bool,
-        compare_text: bool,
-        compare_geom: bool,
-        iou_threshold: float,
     ) -> None:
         super().__init__()
         self.old_pdf = old_pdf
         self.new_pdf = new_pdf
         self.output_pdf = output_pdf
         self.overlay = overlay
-        self.compare_text = compare_text
-        self.compare_geom = compare_geom
-        self.iou_threshold = iou_threshold
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -57,9 +51,6 @@ class ComparisonThread(QThread):
                 self.new_pdf,
                 mode="overlay" if self.overlay else "split",
                 output_path=self.output_pdf,
-                iou_threshold=self.iou_threshold,
-                compare_text=self.compare_text,
-                compare_geom=self.compare_geom,
             )
             self.progress.emit(100.0)
             if self.is_cancelled():
@@ -232,9 +223,6 @@ class ComparePage(QWidget):
                 self.new_path,
                 mode="overlay" if self.overlay_chk.isChecked() else "split",
                 output_path=out,
-                iou_threshold=float(self.iou_spin.value()) if self.iou_spin else 0.6,
-                compare_text=self.text_chk.isChecked(),
-                compare_geom=self.geom_chk.isChecked(),
             )
             compare_logger.info("Comparison finished")
             QMessageBox.information(self, "Result", f"Comparison PDF saved to: {out}")
@@ -266,9 +254,6 @@ class ComparePage(QWidget):
             self.new_path,
             out,
             overlay=self.overlay_chk.isChecked(),
-            compare_text=self.text_chk.isChecked(),
-            compare_geom=self.geom_chk.isChecked(),
-            iou_threshold=float(self.iou_spin.value()) if self.iou_spin else 0.6,
         )
         self.thread.progress.connect(self.update_progress)
         self.thread.finished.connect(self.compare_finished)
