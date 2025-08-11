@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Tuple, Any
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, Any, Iterable
 
 import fitz  # type: ignore
 
@@ -15,6 +16,36 @@ logger = logging.getLogger(__name__)
 
 Rect = Tuple[float, float, float, float]
 Diff = Dict[str, Any]
+
+
+@dataclass
+class DiffGroup:
+    """Container for a single difference region."""
+
+    page: int
+    rect: fitz.Rect
+    status: str
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DiffStyleItem:
+    stroke: Tuple[float, float, float]
+    fill: Tuple[float, float, float]
+    opacity: float
+
+
+@dataclass
+class DiffStyle:
+    added: DiffStyleItem = field(
+        default_factory=lambda: DiffStyleItem((0, 1, 0), (0, 1, 0), 0.2)
+    )
+    removed: DiffStyleItem = field(
+        default_factory=lambda: DiffStyleItem((1, 0, 0), (1, 0, 0), 0.2)
+    )
+    modified: DiffStyleItem = field(
+        default_factory=lambda: DiffStyleItem((1, 1, 0), (1, 1, 0), 0.2)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +194,51 @@ def _compare_boxes(
             matched.add(found)
     added.extend(nb for idx, nb in enumerate(new) if idx not in matched)
     return removed, added
+
+
+def _rect_distance(a: fitz.Rect, b: fitz.Rect) -> float:
+    if a.intersects(b):
+        return 0.0
+    dx = max(b.x0 - a.x1, a.x0 - b.x1, 0.0)
+    dy = max(b.y0 - a.y1, a.y0 - b.y1, 0.0)
+    return (dx**2 + dy**2) ** 0.5
+
+
+def _merge_rects(
+    rects: Iterable[fitz.Rect],
+    iou_threshold: float = 0.1,
+    distance_threshold: float = 2.0,
+) -> List[fitz.Rect]:
+    boxes = [fitz.Rect(r) for r in rects]
+    changed = True
+    while changed:
+        changed = False
+        result: List[fitz.Rect] = []
+        while boxes:
+            r = boxes.pop()
+            merged = False
+            for idx, other in enumerate(boxes):
+                iou = _iou(
+                    (r.x0, r.y0, r.x1, r.y1),
+                    (other.x0, other.y0, other.x1, other.y1),
+                )
+                dist = _rect_distance(r, other)
+                if iou >= iou_threshold or dist <= distance_threshold:
+                    new = fitz.Rect(
+                        min(r.x0, other.x0),
+                        min(r.y0, other.y0),
+                        max(r.x1, other.x1),
+                        max(r.y1, other.y1),
+                    )
+                    boxes.pop(idx)
+                    boxes.append(new)
+                    changed = True
+                    merged = True
+                    break
+            if not merged:
+                result.append(r)
+        boxes = result
+    return boxes
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +410,35 @@ def _apply_page_highlights(
         )
 
 
+def annotate_diffs(
+    doc: fitz.Document,
+    diffs: List[DiffGroup],
+    style: DiffStyle,
+    *,
+    iou_merge: float = 0.1,
+    dist_merge: float = 2.0,
+) -> fitz.Document:
+    """Insert rectangle annotations for ``diffs`` into ``doc``."""
+
+    by_page: Dict[int, List[DiffGroup]] = {}
+    for d in diffs:
+        by_page.setdefault(d.page, []).append(d)
+
+    for page_index in range(len(doc)):
+        page = doc[page_index]
+        page_diffs = by_page.get(page_index, [])
+        for status in ("added", "removed", "modified"):
+            rects = [d.rect for d in page_diffs if d.status == status]
+            rects = _merge_rects(rects, iou_merge, dist_merge)
+            for r in rects:
+                annot = page.add_rect_annot(r)
+                st = getattr(style, status)
+                annot.set_colors(stroke=st.stroke, fill=st.fill)
+                annot.update(opacity=st.opacity)
+        doc.reload_page(page_index)
+    return doc
+
+
 # ---------------------------------------------------------------------------
 # High-level interface
 # ---------------------------------------------------------------------------
@@ -379,6 +484,54 @@ def generate_colored_comparison(
         final.close()
         doc_new.close()
     logger.info("colored comparison saved to %s", output_path)
+
+
+def generate_annotated_comparison(
+    pdf_old: str,
+    pdf_new: str,
+    *,
+    style: DiffStyle | None = None,
+    output_path: str = "annotated_comparison.pdf",
+    iou_threshold: float = 0.6,
+    compare_text: bool = True,
+    compare_geom: bool = True,
+    char_level: bool = False,
+) -> None:
+    """Generate a comparison PDF using annotations instead of draws."""
+
+    diffs, norm_doc = compare_pdfs(
+        pdf_old,
+        pdf_new,
+        iou_threshold=iou_threshold,
+        compare_text=compare_text,
+        compare_geom=compare_geom,
+        char_level=char_level,
+    )
+    style = style or DiffStyle()
+
+    # Convert diff dict into list of DiffGroup
+    diff_list: List[DiffGroup] = []
+    for page, items in diffs.items():
+        for d in items:
+            rect = fitz.Rect(d["bbox"])
+            diff_list.append(DiffGroup(page=page, rect=rect, status=d["status"]))
+
+    with fitz.open(pdf_old) as doc_old:
+        doc_new = norm_doc
+
+        diffs_old = [d for d in diff_list if d.status != "added"]
+        diffs_new = [d for d in diff_list if d.status != "removed"]
+
+        annotate_diffs(doc_old, diffs_old, style)
+        annotate_diffs(doc_new, diffs_new, style)
+
+        final = fitz.open()
+        final.insert_pdf(doc_old)
+        final.insert_pdf(doc_new)
+        final.save(output_path)
+        final.close()
+        doc_new.close()
+    logger.info("annotated comparison saved to %s", output_path)
 
 
 def export_svgs(
