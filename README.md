@@ -52,5 +52,27 @@ CompareSet/
 └─ README.md
 ```
 
-## Packaging
-Siga o script existente `build_package.py` e os requisitos do projeto.
+## Packaging (Windows)
+
+O CompareSet inclui um script de empacotamento com **PyInstaller** que já trata recursos,
+hidden-imports e gera um `.zip` pronto para distribuição.
+
+### Passo a passo
+
+```bash
+# 1) Instale as dependências
+pip install -r requirements.txt
+
+# 2) Gere o build (padrão: onedir + console)
+python build_package.py
+
+# 2.1) (Opcional) onefile
+python build_package.py --onefile
+
+# 2.2) (Opcional) janela sem console (GUI)
+python build_package.py --windowed
+
+# 2.3) (Opcional) limpar build anterior
+python build_package.py --clean
+```
+
