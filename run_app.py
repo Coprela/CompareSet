@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 # directly after cloning the repository or when double-clicked on Windows.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from compareset.ui.main_window import main
+from compareset.main import main
 
 
 def _load_env() -> None:

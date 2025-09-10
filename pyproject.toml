@@ -7,12 +7,9 @@ requires-python = ">=3.8"
 include-package-data = true
 dependencies = [
     "PyMuPDF>=1.22",
-    "PySide6",
     "requests",
     "python-dotenv",
-    "pyarmor==7.6.1",
-    "svglib",
-    "reportlab",
+    "opencv-python",
 ]
 
 [tool.setuptools]
@@ -22,10 +19,4 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"compareset" = [
-    "ui/*.ui",
-]
-"" = [
-    "assets/**",
-    "assets/*.qss",
-]
+"compareset" = []
