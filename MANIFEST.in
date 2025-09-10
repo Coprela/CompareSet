@@ -1,3 +1,3 @@
-recursive-include src/compareset/ui *.ui
-recursive-include assets *
-include assets/*.qss
+recursive-include src/compareset/frontend *.ui
+recursive-include resources *
+include resources/styles/*.qss

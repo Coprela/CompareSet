@@ -8,6 +8,12 @@ rasteriza as páginas **apenas para detectar visualmente as diferenças**
 e aplica **retângulos de destaque diretamente nos PDFs originais** (vetoriais),
 preservando a nitidez e o conteúdo original. Não “entramos” no PDF para ler texto/vetor.
 
+## Quick start
+```
+pip install -r requirements.txt
+python run_app.py
+```
+
 ## Como funciona (resumo)
 1. Rasteriza páginas A/B no mesmo DPI.
 2. Alinha A↔B (corrige deslocamento/rotação pequenos).
@@ -45,3 +51,6 @@ CompareSet/
 ├─ requirements.txt
 └─ README.md
 ```
+
+## Packaging
+Siga o script existente `build_package.py` e os requisitos do projeto.
