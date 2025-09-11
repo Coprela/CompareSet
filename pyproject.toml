@@ -9,7 +9,6 @@ dependencies = [
     "PyMuPDF>=1.22",
     "requests",
     "python-dotenv",
-    "opencv-python",
 ]
 
 [tool.setuptools]

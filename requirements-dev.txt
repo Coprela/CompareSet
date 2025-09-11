@@ -3,4 +3,3 @@ pytest
 PyInstaller
 python-dotenv
 requests
-opencv-python

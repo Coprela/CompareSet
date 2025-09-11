@@ -9,8 +9,9 @@ def rasterize_page(pdf_path: str, page_num: int, dpi: int) -> tuple[np.ndarray, 
     mat = fitz.Matrix(zoom, zoom)
     pm = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY)
     img = np.frombuffer(pm.samples, dtype=np.uint8).reshape(pm.height, pm.width)
+    rect = page.rect
     doc.close()
-    return img, page.rect
+    return img, rect
 
 def px_to_pdf_rects(rects_px: List[tuple[int,int,int,int]], dpi: int, page_rect_pts: fitz.Rect):
     scale = 72.0 / dpi
