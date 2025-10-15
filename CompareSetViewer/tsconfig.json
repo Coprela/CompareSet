@@ -1,0 +1,20 @@
+{
+  "extends": "./node_modules/pcf-scripts/tsconfig/pcf-tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./",
+    "outDir": "./out/controls",
+    "types": [
+      "powerapps-component-framework"
+    ],
+    "lib": [
+      "dom",
+      "es2020"
+    ],
+    "module": "esnext",
+    "target": "es2020"
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts"
+  ]
+}

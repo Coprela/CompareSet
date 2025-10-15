@@ -1,0 +1,12 @@
+<manifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../pcf.xsd">
+  <control namespace="CompareSet" constructor="CompareSetViewer" version="1.0.0" display-name-key="Control_Display_Name" description-key="Control_Description" control-type="standard">
+    <resources>
+      <code path="src/index.ts" order="1" />
+      <css path="src/styles.css" order="1" />
+      <string-resources path="strings/strings.resx" />
+    </resources>
+    <property name="dpi" display-name-key="Prop_Dpi_Name" description-key="Prop_Dpi_Desc" of-type="Whole.None" usage="input" required="false" />
+    <property name="threshold" display-name-key="Prop_Threshold_Name" description-key="Prop_Threshold_Desc" of-type="Whole.None" usage="input" required="false" />
+    <property name="diffPdfBase64" display-name-key="Prop_DiffPdf_Name" description-key="Prop_DiffPdf_Desc" of-type="Multiline.Text" usage="output" required="false" />
+  </control>
+</manifest>

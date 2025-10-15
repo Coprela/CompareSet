@@ -1,1 +1,0 @@
-from .compare_engine import compare_pdfs_all_pages
