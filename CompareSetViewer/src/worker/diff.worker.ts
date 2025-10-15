@@ -3,7 +3,7 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist/types/src/display/api";
 import UPNG from "upng-js";
 
-GlobalWorkerOptions.workerSrc = undefined as any;
+(GlobalWorkerOptions as any).workerSrc = undefined as any;
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -44,13 +44,20 @@ ctx.onmessage = async (event: MessageEvent<DiffWorkerRequest>) => {
       const oldRender = await renderPage(oldPageProxy, dpi);
       const newRender = await renderPage(newPageProxy, dpi);
 
-      const overlays = buildOverlays(oldRender.data, newRender.data, threshold);
+      // Padronizamos os buffers para a maior dimensão encontrada entre as páginas
+      // para evitar recortes quando os PDFs possuem tamanhos diferentes.
+      const targetWidth = Math.max(oldRender.width, newRender.width);
+      const targetHeight = Math.max(oldRender.height, newRender.height);
+      const normalizedOld = normalizeRender(oldRender, targetWidth, targetHeight);
+      const normalizedNew = normalizeRender(newRender, targetWidth, targetHeight);
+
+      const overlays = buildOverlays(normalizedOld.data, normalizedNew.data, threshold);
 
       const [oldPage] = await outDoc.copyPages(oldLibDoc, [index - 1]);
       const [newPage] = await outDoc.copyPages(newLibDoc, [index - 1]);
 
       if (overlays.redPixels > 0) {
-        const redPngBuffer = UPNG.encode([overlays.red.buffer.slice(0)], oldRender.width, oldRender.height, 0);
+        const redPngBuffer = UPNG.encode([new Uint8Array(overlays.red)], targetWidth, targetHeight, 0);
         const redImage = await outDoc.embedPng(new Uint8Array(redPngBuffer));
         oldPage.drawImage(redImage, {
           x: 0,
@@ -61,7 +68,7 @@ ctx.onmessage = async (event: MessageEvent<DiffWorkerRequest>) => {
       }
 
       if (overlays.greenPixels > 0) {
-        const greenPngBuffer = UPNG.encode([overlays.green.buffer.slice(0)], newRender.width, newRender.height, 0);
+        const greenPngBuffer = UPNG.encode([new Uint8Array(overlays.green)], targetWidth, targetHeight, 0);
         const greenImage = await outDoc.embedPng(new Uint8Array(greenPngBuffer));
         newPage.drawImage(greenImage, {
           x: 0,
@@ -150,6 +157,24 @@ function buildOverlays(oldData: Uint8ClampedArray, newData: Uint8ClampedArray, t
   }
 
   return { red, green, redPixels, greenPixels };
+}
+
+function normalizeRender(render: { data: Uint8ClampedArray; width: number; height: number; }, width: number, height: number): { data: Uint8ClampedArray; width: number; height: number; } {
+  if (render.width === width && render.height === height) {
+    return render;
+  }
+
+  const padded = new Uint8ClampedArray(width * height * 4);
+  const copyWidth = Math.min(render.width, width);
+  const copyHeight = Math.min(render.height, height);
+
+  for (let y = 0; y < copyHeight; y += 1) {
+    const srcStart = y * render.width * 4;
+    const dstStart = y * width * 4;
+    padded.set(render.data.subarray(srcStart, srcStart + copyWidth * 4), dstStart);
+  }
+
+  return { data: padded, width, height };
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {

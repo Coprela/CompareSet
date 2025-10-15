@@ -8,9 +8,12 @@
     ],
     "lib": [
       "dom",
-      "es2020"
+      "dom.iterable",
+      "es2020",
+      "webworker"
     ],
     "module": "esnext",
+    "moduleResolution": "bundler",
     "target": "es2020"
   },
   "include": [
