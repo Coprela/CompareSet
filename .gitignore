@@ -1,25 +1,6 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*.pyd
-
-# C extensions
-*.so
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# Virtual environments
-.venv/
-venv/
-
-# Environment variables
-.env
-
-# PyInstaller
-*.spec
-
-# Misc
+node_modules/
+out/
+package-lock.json
+yarn.lock
 .DS_Store
+*.log

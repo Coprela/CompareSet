@@ -1,2 +1,0 @@
-class PdfViewer:
-    pass

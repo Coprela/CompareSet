@@ -1,0 +1,21 @@
+{
+  "name": "compareset-viewer",
+  "version": "1.0.0",
+  "description": "CompareSet Viewer PCF control",
+  "private": true,
+  "scripts": {
+    "start": "pcf-scripts start",
+    "build": "pcf-scripts build"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.6.82",
+    "upng-js": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.55",
+    "@types/powerapps-component-framework": "^1.4.6",
+    "pcf-scripts": "^1.10.7",
+    "typescript": "~5.4.0"
+  }
+}
