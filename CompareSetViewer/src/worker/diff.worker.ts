@@ -1,5 +1,5 @@
-import { PDFDocument } from "pdf-lib";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import { PDFDocument } from "pdf-lib";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist/types/src/display/api";
 import UPNG from "upng-js";
 
@@ -53,11 +53,14 @@ ctx.onmessage = async (event: MessageEvent<DiffWorkerRequest>) => {
 
       const overlays = buildOverlays(normalizedOld.data, normalizedNew.data, threshold);
 
+      const redCrop = cropOverlay(overlays.red, targetWidth, oldRender.width, oldRender.height);
+      const greenCrop = cropOverlay(overlays.green, targetWidth, newRender.width, newRender.height);
+
       const [oldPage] = await outDoc.copyPages(oldLibDoc, [index - 1]);
       const [newPage] = await outDoc.copyPages(newLibDoc, [index - 1]);
 
       if (overlays.redPixels > 0) {
-        const redPngBuffer = UPNG.encode([new Uint8Array(overlays.red)], targetWidth, targetHeight, 0);
+        const redPngBuffer = UPNG.encode([redCrop], oldRender.width, oldRender.height, 0);
         const redImage = await outDoc.embedPng(new Uint8Array(redPngBuffer));
         oldPage.drawImage(redImage, {
           x: 0,
@@ -68,7 +71,7 @@ ctx.onmessage = async (event: MessageEvent<DiffWorkerRequest>) => {
       }
 
       if (overlays.greenPixels > 0) {
-        const greenPngBuffer = UPNG.encode([new Uint8Array(overlays.green)], targetWidth, targetHeight, 0);
+        const greenPngBuffer = UPNG.encode([greenCrop], newRender.width, newRender.height, 0);
         const greenImage = await outDoc.embedPng(new Uint8Array(greenPngBuffer));
         newPage.drawImage(greenImage, {
           x: 0,
@@ -84,6 +87,7 @@ ctx.onmessage = async (event: MessageEvent<DiffWorkerRequest>) => {
 
     await Promise.all([oldProxy.cleanup(), newProxy.cleanup()]);
 
+    sendStatus("Gerando PDF final...");
     const pdfBytes = await outDoc.save();
     const base64 = uint8ToBase64(pdfBytes);
     sendStatus("Concluído.");
@@ -175,6 +179,25 @@ function normalizeRender(render: { data: Uint8ClampedArray; width: number; heigh
   }
 
   return { data: padded, width, height };
+}
+
+function cropOverlay(data: Uint8ClampedArray, sourceWidth: number, width: number, height: number): Uint8Array {
+  const sourceHeight = Math.floor(data.length / (sourceWidth * 4));
+  const finalWidth = Math.min(width, sourceWidth);
+  const finalHeight = Math.min(height, sourceHeight);
+
+  if (finalWidth === sourceWidth && finalHeight === sourceHeight) {
+    return new Uint8Array(data);
+  }
+
+  const result = new Uint8Array(finalWidth * finalHeight * 4);
+  const rowLength = finalWidth * 4;
+  for (let y = 0; y < finalHeight; y += 1) {
+    const srcStart = y * sourceWidth * 4;
+    const dstStart = y * rowLength;
+    result.set(data.subarray(srcStart, srcStart + rowLength), dstStart);
+  }
+  return result;
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {
