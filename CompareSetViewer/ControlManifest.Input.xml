@@ -5,8 +5,12 @@
       <css path="src/styles.css" order="1" />
       <string-resources path="strings/strings.resx" />
     </resources>
+    <property name="oldPdfBase64" display-name-key="Prop_OldPdf_Name" description-key="Prop_OldPdf_Desc" of-type="Multiline.Text" usage="input" required="false" />
+    <property name="newPdfBase64" display-name-key="Prop_NewPdf_Name" description-key="Prop_NewPdf_Desc" of-type="Multiline.Text" usage="input" required="false" />
     <property name="dpi" display-name-key="Prop_Dpi_Name" description-key="Prop_Dpi_Desc" of-type="Whole.None" usage="input" required="false" />
     <property name="threshold" display-name-key="Prop_Threshold_Name" description-key="Prop_Threshold_Desc" of-type="Whole.None" usage="input" required="false" />
     <property name="diffPdfBase64" display-name-key="Prop_DiffPdf_Name" description-key="Prop_DiffPdf_Desc" of-type="Multiline.Text" usage="output" required="false" />
+    <property name="statusMessage" display-name-key="Prop_Status_Name" description-key="Prop_Status_Desc" of-type="SingleLine.Text" usage="output" required="false" />
+    <property name="isProcessing" display-name-key="Prop_Busy_Name" description-key="Prop_Busy_Desc" of-type="TwoOptions" usage="output" required="false" />
   </control>
 </manifest>
