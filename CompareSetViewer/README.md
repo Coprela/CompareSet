@@ -12,6 +12,14 @@ npm run build
 
 The build command produces the importable solution at `out/CompareSetViewer/CompareSetViewer_1_0_0.zip`.
 
+## Local validation checklist
+
+1. Run `npm start -- --https` and open the PCF test harness that launches automatically.
+2. Provide Base64 strings (or uploaded files, if enabled in the harness) for `oldPdfBase64` and `newPdfBase64`.
+3. Toggle `runCompare` to **true** to initiate processing.
+4. Confirm that `status`, `diffSummaryJson`, `diffCount`, and `outputPdfBase64` populate without manifest validation errors.
+5. Decode `outputPdfBase64` to confirm that the generated PDF preserves vector content with red overlays on the old page and green overlays on the new page.
+
 ## Project layout
 
 ```
@@ -29,6 +37,8 @@ CompareSetViewer/
   │   ├─ coords.ts        # Coordinate transform helpers
   │   ├─ types.ts         # Shared interfaces
   │   └─ worker/compareWorker.ts
+  ├─ strings/
+  │   └─ Strings.resx
   └─ README.md
 ```
 
