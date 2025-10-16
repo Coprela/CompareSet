@@ -1,0 +1,13 @@
+{
+  "pcfProject": {
+    "namespace": "CompareSet",
+    "controls": [
+      {
+        "constructor": "CompareSetViewer",
+        "controlName": "CompareSetViewer",
+        "entryPoint": "./index.ts",
+        "manifest": "./ControlManifest.Input.xml"
+      }
+    ]
+  }
+}
