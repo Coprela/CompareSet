@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Control_DisplayName"><value>CompareSet Viewer</value></data>
+  <data name="Control_Description"><value>Compare two PDFs and output a marked PDF.</value></data>
+
+  <data name="oldPdf_DisplayName"><value>Old PDF (Base64)</value></data>
+  <data name="oldPdf_Description"><value>Base64 string for the old (rev A) PDF.</value></data>
+
+  <data name="newPdf_DisplayName"><value>New PDF (Base64)</value></data>
+  <data name="newPdf_Description"><value>Base64 string for the new (rev B) PDF.</value></data>
+
+  <data name="dpi_DisplayName"><value>DPI</value></data>
+  <data name="dpi_Description"><value>Rendering DPI used for detection.</value></data>
+
+  <data name="gridRows_DisplayName"><value>Grid Rows</value></data>
+  <data name="gridRows_Description"><value>Grid rows used to label regions.</value></data>
+
+  <data name="gridCols_DisplayName"><value>Grid Cols</value></data>
+  <data name="gridCols_Description"><value>Grid columns used to label regions.</value></data>
+
+  <data name="diffThreshold_DisplayName"><value>Diff Threshold</value></data>
+  <data name="diffThreshold_Description"><value>Pixel difference threshold (0-255).</value></data>
+
+  <data name="minArea_DisplayName"><value>Min Region Area</value></data>
+  <data name="minArea_Description"><value>Ignore regions smaller than this area (px²).</value></data>
+
+  <data name="strokeWidth_DisplayName"><value>Stroke Width (pt)</value></data>
+  <data name="strokeWidth_Description"><value>Outline width for overlay rectangles.</value></data>
+
+  <data name="overlayAlpha_DisplayName"><value>Overlay Alpha</value></data>
+  <data name="overlayAlpha_Description"><value>Opacity of filled overlay rectangles (0-1).</value></data>
+
+  <data name="colorRemoved_DisplayName"><value>Removed Color</value></data>
+  <data name="colorRemoved_Description"><value>Hex color for removed/modified regions on old page.</value></data>
+
+  <data name="colorAdded_DisplayName"><value>Added Color</value></data>
+  <data name="colorAdded_Description"><value>Hex color for added/modified regions on new page.</value></data>
+
+  <data name="runCompare_DisplayName"><value>Run Compare</value></data>
+  <data name="runCompare_Description"><value>Trigger a run when toggled to true.</value></data>
+
+  <data name="outPdf_DisplayName"><value>Output PDF (Base64)</value></data>
+  <data name="outPdf_Description"><value>Base64 of the two-page-per-pair output PDF.</value></data>
+
+  <data name="diffSummary_DisplayName"><value>Diff Summary (JSON)</value></data>
+  <data name="diffSummary_Description"><value>JSON with regions per page.</value></data>
+
+  <data name="diffCount_DisplayName"><value>Diff Count</value></data>
+  <data name="diffCount_Description"><value>Total number of diff regions.</value></data>
+
+  <data name="status_DisplayName"><value>Status</value></data>
+  <data name="status_Description"><value>Human-readable progress/errors.</value></data>
+</root>
