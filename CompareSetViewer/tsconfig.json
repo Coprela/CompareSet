@@ -5,7 +5,8 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2020", "DOM", "WebWorker"],
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["powerapps-component-framework"]
   },
   "include": ["index.ts", "src/**/*"],
   "exclude": ["node_modules", "out", "dist", "build"]
