@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.6.82",
-    "upng-js": "^2.1.0"
+    "pdfjs-dist": "^4.6.82"
   },
   "devDependencies": {
     "@types/powerapps-component-framework": "1.4.5",

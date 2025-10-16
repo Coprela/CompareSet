@@ -5,12 +5,21 @@
       <css path="src/styles.css" order="1" />
       <string-resources path="strings/strings.resx" />
     </resources>
-    <property name="oldPdfBase64" display-name-key="Prop_OldPdf_Name" description-key="Prop_OldPdf_Desc" of-type="Multiline.Text" usage="input" required="false" />
-    <property name="newPdfBase64" display-name-key="Prop_NewPdf_Name" description-key="Prop_NewPdf_Desc" of-type="Multiline.Text" usage="input" required="false" />
+    <property name="oldPdfBase64" display-name-key="Prop_OldPdf_Name" description-key="Prop_OldPdf_Desc" of-type="Multiline.Text" usage="input" required="true" />
+    <property name="newPdfBase64" display-name-key="Prop_NewPdf_Name" description-key="Prop_NewPdf_Desc" of-type="Multiline.Text" usage="input" required="true" />
     <property name="dpi" display-name-key="Prop_Dpi_Name" description-key="Prop_Dpi_Desc" of-type="Whole.None" usage="input" required="false" />
-    <property name="threshold" display-name-key="Prop_Threshold_Name" description-key="Prop_Threshold_Desc" of-type="Whole.None" usage="input" required="false" />
-    <property name="diffPdfBase64" display-name-key="Prop_DiffPdf_Name" description-key="Prop_DiffPdf_Desc" of-type="Multiline.Text" usage="output" required="false" />
-    <property name="statusMessage" display-name-key="Prop_Status_Name" description-key="Prop_Status_Desc" of-type="SingleLine.Text" usage="output" required="false" />
-    <property name="isProcessing" display-name-key="Prop_Busy_Name" description-key="Prop_Busy_Desc" of-type="TwoOptions" usage="output" required="false" />
+    <property name="gridRows" display-name-key="Prop_GridRows_Name" description-key="Prop_GridRows_Desc" of-type="Whole.None" usage="input" required="false" />
+    <property name="gridCols" display-name-key="Prop_GridCols_Name" description-key="Prop_GridCols_Desc" of-type="Whole.None" usage="input" required="false" />
+    <property name="diffThreshold" display-name-key="Prop_DiffThreshold_Name" description-key="Prop_DiffThreshold_Desc" of-type="Whole.None" usage="input" required="false" />
+    <property name="minRegionArea" display-name-key="Prop_MinRegionArea_Name" description-key="Prop_MinRegionArea_Desc" of-type="Whole.None" usage="input" required="false" />
+    <property name="strokeWidthPt" display-name-key="Prop_StrokeWidthPt_Name" description-key="Prop_StrokeWidthPt_Desc" of-type="Decimal" usage="input" required="false" />
+    <property name="overlayAlpha" display-name-key="Prop_OverlayAlpha_Name" description-key="Prop_OverlayAlpha_Desc" of-type="Decimal" usage="input" required="false" />
+    <property name="colorRemoved" display-name-key="Prop_ColorRemoved_Name" description-key="Prop_ColorRemoved_Desc" of-type="SingleLine.Text" usage="input" required="false" />
+    <property name="colorAdded" display-name-key="Prop_ColorAdded_Name" description-key="Prop_ColorAdded_Desc" of-type="SingleLine.Text" usage="input" required="false" />
+    <property name="runCompare" display-name-key="Prop_RunCompare_Name" description-key="Prop_RunCompare_Desc" of-type="TwoOptions" usage="input" required="false" />
+    <property name="outputPdfBase64" display-name-key="Prop_OutputPdf_Name" description-key="Prop_OutputPdf_Desc" of-type="Multiline.Text" usage="output" required="false" />
+    <property name="diffSummaryJson" display-name-key="Prop_DiffSummary_Name" description-key="Prop_DiffSummary_Desc" of-type="Multiline.Text" usage="output" required="false" />
+    <property name="diffCount" display-name-key="Prop_DiffCount_Name" description-key="Prop_DiffCount_Desc" of-type="Whole.None" usage="output" required="false" />
+    <property name="status" display-name-key="Prop_Status_Name" description-key="Prop_Status_Desc" of-type="Multiline.Text" usage="output" required="false" />
   </control>
 </manifest>
