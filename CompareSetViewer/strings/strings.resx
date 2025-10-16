@@ -18,6 +18,18 @@
   <data name="Control_Description">
     <value>Comparador de PDFs (Power Apps)</value>
   </data>
+  <data name="Prop_OldPdf_Name">
+    <value>PDF Antigo (base64)</value>
+  </data>
+  <data name="Prop_OldPdf_Desc">
+    <value>Conteúdo base64 do PDF original</value>
+  </data>
+  <data name="Prop_NewPdf_Name">
+    <value>PDF Novo (base64)</value>
+  </data>
+  <data name="Prop_NewPdf_Desc">
+    <value>Conteúdo base64 do PDF atualizado</value>
+  </data>
   <data name="Prop_Dpi_Name">
     <value>DPI</value>
   </data>
@@ -35,5 +47,17 @@
   </data>
   <data name="Prop_DiffPdf_Desc">
     <value>Saída do PDF final</value>
+  </data>
+  <data name="Prop_Status_Name">
+    <value>Status</value>
+  </data>
+  <data name="Prop_Status_Desc">
+    <value>Mensagem de status atual da comparação</value>
+  </data>
+  <data name="Prop_Busy_Name">
+    <value>Processando</value>
+  </data>
+  <data name="Prop_Busy_Desc">
+    <value>Indica se o motor está executando uma comparação</value>
   </data>
 </root>
