@@ -9,13 +9,12 @@
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.8.69",
+    "pdfjs-dist": "^4.6.82",
     "upng-js": "^2.1.0"
   },
   "devDependencies": {
-    "@types/node": "^18.19.55",
     "@types/powerapps-component-framework": "1.4.5",
     "pcf-scripts": "^1.10.7",
-    "typescript": "~5.4.5"
+    "typescript": "~5.4.0"
   }
 }
