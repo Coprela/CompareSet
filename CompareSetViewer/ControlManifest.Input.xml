@@ -4,6 +4,7 @@
     <display-name-key>Control_DisplayName</display-name-key>
     <description-key>Control_Description</description-key>
 
+    <!-- Inputs -->
     <property name="oldPdfBase64"  display-name-key="oldPdf_DisplayName"  description-key="oldPdf_Description"  of-type="SingleLine.Text" usage="input" />
     <property name="newPdfBase64"  display-name-key="newPdf_DisplayName"  description-key="newPdf_Description"  of-type="SingleLine.Text" usage="input" />
 
@@ -17,8 +18,10 @@
     <property name="colorRemoved"   display-name-key="colorRemoved_DisplayName" description-key="colorRemoved_Description" of-type="SingleLine.Text" usage="input" default-value="#FF0000" />
     <property name="colorAdded"     display-name-key="colorAdded_DisplayName" description-key="colorAdded_Description" of-type="SingleLine.Text" usage="input" default-value="#00AA00" />
 
+    <!-- Trigger -->
     <property name="runCompare"     display-name-key="runCompare_DisplayName" description-key="runCompare_Description" of-type="TwoOptions" usage="input" />
 
+    <!-- Outputs -->
     <property name="outputPdfBase64" display-name-key="outPdf_DisplayName"   description-key="outPdf_Description"     of-type="SingleLine.Text" usage="output" />
     <property name="diffSummaryJson" display-name-key="diffSummary_DisplayName" description-key="diffSummary_Description" of-type="SingleLine.Text" usage="output" />
     <property name="diffCount"       display-name-key="diffCount_DisplayName" description-key="diffCount_Description"  of-type="Whole.None" usage="output" />
