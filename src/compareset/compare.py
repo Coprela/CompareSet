@@ -114,7 +114,7 @@ def compare_pdfs(
             gray_old = _render_gray(page_old, params.dpi)
             gray_new = _render_gray(page_new, params.dpi)
             if gray_old.shape != gray_new.shape:
-                gray_new = cv2.resize(gray_new, (gray_old.shape[1], gray_old.shape[0]))
+                gray_old = _resize_raster(gray_old, gray_new.shape[1], gray_new.shape[0])
 
             page_result = _diff_page(
                 index=index,
@@ -163,6 +163,28 @@ def _render_gray(page: fitz.Page, dpi: int) -> np.ndarray:
     pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY, alpha=False)
     arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
     return arr
+
+
+def _resize_raster(image: np.ndarray, width: int, height: int) -> np.ndarray:
+    if image.shape == (height, width):
+        return image
+    if cv2 is not None:
+        interpolation = (
+            cv2.INTER_AREA
+            if width < image.shape[1] or height < image.shape[0]
+            else cv2.INTER_LINEAR
+        )
+        return cv2.resize(image, (width, height), interpolation=interpolation)
+
+    src_height, src_width = image.shape
+    if src_height == 0 or src_width == 0:
+        return image
+
+    y_idx = np.linspace(0, src_height - 1, height)
+    x_idx = np.linspace(0, src_width - 1, width)
+    y_idx = np.clip(np.round(y_idx).astype(int), 0, src_height - 1)
+    x_idx = np.clip(np.round(x_idx).astype(int), 0, src_width - 1)
+    return image[np.ix_(y_idx, x_idx)]
 
 
 def _diff_page(
