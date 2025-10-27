@@ -4,8 +4,24 @@ from __future__ import annotations
 
 import fitz
 
+from .compare import DiffRegion, DiffResult, PageDiff, RoiMask, compare_pdfs
+from .presets import CompareParams, get_preset, iter_presets
 
-__all__ = ["frontend", "backend", "utils"]
+__all__ = [
+    "compare_pdfs",
+    "DiffRegion",
+    "DiffResult",
+    "PageDiff",
+    "RoiMask",
+    "CompareParams",
+    "get_preset",
+    "iter_presets",
+    "frontend",
+    "backend",
+    "utils",
+]
+
+__version__ = "0.2.1-beta"
 
 
 # ---------------------------------------------------------------------------
