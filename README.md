@@ -20,6 +20,58 @@ source .venv/bin/activate  # On Windows use `.venv\Scripts\activate`
 pip install -r requirements.txt
 ```
 
+## Frontend interface
+
+The CompareSet web interface lives in `frontend/` and mirrors the original
+CompareSet Viewer experience with responsive side-by-side previews, overlay
+mode, progress feedback, and a persistent light/dark theme toggle.
+
+### Prerequisites
+
+- Node.js 18+
+- npm 9+
+
+### Run locally
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+The development server launches on [http://localhost:5173](http://localhost:5173)
+and automatically opens the viewer. Use `VITE_COMPARESET_API` in a `.env` file
+within `frontend/` (or export the variable before running `npm start`) to point
+the UI at a custom backend. By default it targets
+`http://localhost:5000/api/compare`.
+
+### Using the viewer
+
+1. Upload the **old** and **new** PDF revisions.
+2. Click **Compare** to send both files to the hybrid backend. The UI displays
+   upload/processing progress and renders the annotated PDF returned either as a
+   binary stream or Base64 payload.
+3. Use the **Download result** button to save the annotated PDF to disk.
+4. Toggle between **Side-by-side** and **Overlay** preview modes to review the
+   originals or the generated result. Theme selection persists via
+   `localStorage`.
+5. Click **Run Mock Comparison** to quickly load bundled sample PDFs without
+   calling the backend. This is ideal for validating the layout or demonstrating
+   the UI offline.
+
+### Backend expectations
+
+The viewer POSTs both PDFs as `multipart/form-data` to
+`<API_BASE>/api/compare`. The response can be either an `application/pdf` blob
+or JSON of the form:
+
+```json
+{ "result": "<base64-encoded-pdf>" }
+```
+
+Configure your hybrid raster/vector comparison service accordingly. The default
+backend URL (`http://localhost:5000`) aligns with `run_app.py`.
+
 ## CLI quick start
 ```bash
 python -m compareset --old old.pdf --new new.pdf --out diff.pdf --json diff.json \
