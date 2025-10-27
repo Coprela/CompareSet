@@ -1,21 +1,78 @@
-# CompareSet Viewer (PCF)
+# CompareSet
 
-CompareSet Viewer é um controle PowerApps Component Framework que compara duas versões de um PDF técnico, destaca inclusões e remoções e gera um PDF final com as diferenças.
+Comparação de PDFs técnicos com **detecção raster** e **destaque vetorial**.
 
-## Principais recursos
+## Visão geral
+O CompareSet realiza comparação de PDFs por um motor **raster-guided**:
+rasteriza as páginas **apenas para detectar visualmente as diferenças**
+e aplica **retângulos de destaque diretamente nos PDFs originais** (vetoriais),
+preservando a nitidez e o conteúdo original. Não “entramos” no PDF para ler texto/vetor.
 
-- Upload de dois PDFs (antigo e novo) diretamente no navegador.
-- Processamento 100% client-side utilizando `pdfjs-dist`, `pdf-lib` e `upng-js`.
-- Renderização em *Web Worker* com `OffscreenCanvas` para preservar a responsividade.
-- Overlay vermelho para remoções e verde para adições.
-- Exportação do PDF final em Base64 e download direto.
-
-## Scripts
-
-```bash
-npm install
-npm start -- --https
-npm run build
+## Quick start
+```
+pip install -r requirements.txt
+python run_app.py
 ```
 
-O comando `npm run build` gera o pacote importável pelo Power Apps em `out/CompareSetViewer/CompareSetViewer_1_0_0.zip`.
+## Como funciona (resumo)
+1. Rasteriza páginas A/B no mesmo DPI.
+2. Alinha A↔B (corrige deslocamento/rotação pequenos).
+3. Detecta regiões alteradas (bordas/absdiff) e gera **bounding boxes**.
+4. Converte **pixels → pontos PDF** (1pt = 1/72 in).
+5. **Aplica retângulos transparentes** diretamente no PDF original (vetor intacto).
+
+## Estrutura do projeto
+```
+CompareSet/
+├─ src/compareset/
+│  ├─ main.py
+│  ├─ frontend/
+│  │  └─ widgets/
+│  ├─ backend/
+│  │  ├─ compare_engine.py
+│  │  ├─ raster_guided.py
+│  │  └─ exporters.py
+│  └─ utils/
+│     ├─ image_ops.py
+│     ├─ pdf_ops.py
+│     ├─ version_check.py
+│     └─ github_json_manager.py
+├─ resources/
+│  ├─ icons/
+│  ├─ styles/
+│  └─ config.json
+├─ output/
+├─ docs/
+│  └─ ARCHITECTURE.md
+├─ tests/
+│  ├─ test_raster_guided.py
+│  └─ test_integration.py
+├─ run_app.py
+├─ requirements.txt
+└─ README.md
+```
+
+## Packaging (Windows)
+
+O CompareSet inclui um script de empacotamento com **PyInstaller** que já trata recursos,
+hidden-imports e gera um `.zip` pronto para distribuição.
+
+### Passo a passo
+
+```bash
+# 1) Instale as dependências
+pip install -r requirements.txt
+
+# 2) Gere o build (padrão: onedir + console)
+python build_package.py
+
+# 2.1) (Opcional) onefile
+python build_package.py --onefile
+
+# 2.2) (Opcional) janela sem console (GUI)
+python build_package.py --windowed
+
+# 2.3) (Opcional) limpar build anterior
+python build_package.py --clean
+```
+

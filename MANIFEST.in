@@ -1,0 +1,3 @@
+recursive-include src/compareset/frontend *.ui
+recursive-include resources *
+include resources/styles/*.qss

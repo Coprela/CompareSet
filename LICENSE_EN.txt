@@ -1,0 +1,18 @@
+© 2025 Daniel Oliveira. All rights reserved.
+
+This software and its associated documentation are protected intellectual property under applicable law. Reproduction, distribution, modification, or disclosure, in whole or in part, is strictly prohibited without prior written authorization from the rights holders.
+
+CompareSet was created to address a technical need of the DDT-FUE department at TechnipFMC, and its use is restricted to authorized corporate environments only.
+
+All information contained in this material is confidential and must not be shared, reproduced, or used for any unauthorized purpose without express written consent.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT ANY WARRANTY, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
+
+Any unauthorized use, reproduction, or distribution will be subject to the penalties provided by law.
+
+
+Credits:
+
+- Development and implementation: Daniel Oliveira  
+- Department responsible for application: DDT-FUE  
+- Company: TechnipFMC
