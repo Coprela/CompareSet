@@ -1,131 +1,66 @@
-"""PDF overlay generation using PyMuPDF."""
+"""Generate simple colored overlays for PDF pages."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable
 
 import fitz
 
-from .compare import DiffResult, DiffRegion, PageDiff
-from .presets import ColorScheme
+from .compare import DiffResult, PageDiff
 
 
 @dataclass(frozen=True)
-class OverlayOptions:
-    fill_opacity: float = 0.22
-    stroke_width: float = 1.0
-    legend: bool = True
-    bookmarks: bool = True
+class AnnotationStyle:
+    stroke_color: tuple[float, float, float]
+    stroke_width: float = 0.8
+    fill_color: tuple[float, float, float] = (0.93, 0.93, 0.93)
+    fill_opacity: float = 0.15
 
 
-def draw_overlays(
+def annotate_pdf(
     result: DiffResult,
     *,
-    source_pdf: str,
-    output_pdf: str,
-    colors: ColorScheme,
-    options: OverlayOptions,
+    source_pdf: str | Path,
+    output_pdf: str | Path,
+    change_type: str,
+    style: AnnotationStyle,
 ) -> None:
-    Path(output_pdf).parent.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(source_pdf)
+    """Render annotations for a specific change type on a PDF copy."""
+
+    page_map = {page.index: page for page in result.pages}
+    output_path = Path(output_pdf)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    doc = fitz.open(str(source_pdf))
     try:
-        _draw_regions(doc, result.pages, colors, options)
-        if options.legend and len(doc) > 0:
-            _draw_legend(doc[0], colors, result)
-        if options.bookmarks:
-            _apply_bookmarks(doc, result.pages)
-        doc.save(output_pdf)
+        _draw_annotations(doc, page_map.values(), change_type, style)
+        doc.save(str(output_pdf))
     finally:
         doc.close()
 
 
-def _draw_regions(
+def _draw_annotations(
     doc: fitz.Document,
     pages: Iterable[PageDiff],
-    colors: ColorScheme,
-    options: OverlayOptions,
+    change_type: str,
+    style: AnnotationStyle,
 ) -> None:
-    for page_result in pages:
-        if page_result.index >= len(doc):
+    for page_diff in pages:
+        if page_diff.index >= len(doc):
             continue
-        page = doc[page_result.index]
+        page = doc[page_diff.index]
+        relevant = [region for region in page_diff.regions if region.change_type == change_type]
+        if not relevant:
+            continue
         shape = page.new_shape()
-        has_region = False
-        for region in page_result.regions:
+        for region in relevant:
             rect = fitz.Rect(*region.bbox_pdf)
-            stroke_color = _color_for_region(region, colors)
-            fill_color = stroke_color
             shape.draw_rect(rect)
             shape.finish(
-                color=stroke_color,
-                fill=fill_color,
-                fill_opacity=options.fill_opacity,
-                width=options.stroke_width,
+                color=style.stroke_color,
+                width=style.stroke_width,
+                fill=style.fill_color,
+                fill_opacity=style.fill_opacity,
             )
-            has_region = True
-        if has_region:
-            shape.commit()
-
-
-def _color_for_region(region: DiffRegion, colors: ColorScheme):
-    mapping = {
-        "added": colors.added,
-        "removed": colors.removed,
-        "modified": colors.modified,
-    }
-    return mapping.get(region.change_type, colors.modified)
-
-
-def _draw_legend(page: fitz.Page, colors: ColorScheme, result: DiffResult) -> None:
-    margin = 24
-    box_height = 14
-    gap = 6
-    legend_rect = fitz.Rect(
-        page.rect.x0 + margin,
-        page.rect.y0 + margin,
-        page.rect.x0 + margin + 220,
-        page.rect.y0 + margin + 4 * (box_height + gap) + 30,
-    )
-    shape = page.new_shape()
-    shape.draw_rect(legend_rect)
-    shape.finish(color=(0.7, 0.7, 0.7), fill=(1, 1, 1), fill_opacity=0.92, width=0.5)
-    shape.commit()
-
-    lines = ["CompareSet legend", "", _params_line(result)]
-    entries = [
-        ("Added", colors.added),
-        ("Removed", colors.removed),
-        ("Modified", colors.modified),
-    ]
-    y = legend_rect.y0 + 24
-    for title, color in entries:
-        swatch = fitz.Rect(legend_rect.x0 + 8, y - 6, legend_rect.x0 + 28, y + 6)
-        page.draw_rect(swatch, color=color, fill=color, fill_opacity=0.22, width=0.5)
-        lines.append(f"{title} regions")
-        y += box_height + gap
-    page.insert_textbox(
-        legend_rect,
-        "\n".join(lines),
-        fontsize=8.5,
-        fontname="helv",
-        color=colors.text,
-    )
-
-
-def _params_line(result: DiffResult) -> str:
-    params = result.params
-    return (
-        f"dpi={params.dpi} abs={params.absdiff_threshold} ssim={params.ssim_threshold} "
-        f"min_area={params.min_area_px} merge_iou={params.merge_iou}"
-    )
-
-
-def _apply_bookmarks(doc: fitz.Document, pages: Iterable[PageDiff]) -> None:
-    toc: List[List[int | str]] = []
-    for page in pages:
-        if not page.regions:
-            continue
-        toc.append([1, f"Page {page.index + 1} ({len(page.regions)} changes)", page.index + 1])
-    if toc:
-        doc.set_toc(toc)
+        shape.commit()

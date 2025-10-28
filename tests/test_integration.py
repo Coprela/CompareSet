@@ -30,8 +30,9 @@ def test_cli_no_diffs(tmp_path):
     new_pdf = tmp_path / "revision.pdf"
     for target in (old_pdf, new_pdf):
         _make_pdf(target, [(40, 40, 140, 140)])
-    out_pdf = tmp_path / "out.pdf"
-    json_path = tmp_path / "out.json"
+    old_annotated = tmp_path / "old_annotated.pdf"
+    new_annotated = tmp_path / "new_annotated.pdf"
+    json_path = tmp_path / "diff.json"
 
     run_cli(
         tmp_path,
@@ -40,8 +41,10 @@ def test_cli_no_diffs(tmp_path):
             str(old_pdf),
             "--new",
             str(new_pdf),
-            "--out",
-            str(out_pdf),
+            "--old-annotated",
+            str(old_annotated),
+            "--new-annotated",
+            str(new_annotated),
             "--json",
             str(json_path),
             "--preset",
@@ -51,9 +54,11 @@ def test_cli_no_diffs(tmp_path):
         ],
     )
 
-    assert out_pdf.exists()
+    assert old_annotated.exists()
+    assert new_annotated.exists()
     data = json.loads(json_path.read_text(encoding="utf-8"))
-    assert data["summary"]["total_regions"] == 0
+    assert isinstance(data, list)
+    assert all(not page["regions"] for page in data)
 
 
 def test_cli_detects_difference(tmp_path):
@@ -62,7 +67,8 @@ def test_cli_detects_difference(tmp_path):
     _make_pdf(old_pdf, [(40, 40, 140, 140)])
     _make_pdf(new_pdf, [(40, 40, 140, 140), (120, 120, 170, 170)])
 
-    out_pdf = tmp_path / "result.pdf"
+    old_annotated = tmp_path / "old_result.pdf"
+    new_annotated = tmp_path / "new_result.pdf"
     json_path = tmp_path / "result.json"
 
     run_cli(
@@ -72,8 +78,10 @@ def test_cli_detects_difference(tmp_path):
             str(old_pdf),
             "--new",
             str(new_pdf),
-            "--out",
-            str(out_pdf),
+            "--old-annotated",
+            str(old_annotated),
+            "--new-annotated",
+            str(new_annotated),
             "--json",
             str(json_path),
             "--preset",
@@ -83,7 +91,10 @@ def test_cli_detects_difference(tmp_path):
         ],
     )
 
-    assert out_pdf.exists()
+    assert old_annotated.exists()
+    assert new_annotated.exists()
     data = json.loads(json_path.read_text(encoding="utf-8"))
-    assert data["summary"]["total_regions"] >= 1
-    assert data["pages"][0]["summary"]["added"] >= 1
+    assert isinstance(data, list)
+    assert any(page["regions"] for page in data)
+    first_page_regions = data[0]["regions"]
+    assert any(region["type"] == "added" for region in first_page_regions)
