@@ -49,11 +49,13 @@ class CompareParams:
     ssim_threshold: float = 0.15
     added_threshold: int = 20
     removed_threshold: int = 20
-    min_area_px: int = 196
-    padding_px: int = 6
-    merge_iou: float = 0.25
     morph_kernel_px: int = 5
     dilate_iterations: int = 1
+    merge_iou: float = 0.15
+    touch_gap_px: int = 4
+    contain_eps_px: int = 2
+    padding_px: int = 8
+    min_box_area_px: int = 4096
 
     def to_dict(self) -> Dict[str, float]:
         return {
@@ -62,11 +64,13 @@ class CompareParams:
             "ssim_threshold": self.ssim_threshold,
             "added_threshold": self.added_threshold,
             "removed_threshold": self.removed_threshold,
-            "min_area_px": self.min_area_px,
-            "padding_px": self.padding_px,
-            "merge_iou": self.merge_iou,
             "morph_kernel_px": self.morph_kernel_px,
             "dilate_iterations": self.dilate_iterations,
+            "merge_iou": self.merge_iou,
+            "touch_gap_px": self.touch_gap_px,
+            "contain_eps_px": self.contain_eps_px,
+            "padding_px": self.padding_px,
+            "min_box_area_px": self.min_box_area_px,
         }
 
     def copy(self, **overrides: float) -> "CompareParams":
@@ -107,11 +111,13 @@ PRESETS: Mapping[str, Preset] = {
             ssim_threshold=0.22,
             added_threshold=30,
             removed_threshold=30,
-            min_area_px=256,
-            padding_px=4,
-            merge_iou=0.2,
             morph_kernel_px=3,
             dilate_iterations=1,
+            merge_iou=0.12,
+            touch_gap_px=3,
+            contain_eps_px=2,
+            padding_px=6,
+            min_box_area_px=3072,
         ),
         colors=_DEFAULT_COLORS,
         fill_opacity=0.25,
@@ -126,11 +132,13 @@ PRESETS: Mapping[str, Preset] = {
             ssim_threshold=0.18,
             added_threshold=24,
             removed_threshold=24,
-            min_area_px=196,
-            padding_px=6,
-            merge_iou=0.25,
             morph_kernel_px=5,
             dilate_iterations=1,
+            merge_iou=0.15,
+            touch_gap_px=4,
+            contain_eps_px=2,
+            padding_px=8,
+            min_box_area_px=4096,
         ),
         colors=_DEFAULT_COLORS,
         fill_opacity=0.22,
@@ -145,11 +153,13 @@ PRESETS: Mapping[str, Preset] = {
             ssim_threshold=0.12,
             added_threshold=18,
             removed_threshold=18,
-            min_area_px=96,
-            padding_px=8,
-            merge_iou=0.3,
             morph_kernel_px=7,
             dilate_iterations=2,
+            merge_iou=0.2,
+            touch_gap_px=6,
+            contain_eps_px=3,
+            padding_px=10,
+            min_box_area_px=2048,
         ),
         colors=_DEFAULT_COLORS,
         fill_opacity=0.2,

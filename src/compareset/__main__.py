@@ -6,8 +6,8 @@ import sys
 from typing import Iterable, List, Optional
 
 from .compare import RoiMask, compare_pdfs
-from .overlay import OverlayOptions, draw_overlays
-from .presets import CompareParams, get_preset, parse_color
+from .overlay import AnnotationStyle, annotate_pdf
+from .presets import CompareParams, get_preset
 from .report import write_json_report
 
 
@@ -18,17 +18,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--old", required=True, help="Path to the baseline PDF")
     parser.add_argument("--new", required=True, help="Path to the revised PDF")
-    parser.add_argument("--out", required=True, help="Output PDF with overlays")
-    parser.add_argument("--json", help="Optional JSON diff report path")
+    parser.add_argument("--old-annotated", required=True, help="Output PDF for removed regions")
+    parser.add_argument("--new-annotated", required=True, help="Output PDF for added regions")
+    parser.add_argument("--json", required=True, help="Diff report path (JSON)")
     parser.add_argument("--preset", default="balanced", help="Preset name (strict|balanced|loose)")
     parser.add_argument("--dpi", type=int, help="Override raster DPI")
     parser.add_argument("--absdiff-threshold", type=int, help="Absolute difference threshold (0-255)")
     parser.add_argument("--ssim-threshold", type=float, help="SSIM difference threshold (0-1)")
-    parser.add_argument("--min-area", type=int, help="Minimum area in pixels")
-    parser.add_argument("--padding", type=int, help="Padding in pixels around detections")
-    parser.add_argument("--merge-iou", type=float, help="IoU threshold when merging boxes")
     parser.add_argument("--morph-kernel", type=int, help="Morphological kernel size (px)")
     parser.add_argument("--dilate-iterations", type=int, help="Dilate iterations")
+    parser.add_argument("--merge-iou", type=float, help="IoU threshold when merging boxes")
+    parser.add_argument("--touch-gap-px", type=int, help="Maximum gap for touching boxes")
+    parser.add_argument("--contain-eps-px", type=int, help="Containment tolerance in pixels")
+    parser.add_argument("--padding", type=int, help="Padding in pixels applied before merging")
+    parser.add_argument("--min-box-area", type=int, help="Minimum area (px^2) after merging")
     parser.add_argument("--added-threshold", type=int, help="Threshold for additions mask")
     parser.add_argument("--removed-threshold", type=int, help="Threshold for removals mask")
     parser.add_argument(
@@ -37,11 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
         dest="ignore_rois",
         help="ROI to ignore (format: p<page>:x0,y0,x1,y1 in PDF points)",
     )
-    parser.add_argument("--added-color", help="Override color for added regions")
-    parser.add_argument("--removed-color", help="Override color for removed regions")
-    parser.add_argument("--modified-color", help="Override color for modified regions")
-    parser.add_argument("--no-legend", action="store_true", help="Disable legend overlay")
-    parser.add_argument("--no-bookmarks", action="store_true", help="Disable bookmarks in output")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     return parser
 
@@ -63,12 +61,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return 2
 
     params = _override_params(preset.params, args)
-    colors = preset.colors.with_overrides(
-        added=parse_color(args.added_color),
-        removed=parse_color(args.removed_color),
-        modified=parse_color(args.modified_color),
-    )
-
     try:
         rois = _parse_rois(args.ignore_rois or [])
     except ValueError as exc:
@@ -77,22 +69,22 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     result = compare_pdfs(args.old, args.new, params=params, ignore_rois=rois)
 
-    overlay_opts = OverlayOptions(
-        fill_opacity=preset.fill_opacity,
-        stroke_width=preset.stroke_width,
-        legend=not args.no_legend,
-        bookmarks=not args.no_bookmarks,
+    annotate_pdf(
+        result,
+        source_pdf=args.old,
+        output_pdf=args.old_annotated,
+        change_type="removed",
+        style=AnnotationStyle(stroke_color=(0.84, 0.0, 0.0)),
     )
-    draw_overlays(
+    annotate_pdf(
         result,
         source_pdf=args.new,
-        output_pdf=args.out,
-        colors=colors,
-        options=overlay_opts,
+        output_pdf=args.new_annotated,
+        change_type="added",
+        style=AnnotationStyle(stroke_color=(0.0, 0.73, 0.0)),
     )
 
-    if args.json:
-        write_json_report(result, args.json)
+    write_json_report(result, args.json)
 
     return 0
 
@@ -103,13 +95,15 @@ def _override_params(preset_params: CompareParams, args: argparse.Namespace) -> 
         ("dpi", "dpi"),
         ("absdiff_threshold", "absdiff_threshold"),
         ("ssim_threshold", "ssim_threshold"),
-        ("min_area_px", "min_area"),
-        ("padding_px", "padding"),
-        ("merge_iou", "merge_iou"),
         ("morph_kernel_px", "morph_kernel"),
         ("dilate_iterations", "dilate_iterations"),
         ("added_threshold", "added_threshold"),
         ("removed_threshold", "removed_threshold"),
+        ("merge_iou", "merge_iou"),
+        ("touch_gap_px", "touch_gap_px"),
+        ("contain_eps_px", "contain_eps_px"),
+        ("padding_px", "padding"),
+        ("min_box_area_px", "min_box_area"),
     ):
         value = getattr(args, arg_name)
         if value is not None:
