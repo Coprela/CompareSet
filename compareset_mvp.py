@@ -13,6 +13,7 @@ import sys
 import os
 import argparse
 import traceback
+from pathlib import Path
 
 # Dependency check (friendly message if missing)
 MISSING = []
@@ -366,12 +367,41 @@ def main():
     parser = argparse.ArgumentParser(
         description="Compare 7 MVP — raster diff with vector rectangle overlays. Output: 2-page PDF."
     )
-    parser.add_argument("--old", required=True, help="Path to OLD/original PDF")
-    parser.add_argument("--new", required=True, help="Path to NEW/revised PDF")
+    parser.add_argument("--old", required=False, help="Path to OLD/original PDF")
+    parser.add_argument("--new", required=False, help="Path to NEW/revised PDF")
     parser.add_argument("--out", required=False, default="CompareSet_Result.pdf", help="Output PDF path")
     args = parser.parse_args()
 
     try:
+        if args.old is None or args.new is None:
+            script_root = Path(__file__).resolve().parent
+            samples_dir = script_root / "frontend" / "public" / "samples"
+            sample_old = samples_dir / "sample-old.pdf"
+            sample_new = samples_dir / "sample-new.pdf"
+
+            missing = []
+            if args.old is None:
+                if sample_old.exists():
+                    args.old = str(sample_old)
+                    log(f"No --old provided. Using bundled sample: {args.old}")
+                else:
+                    missing.append("--old")
+
+            if args.new is None:
+                if sample_new.exists():
+                    args.new = str(sample_new)
+                    log(f"No --new provided. Using bundled sample: {args.new}")
+                else:
+                    missing.append("--new")
+
+            if missing:
+                parser.error(
+                    "Missing required arguments {} and sample PDFs not found. "
+                    "Provide explicit paths using --old and --new.".format(
+                        " and ".join(missing)
+                    )
+                )
+
         log(f"Opening PDFs:\n  OLD: {args.old}\n  NEW: {args.new}")
         old_doc, new_doc, rects_old_pdf, rects_new_pdf, i_old, i_new = compare_first_pages(args.old, args.new)
 
