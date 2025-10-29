@@ -246,9 +246,8 @@ def run_compare(
             fill=None,
             width=STROKE_WIDTH_PT,
             stroke_opacity=STROKE_OPACITY,
-            overlay=True,
         )
-        shape_old.commit()
+        shape_old.commit(overlay=True)
 
     page_new = output_doc[1]
     if new_rects:
@@ -260,9 +259,8 @@ def run_compare(
             fill=None,
             width=STROKE_WIDTH_PT,
             stroke_opacity=STROKE_OPACITY,
-            overlay=True,
         )
-        shape_new.commit()
+        shape_new.commit(overlay=True)
 
     pdf_bytes = output_doc.tobytes()
     log("Output PDF bytes ready")
