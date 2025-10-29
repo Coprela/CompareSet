@@ -260,9 +260,8 @@ def run_compare(
                 fill=None,
                 width=STROKE_WIDTH_PT,
                 stroke_opacity=STROKE_OPACITY,
-                overlay=True,
             )
-            shape_old.commit()
+            shape_old.commit(overlay=True)
 
         if new_page_boxes:
             shape_new = new_page.new_shape()
@@ -279,9 +278,8 @@ def run_compare(
                 fill=None,
                 width=STROKE_WIDTH_PT,
                 stroke_opacity=STROKE_OPACITY,
-                overlay=True,
             )
-            shape_new.commit()
+            shape_new.commit(overlay=True)
 
         pdf_bytes = output_doc.tobytes()
         output_doc.close()
