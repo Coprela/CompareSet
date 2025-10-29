@@ -16,6 +16,7 @@ import cv2
 import fitz  # PyMuPDF
 import numpy as np
 from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -388,7 +389,7 @@ class MainWindow(QMainWindow):
     def append_log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.append(f"[{timestamp}] {message}")
-        self.log_box.moveCursor(self.log_box.textCursor().End)
+        self.log_box.moveCursor(QTextCursor.End)
 
     def _validate_path(self, path: str, label: str) -> Optional[str]:
         if not path:
