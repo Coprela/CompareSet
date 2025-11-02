@@ -43,20 +43,23 @@ DILATE_ITERS = 2
 ERODE_ITERS = 1
 MIN_AREA = 36
 MIN_DIM = 2
-PADDING_PX = 3
-PADDING_FRAC = 0.03
-VIEW_EXPAND = 1.15
+PADDING_PX = 2
+PADDING_FRAC = 0.02
+VIEW_EXPAND = 1.08
+VIEW_MAX_GROW = 24
 MEAN_DIFF_MIN = 14.0
-MEAN_TEXT_DIFF_MIN = 10.0
+MEAN_TEXT_DIFF_MIN = 11.0
 MIN_FORE_FRACTION = 0.18
-EDGE_OVERLAP_MIN = 0.85
-ECC_EPS = 1e-5
-ECC_ITERS = 1000
-STROKE_WIDTH_PT = 0.8
-STROKE_OPACITY = 0.6
+EDGE_OVERLAP_MIN = 0.88
+LINE_MIN_LEN = 20
+ECC_EPS = 1e-4
+ECC_ITERS = 300
+STROKE_WIDTH_PT = 0.6
+STROKE_OPACITY = 0.55
 RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
 DEBUG_DUMPS = False
+PREVIEW_DPI = 100
 
 
 _ssim_spec = util.find_spec("skimage.metrics")
@@ -69,10 +72,10 @@ Rect = Tuple[float, float, float, float]
 
 
 @dataclass
-class Glyph:
-    """Representation of a single text glyph in page pixel coordinates."""
+class TextGroup:
+    """Representation of a grouped text run in page pixel coordinates."""
 
-    char: str
+    text: str
     bbox: Rect
 
 
@@ -291,14 +294,15 @@ class PageProcessingResult:
     new_boxes: List[Rect]
     old_raw: int
     new_raw: int
+    preview_skipped: bool = False
 
 
 @dataclass
-class PageGlyphs:
-    """Glyph information for a page pair."""
+class PageTextGroups:
+    """Text-group information for a page pair."""
 
-    old_glyphs: List[Glyph]
-    new_glyphs: List[Glyph]
+    old_groups: List[TextGroup]
+    new_groups: List[TextGroup]
 
 
 def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
@@ -321,50 +325,70 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
             )
 
         for index in range(page_pairs):
-            result = process_page_pair(old_doc.load_page(index), new_doc.load_page(index))
-            if not result.old_boxes and not result.new_boxes:
+            old_page = old_doc.load_page(index)
+            new_page = new_doc.load_page(index)
+            result = process_page_pair(old_page, new_page)
+
+            if result.preview_skipped:
                 logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
-                logger.info("Page %d: No diffs detected.", index + 1)
+                logger.info("Page %d: no change (preview)", index + 1)
             else:
                 logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
-                logger.info(
-                    "Page %d OLD boxes: raw=%d merged=%d",
-                    index + 1,
-                    result.old_raw,
-                    len(result.old_boxes),
-                )
-                logger.info(
-                    "Page %d NEW boxes: raw=%d merged=%d",
-                    index + 1,
-                    result.new_raw,
-                    len(result.new_boxes),
-                )
+                if not result.old_boxes and not result.new_boxes:
+                    logger.info("Page %d: No diffs detected.", index + 1)
+                else:
+                    logger.info(
+                        "Page %d OLD boxes: raw=%d merged=%d",
+                        index + 1,
+                        result.old_raw,
+                        len(result.old_boxes),
+                    )
+                    logger.info(
+                        "Page %d NEW boxes: raw=%d merged=%d",
+                        index + 1,
+                        result.new_raw,
+                        len(result.new_boxes),
+                    )
 
             base_index = output_doc.page_count
-            output_doc.insert_pdf(old_doc, from_page=index, to_page=index)
-            output_doc.insert_pdf(new_doc, from_page=index, to_page=index)
+            if index < old_doc.page_count:
+                output_doc.insert_pdf(old_doc, from_page=index, to_page=index)
+            if index < new_doc.page_count:
+                output_doc.insert_pdf(new_doc, from_page=index, to_page=index)
 
-            old_page_out = output_doc.load_page(base_index)
-            new_page_out = output_doc.load_page(base_index + 1)
+            if output_doc.page_count >= base_index + 1 and result.old_boxes:
+                old_page_out = output_doc.load_page(base_index)
+                for rect in result.old_boxes:
+                    pdf_rect = fitz.Rect(
+                        rect[0] / scale,
+                        rect[1] / scale,
+                        rect[2] / scale,
+                        rect[3] / scale,
+                    )
+                    old_page_out.draw_rect(
+                        pdf_rect,
+                        color=RED,
+                        fill=None,
+                        width=STROKE_WIDTH_PT,
+                        stroke_opacity=STROKE_OPACITY,
+                    )
 
-            for rect in result.old_boxes:
-                pdf_rect = fitz.Rect(rect[0] / scale, rect[1] / scale, rect[2] / scale, rect[3] / scale)
-                old_page_out.draw_rect(
-                    pdf_rect,
-                    color=RED,
-                    fill=None,
-                    width=STROKE_WIDTH_PT,
-                    stroke_opacity=STROKE_OPACITY,
-                )
-            for rect in result.new_boxes:
-                pdf_rect = fitz.Rect(rect[0] / scale, rect[1] / scale, rect[2] / scale, rect[3] / scale)
-                new_page_out.draw_rect(
-                    pdf_rect,
-                    color=GREEN,
-                    fill=None,
-                    width=STROKE_WIDTH_PT,
-                    stroke_opacity=STROKE_OPACITY,
-                )
+            if output_doc.page_count >= base_index + 2 and result.new_boxes:
+                new_page_out = output_doc.load_page(base_index + 1)
+                for rect in result.new_boxes:
+                    pdf_rect = fitz.Rect(
+                        rect[0] / scale,
+                        rect[1] / scale,
+                        rect[2] / scale,
+                        rect[3] / scale,
+                    )
+                    new_page_out.draw_rect(
+                        pdf_rect,
+                        color=GREEN,
+                        fill=None,
+                        width=STROKE_WIDTH_PT,
+                        stroke_opacity=STROKE_OPACITY,
+                    )
 
             summaries.append(
                 PageDiffSummary(
@@ -386,15 +410,27 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessingResult:
     """Process a pair of pages and return rectangles for old/new differences."""
 
+    preview_old = render_page_to_gray(old_page, PREVIEW_DPI)
+    preview_new = render_page_to_gray(new_page, PREVIEW_DPI)
+    preview_diff = cv2.absdiff(preview_old, preview_new)
+    _, preview_mask = cv2.threshold(preview_diff, 20, 255, cv2.THRESH_BINARY)
+    nonzero_ratio = float(cv2.countNonZero(preview_mask)) / float(preview_mask.size or 1)
+    if nonzero_ratio < 0.0005:
+        return PageProcessingResult(
+            alignment_method="preview_skip",
+            old_boxes=[],
+            new_boxes=[],
+            old_raw=0,
+            new_raw=0,
+            preview_skipped=True,
+        )
+
     old_high = render_page_to_gray(old_page, DPI_HIGH)
     new_high = render_page_to_gray(new_page, DPI_HIGH)
     aligned_new_high, alignment_method, warp_matrix = align_images(old_high, new_high)
 
-    old_high_blur = cv2.GaussianBlur(old_high, (0, 0), 1.0)
-    new_high_blur = cv2.GaussianBlur(aligned_new_high, (0, 0), 1.0)
-
-    old_low = downsample_to_working_resolution(old_high_blur)
-    new_low = downsample_to_working_resolution(new_high_blur)
+    old_low = downsample_to_working_resolution(old_high)
+    new_low = downsample_to_working_resolution(aligned_new_high)
 
     blur_old = cv2.GaussianBlur(old_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
     blur_new = cv2.GaussianBlur(new_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
@@ -403,8 +439,9 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
 
     intensity_mask = compute_intensity_mask(diff)
     edge_old, edge_new, edge_mask = compute_edge_mask(blur_old, blur_new)
+    line_boost = compute_line_boost(diff)
 
-    change_mask = cv2.bitwise_and(intensity_mask, edge_mask)
+    change_mask = cv2.bitwise_and(intensity_mask, cv2.bitwise_or(edge_mask, line_boost))
 
     ssim_mask = compute_ssim_mask(blur_old, blur_new)
     if ssim_mask is not None:
@@ -416,7 +453,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     ink_union = cv2.bitwise_or(old_ink, new_ink)
     change_mask = cv2.bitwise_and(change_mask, ink_union)
 
-    glyphs = prepare_page_glyphs(old_page, new_page, warp_matrix)
+    groups = prepare_page_text_groups(old_page, new_page, warp_matrix)
 
     old_regions = cv2.bitwise_and(change_mask, old_ink)
     new_regions = cv2.bitwise_and(change_mask, new_ink)
@@ -425,19 +462,23 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         old_regions,
         diff,
         old_ink,
-        glyphs.old_glyphs,
-        glyphs.new_glyphs,
+        groups.old_groups,
+        groups.new_groups,
         edge_old,
         edge_new,
+        line_boost,
+        "old",
     )
     new_filtered, new_raw = extract_regions(
         new_regions,
         diff,
         new_ink,
-        glyphs.old_glyphs,
-        glyphs.new_glyphs,
+        groups.old_groups,
+        groups.new_groups,
         edge_old,
         edge_new,
+        line_boost,
+        "new",
     )
 
     old_boxes = merge_rectangles(old_filtered)
@@ -463,18 +504,52 @@ def render_page_to_gray(page: fitz.Page, dpi: int) -> np.ndarray:
 
 
 def align_images(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndarray, str, np.ndarray]:
-    """Align images using ECC with fallbacks, returning the warp matrix."""
+    """Align images using hierarchical ECC with fallbacks."""
 
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, ECC_ITERS, ECC_EPS)
-    old_norm = old_img.astype(np.float32) / 255.0
-    new_norm = new_img.astype(np.float32) / 255.0
+    scale = 0.5
+    target_size = (
+        max(1, int(round(old_img.shape[1] * scale))),
+        max(1, int(round(old_img.shape[0] * scale))),
+    )
+    old_small = cv2.resize(old_img, target_size, interpolation=cv2.INTER_AREA)
+    new_small = cv2.resize(new_img, target_size, interpolation=cv2.INTER_AREA)
 
-    for warp_mode, name in ((cv2.MOTION_AFFINE, "affine"), (cv2.MOTION_EUCLIDEAN, "euclidean")):
-        warp_matrix = np.eye(2, 3, dtype=np.float32)
+    old_norm = old_small.astype(np.float32) / 255.0
+    new_norm = new_small.astype(np.float32) / 255.0
+
+    best_cc = -1.0
+    best_warp: Optional[np.ndarray] = None
+    best_method = ""
+
+    def try_ecc(mode: int, iterations: int) -> Tuple[float, Optional[np.ndarray]]:
+        criteria = (
+            cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
+            iterations,
+            ECC_EPS,
+        )
+        warp = np.eye(2, 3, dtype=np.float32)
         try:
-            cv2.findTransformECC(old_norm, new_norm, warp_matrix, warp_mode, criteria)
+            cc, warp = cv2.findTransformECC(old_norm, new_norm, warp, mode, criteria)
         except cv2.error:
-            continue
+            return -1.0, None
+        return float(cc), warp
+
+    cc, warp = try_ecc(cv2.MOTION_EUCLIDEAN, ECC_ITERS)
+    if warp is not None:
+        best_cc, best_warp, best_method = cc, warp, "euclidean_ecc"
+    if best_cc < 0.90:
+        cc_affine, warp_affine = try_ecc(cv2.MOTION_AFFINE, 200)
+        if warp_affine is not None and cc_affine > best_cc:
+            best_cc, best_warp, best_method = cc_affine, warp_affine, "affine_ecc"
+
+    scale_factor = old_img.shape[1] / float(target_size[0]) if target_size[0] else 1.0
+
+    if best_warp is None:
+        shift, _ = cv2.phaseCorrelate(old_norm, new_norm)
+        warp_matrix = np.array(
+            [[1.0, 0.0, shift[0] * scale_factor], [0.0, 1.0, shift[1] * scale_factor]],
+            dtype=np.float32,
+        )
         aligned = cv2.warpAffine(
             new_img,
             warp_matrix,
@@ -482,10 +557,12 @@ def align_images(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndarray, 
             flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
             borderMode=cv2.BORDER_REFLECT,
         )
-        return aligned, name, warp_matrix
+        return aligned, "phase_correlation", warp_matrix
 
-    shift, _ = cv2.phaseCorrelate(old_norm, new_norm)
-    warp_matrix = np.array([[1.0, 0.0, shift[0]], [0.0, 1.0, shift[1]]], dtype=np.float32)
+    warp_matrix = best_warp.copy()
+    warp_matrix[0, 2] *= scale_factor
+    warp_matrix[1, 2] *= scale_factor
+
     aligned = cv2.warpAffine(
         new_img,
         warp_matrix,
@@ -493,7 +570,7 @@ def align_images(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndarray, 
         flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
         borderMode=cv2.BORDER_REFLECT,
     )
-    return aligned, "phase_correlation", warp_matrix
+    return aligned, f"{best_method}:{best_cc:.3f}", warp_matrix
 
 
 def downsample_to_working_resolution(image: np.ndarray) -> np.ndarray:
@@ -539,6 +616,17 @@ def compute_edge_mask(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndar
     return edge_old, edge_new, edge_mask
 
 
+def compute_line_boost(diff_img: np.ndarray) -> np.ndarray:
+    """Enhance thin-line differences using anisotropic closings."""
+
+    canny = cv2.Canny(diff_img, 40, 120)
+    kx = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1))
+    ky = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
+    close_x = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, kx)
+    close_y = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, ky)
+    return cv2.bitwise_or(close_x, close_y)
+
+
 def compute_ssim_mask(old_img: np.ndarray, new_img: np.ndarray) -> Optional[np.ndarray]:
     """Optional SSIM-based refinement mask."""
 
@@ -557,41 +645,67 @@ def compute_ssim_mask(old_img: np.ndarray, new_img: np.ndarray) -> Optional[np.n
     return mask
 
 
-def prepare_page_glyphs(old_page: fitz.Page, new_page: fitz.Page, warp_matrix: np.ndarray) -> PageGlyphs:
-    """Extract glyphs for both pages and align the new glyphs using the warp matrix."""
+def prepare_page_text_groups(old_page: fitz.Page, new_page: fitz.Page, warp_matrix: np.ndarray) -> PageTextGroups:
+    """Extract grouped text runs for both pages and align the new groups."""
 
-    old_glyphs = extract_glyphs(old_page, DPI)
-    new_high_glyphs = extract_glyphs(new_page, DPI_HIGH)
+    old_groups = extract_text_groups(old_page, DPI)
+    new_high_groups = extract_text_groups(new_page, DPI_HIGH)
 
     scale_factor = DPI / DPI_HIGH
-    aligned_new: List[Glyph] = []
-    for glyph in new_high_glyphs:
-        transformed = transform_rect(glyph.bbox, warp_matrix)
+    aligned_new: List[TextGroup] = []
+    for group in new_high_groups:
+        transformed = transform_rect(group.bbox, warp_matrix)
         scaled = tuple(coord * scale_factor for coord in transformed)
-        aligned_new.append(Glyph(glyph.char, scaled))
+        aligned_new.append(TextGroup(group.text, scaled))
 
-    return PageGlyphs(old_glyphs=old_glyphs, new_glyphs=aligned_new)
+    return PageTextGroups(old_groups=old_groups, new_groups=aligned_new)
 
 
-def extract_glyphs(page: fitz.Page, dpi: int) -> List[Glyph]:
-    """Extract glyphs from a PDF page at the specified DPI."""
+def extract_text_groups(page: fitz.Page, dpi: int) -> List[TextGroup]:
+    """Extract grouped text regions from a PDF page at the specified DPI."""
 
     text = page.get_text("rawdict")
     scale = dpi / 72.0
-    glyphs: List[Glyph] = []
+    groups: List[TextGroup] = []
     for block in text.get("blocks", []):
         if block.get("type") != 0:
             continue
         for line in block.get("lines", []):
             for span in line.get("spans", []):
+                current_text: List[str] = []
+                min_x, min_y = float("inf"), float("inf")
+                max_x, max_y = float("-inf"), float("-inf")
                 for char in span.get("chars", []):
                     c = char.get("c")
                     bbox = char.get("bbox")
-                    if not c or not bbox:
+                    if c is None or bbox is None:
+                        continue
+                    if c.isspace():
+                        if current_text:
+                            groups.append(
+                                TextGroup(
+                                    "".join(current_text),
+                                    (min_x * scale, min_y * scale, max_x * scale, max_y * scale),
+                                )
+                            )
+                            current_text = []
+                            min_x, min_y = float("inf"), float("inf")
+                            max_x, max_y = float("-inf"), float("-inf")
                         continue
                     x0, y0, x1, y1 = bbox
-                    glyphs.append(Glyph(c, (x0 * scale, y0 * scale, x1 * scale, y1 * scale)))
-    return glyphs
+                    current_text.append(c)
+                    min_x = min(min_x, x0)
+                    min_y = min(min_y, y0)
+                    max_x = max(max_x, x1)
+                    max_y = max(max_y, y1)
+                if current_text:
+                    groups.append(
+                        TextGroup(
+                            "".join(current_text),
+                            (min_x * scale, min_y * scale, max_x * scale, max_y * scale),
+                        )
+                    )
+    return groups
 
 
 def transform_rect(rect: Rect, matrix: np.ndarray) -> Rect:
@@ -616,10 +730,12 @@ def extract_regions(
     mask: np.ndarray,
     diff_img: np.ndarray,
     ink_mask: np.ndarray,
-    old_glyphs: Sequence[Glyph],
-    new_glyphs: Sequence[Glyph],
+    old_groups: Sequence[TextGroup],
+    new_groups: Sequence[TextGroup],
     edge_old: np.ndarray,
     edge_new: np.ndarray,
+    line_boost: np.ndarray,
+    label: str,
 ) -> Tuple[List[Rect], int]:
     """Extract filtered bounding boxes from a binary mask."""
 
@@ -632,26 +748,33 @@ def extract_regions(
     pad = max(PADDING_PX, int(min(width, height) * PADDING_FRAC))
 
     kernel = np.ones((3, 3), np.uint8)
+    indices = list(range(1, num_labels))
+    if len(indices) > 1500:
+        indices.sort(key=lambda idx: stats[idx, cv2.CC_STAT_AREA], reverse=True)
+        kept = indices[:400]
+        logger.info(
+            "%s regions truncated: kept %d of %d components", label, len(kept), len(indices)
+        )
+        indices = kept
 
-    for label in range(1, num_labels):
-        area = stats[label, cv2.CC_STAT_AREA]
+    for label_idx in indices:
+        area = stats[label_idx, cv2.CC_STAT_AREA]
         if area < MIN_AREA:
             continue
-        x = stats[label, cv2.CC_STAT_LEFT]
-        y = stats[label, cv2.CC_STAT_TOP]
-        w_box = stats[label, cv2.CC_STAT_WIDTH]
-        h_box = stats[label, cv2.CC_STAT_HEIGHT]
+        x = stats[label_idx, cv2.CC_STAT_LEFT]
+        y = stats[label_idx, cv2.CC_STAT_TOP]
+        w_box = stats[label_idx, cv2.CC_STAT_WIDTH]
+        h_box = stats[label_idx, cv2.CC_STAT_HEIGHT]
         if w_box < MIN_DIM or h_box < MIN_DIM:
             continue
 
-        component_mask = np.where(labels == label, 255, 0).astype(np.uint8)
+        component_mask = np.where(labels == label_idx, 255, 0).astype(np.uint8)
 
-        mean_val = cv2.mean(diff_img, mask=component_mask)[0]
-
+        raw_rect = (x, y, x + w_box, y + h_box)
         glyph_match = is_identical_text_region(
-            (x, y, x + w_box, y + h_box),
-            old_glyphs,
-            new_glyphs,
+            raw_rect,
+            old_groups,
+            new_groups,
             component_mask,
             diff_img,
             edge_old,
@@ -661,31 +784,49 @@ def extract_regions(
         if glyph_match:
             continue
 
-        if mean_val < MEAN_DIFF_MIN:
+        mean_val = cv2.mean(diff_img, mask=component_mask)[0]
+        line_region = cv2.bitwise_and(component_mask, line_boost)
+        has_line_pixels = cv2.countNonZero(line_region) > 0
+        line_evidence = False
+        if has_line_pixels:
+            try:
+                lines = cv2.HoughLinesP(
+                    line_region,
+                    1.0,
+                    np.pi / 180.0,
+                    threshold=12,
+                    minLineLength=LINE_MIN_LEN,
+                    maxLineGap=6,
+                )
+                line_evidence = lines is not None and len(lines) > 0
+            except cv2.error:
+                line_evidence = False
+
+        if mean_val < MEAN_DIFF_MIN and not line_evidence:
             continue
 
         foreground = cv2.bitwise_and(component_mask, ink_mask)
         if area == 0:
             continue
         fore_fraction = float(cv2.countNonZero(foreground)) / float(area)
-        if fore_fraction < MIN_FORE_FRACTION:
+        if fore_fraction < MIN_FORE_FRACTION and not line_evidence:
             continue
 
-        rect = (
+        padded_rect = (
             max(0.0, float(x - pad)),
             max(0.0, float(y - pad)),
             min(float(width), float(x + w_box + pad)),
             min(float(height), float(y + h_box + pad)),
         )
-        rectangles.append(apply_view_expand(rect, width, height))
+        rectangles.append(apply_view_expand(padded_rect, width, height, ink_mask))
 
     return rectangles, len(rectangles)
 
 
 def is_identical_text_region(
     rect: Rect,
-    old_glyphs: Sequence[Glyph],
-    new_glyphs: Sequence[Glyph],
+    old_groups: Sequence[TextGroup],
+    new_groups: Sequence[TextGroup],
     component_mask: np.ndarray,
     diff_img: np.ndarray,
     edge_old: np.ndarray,
@@ -694,8 +835,8 @@ def is_identical_text_region(
 ) -> bool:
     """Return True if the region should be suppressed as stable text."""
 
-    old_text, old_iou = gather_glyph_text(old_glyphs, rect)
-    new_text, new_iou = gather_glyph_text(new_glyphs, rect)
+    old_text, old_iou = gather_text_groups(old_groups, rect)
+    new_text, new_iou = gather_text_groups(new_groups, rect)
     if not old_text or not new_text or old_text != new_text:
         return False
     if old_iou < 0.6 or new_iou < 0.6:
@@ -712,16 +853,16 @@ def is_identical_text_region(
     return overlap >= EDGE_OVERLAP_MIN
 
 
-def gather_glyph_text(glyphs: Sequence[Glyph], rect: Rect) -> Tuple[str, float]:
-    """Collect glyphs overlapping a rectangle and compute IoU."""
+def gather_text_groups(groups: Sequence[TextGroup], rect: Rect) -> Tuple[str, float]:
+    """Collect grouped text overlapping a rectangle and compute IoU."""
 
     x1, y1, x2, y2 = rect
-    selected: List[Glyph] = []
+    selected: List[TextGroup] = []
     min_x, min_y = float("inf"), float("inf")
     max_x, max_y = float("-inf"), float("-inf")
 
-    for glyph in glyphs:
-        gx1, gy1, gx2, gy2 = glyph.bbox
+    for group in groups:
+        gx1, gy1, gx2, gy2 = group.bbox
         if gx2 <= x1 or gx1 >= x2 or gy2 <= y1 or gy1 >= y2:
             continue
         inter_x1 = max(x1, gx1)
@@ -730,7 +871,7 @@ def gather_glyph_text(glyphs: Sequence[Glyph], rect: Rect) -> Tuple[str, float]:
         inter_y2 = min(y2, gy2)
         if inter_x2 <= inter_x1 or inter_y2 <= inter_y1:
             continue
-        selected.append(glyph)
+        selected.append(group)
         min_x = min(min_x, gx1)
         min_y = min(min_y, gy1)
         max_x = max(max_x, gx2)
@@ -742,8 +883,8 @@ def gather_glyph_text(glyphs: Sequence[Glyph], rect: Rect) -> Tuple[str, float]:
     bbox = (min_x, min_y, max_x, max_y)
     iou = compute_iou(rect, bbox)
 
-    sorted_glyphs = sorted(selected, key=lambda g: (round(g.bbox[1] / 4.0) * 4.0, g.bbox[0]))
-    text = "".join(glyph.char for glyph in sorted_glyphs)
+    sorted_groups = sorted(selected, key=lambda g: (round(g.bbox[1] / 4.0) * 4.0, g.bbox[0]))
+    text = " ".join(group.text for group in sorted_groups)
     return text, iou
 
 
@@ -793,26 +934,50 @@ def compute_edge_overlap(rect: Rect, component_mask: np.ndarray, edge_old: np.nd
     return float(intersection / union_count)
 
 
-def apply_view_expand(rect: Rect, width: int, height: int) -> Rect:
-    """Apply visual padding expansion to a rectangle."""
+def apply_view_expand(rect: Rect, width: int, height: int, ink_mask: np.ndarray) -> Rect:
+    """Apply visual padding expansion with caps and ink-aware shrinking."""
 
     x1, y1, x2, y2 = rect
-    x1 = max(0.0, float(x1))
-    y1 = max(0.0, float(y1))
-    x2 = min(float(width), float(x2))
-    y2 = min(float(height), float(y2))
+    x1 = max(0.0, min(float(width), float(x1)))
+    y1 = max(0.0, min(float(height), float(y1)))
+    x2 = max(x1, min(float(width), float(x2)))
+    y2 = max(y1, min(float(height), float(y2)))
 
     cx = (x1 + x2) / 2.0
     cy = (y1 + y2) / 2.0
-    half_w = max((x2 - x1) / 2.0, MIN_DIM / 2.0) * VIEW_EXPAND
-    half_h = max((y2 - y1) / 2.0, MIN_DIM / 2.0) * VIEW_EXPAND
+    half_w = max((x2 - x1) / 2.0, MIN_DIM / 2.0)
+    half_h = max((y2 - y1) / 2.0, MIN_DIM / 2.0)
 
-    expanded_x1 = max(0.0, cx - half_w)
-    expanded_y1 = max(0.0, cy - half_h)
-    expanded_x2 = min(float(width), cx + half_w)
-    expanded_y2 = min(float(height), cy + half_h)
+    extra_w = min(half_w * (VIEW_EXPAND - 1.0), VIEW_MAX_GROW)
+    extra_h = min(half_h * (VIEW_EXPAND - 1.0), VIEW_MAX_GROW)
 
-    return (expanded_x1, expanded_y1, expanded_x2, expanded_y2)
+    expanded_x1 = max(0.0, cx - half_w - extra_w)
+    expanded_y1 = max(0.0, cy - half_h - extra_h)
+    expanded_x2 = min(float(width), cx + half_w + extra_w)
+    expanded_y2 = min(float(height), cy + half_h + extra_h)
+
+    expanded = (expanded_x1, expanded_y1, expanded_x2, expanded_y2)
+    if compute_rect_ink_fraction(expanded, ink_mask) < 0.15:
+        return (x1, y1, x2, y2)
+    return expanded
+
+
+def compute_rect_ink_fraction(rect: Rect, ink_mask: np.ndarray) -> float:
+    """Compute the fraction of ink within a rectangle."""
+
+    x1, y1, x2, y2 = [int(round(v)) for v in rect]
+    x1 = max(0, min(ink_mask.shape[1], x1))
+    y1 = max(0, min(ink_mask.shape[0], y1))
+    x2 = max(x1 + 1, min(ink_mask.shape[1], x2))
+    y2 = max(y1 + 1, min(ink_mask.shape[0], y2))
+    region = ink_mask[y1:y2, x1:x2]
+    if region.size == 0:
+        return 0.0
+    ink = cv2.countNonZero(region)
+    area = float((x2 - x1) * (y2 - y1))
+    if area <= 0.0:
+        return 0.0
+    return float(ink) / area
 
 
 def merge_rectangles(rectangles: Sequence[Rect]) -> List[Rect]:
