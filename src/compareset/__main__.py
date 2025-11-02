@@ -6,7 +6,7 @@ import sys
 from typing import Iterable, List, Optional
 
 from .compare import RoiMask, compare_pdfs
-from .overlay import AnnotationStyle, annotate_pdf
+from .overlay import annotate_pdf, make_annotation_style
 from .presets import CompareParams, get_preset
 from .report import write_json_report
 
@@ -69,19 +69,30 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     result = compare_pdfs(args.old, args.new, params=params, ignore_rois=rois)
 
+    removed_style = make_annotation_style(
+        preset.colors.removed,
+        stroke_width=preset.stroke_width,
+        fill_opacity=preset.fill_opacity,
+    )
+    added_style = make_annotation_style(
+        preset.colors.added,
+        stroke_width=preset.stroke_width,
+        fill_opacity=preset.fill_opacity,
+    )
+
     annotate_pdf(
         result,
         source_pdf=args.old,
         output_pdf=args.old_annotated,
         change_type="removed",
-        style=AnnotationStyle(stroke_color=(0.84, 0.0, 0.0)),
+        style=removed_style,
     )
     annotate_pdf(
         result,
         source_pdf=args.new,
         output_pdf=args.new_annotated,
         change_type="added",
-        style=AnnotationStyle(stroke_color=(0.0, 0.73, 0.0)),
+        style=added_style,
     )
 
     write_json_report(result, args.json)
