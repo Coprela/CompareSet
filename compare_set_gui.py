@@ -1,38 +1,44 @@
-"""
-REQUIREMENTS:
-PySide6
-pymupdf
-opencv-python
-numpy
-"""
+#!/usr/bin/env python3
+"""Compare SET desktop application."""
+# REQUIREMENTS
+# PySide6
+# pymupdf
+# opencv-python
+# numpy
+# (optional) scikit-image
 
-import os
+from __future__ import annotations
+
+import logging
 import sys
-import traceback
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, List, Optional, Sequence, Tuple
+from importlib import util
+from pathlib import Path
+from typing import List, Optional, Sequence, Tuple
 
 import cv2
-import fitz  # PyMuPDF
+import fitz
 import numpy as np
 from PySide6.QtCore import QObject, QThread, Signal, Slot
-from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QProgressBar,
-    QSizePolicy,
     QTextEdit,
+    QVBoxLayout,
     QWidget,
 )
 
 
+# Application constants (edit values in code comments only)
 DPI = 300
 BLUR_KSIZE = 3
 THRESH = 25
@@ -43,258 +49,71 @@ MIN_AREA = 36
 MIN_DIM = 2
 PADDING_PX = 3
 PADDING_FRAC = 0.03
+VIEW_EXPAND = 1.15
 MEAN_DIFF_MIN = 12.0
 MIN_FORE_FRACTION = 0.15
+ECC_EPS = 1e-5
+ECC_ITERS = 1000
 STROKE_WIDTH_PT = 0.8
 STROKE_OPACITY = 0.6
 RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
 
-PIXEL_TO_POINT = 72.0 / DPI
+
+_ssim_spec = util.find_spec("skimage.metrics")
+if _ssim_spec is not None:  # pragma: no cover - optional dependency
+    from skimage.metrics import structural_similarity  # type: ignore
+else:  # pragma: no cover - optional dependency
+    structural_similarity = None  # type: ignore
+
+Rect = Tuple[float, float, float, float]
 
 
-Rect = Tuple[int, int, int, int]
+@dataclass
+class PageDiffSummary:
+    """Summary of results for a single page pair."""
+
+    index: int
+    alignment_method: str
+    old_boxes_raw: int
+    old_boxes_merged: int
+    new_boxes_raw: int
+    new_boxes_merged: int
 
 
-def _ensure_grayscale_pixmap(page: fitz.Page) -> Tuple[np.ndarray, int, int]:
-    scale = DPI / 72.0
-    matrix = fitz.Matrix(scale, scale)
-    pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY, alpha=False)
-    arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
-    return arr, pix.width, pix.height
+@dataclass
+class ComparisonResult:
+    """Container for comparison output."""
+
+    pdf_bytes: bytes
+    summaries: List[PageDiffSummary] = field(default_factory=list)
 
 
-def _center_on_canvas(image: np.ndarray, canvas_shape: Tuple[int, int]) -> Tuple[np.ndarray, Tuple[int, int]]:
-    canvas_h, canvas_w = canvas_shape
-    img_h, img_w = image.shape
-    canvas = np.full((canvas_h, canvas_w), 255, dtype=np.uint8)
-    y_offset = (canvas_h - img_h) // 2
-    x_offset = (canvas_w - img_w) // 2
-    canvas[y_offset : y_offset + img_h, x_offset : x_offset + img_w] = image
-    return canvas, (x_offset, y_offset)
+class LogEmitter(QObject):
+    """Qt signal emitter for log messages."""
+
+    message = Signal(str)
 
 
-def _find_candidate_boxes(
-    mask: np.ndarray,
-    ink_mask: np.ndarray,
-    diff: np.ndarray,
-    canvas_shape: Tuple[int, int],
-) -> List[Rect]:
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    boxes: List[Rect] = []
-    canvas_h, canvas_w = canvas_shape
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < MIN_AREA:
-            continue
-        x, y, w, h = cv2.boundingRect(contour)
-        if w <= 0 or h <= 0:
-            continue
-        pad = max(PADDING_PX, int(min(w, h) * PADDING_FRAC))
-        x_pad = max(0, x - pad)
-        y_pad = max(0, y - pad)
-        x2_pad = min(canvas_w, x + w + pad)
-        y2_pad = min(canvas_h, y + h + pad)
-        if x2_pad <= x_pad or y2_pad <= y_pad:
-            continue
-        if (x2_pad - x_pad) < MIN_DIM or (y2_pad - y_pad) < MIN_DIM:
-            continue
-        diff_region = diff[y : y + h, x : x + w]
-        if diff_region.size == 0:
-            continue
-        mean_diff = float(np.mean(diff_region))
-        if mean_diff < MEAN_DIFF_MIN:
-            continue
-        ink_region = ink_mask[y : y + h, x : x + w]
-        if ink_region.size == 0:
-            continue
-        foreground_fraction = float(np.count_nonzero(ink_region)) / float(w * h)
-        if foreground_fraction < MIN_FORE_FRACTION:
-            continue
-        boxes.append((x_pad, y_pad, x2_pad, y2_pad))
-    return boxes
+class QtLogHandler(logging.Handler):
+    """Logging handler that forwards messages to Qt widgets."""
 
+    def __init__(self, emitter: LogEmitter) -> None:
+        super().__init__()
+        self.emitter = emitter
 
-def _boxes_touch_or_overlap(a: Rect, b: Rect) -> bool:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    horizontal = not (ax2 < bx1 or bx2 < ax1)
-    vertical = not (ay2 < by1 or by2 < ay1)
-    return horizontal and vertical
-
-
-def _merge_boxes(boxes: Sequence[Rect]) -> List[Rect]:
-    if not boxes:
-        return []
-    working = [list(b) for b in boxes]
-    changed = True
-    while changed:
-        changed = False
-        result: List[List[int]] = []
-        while working:
-            current = working.pop()
-            merged = False
-            for idx, existing in enumerate(result):
-                if _boxes_touch_or_overlap(tuple(current), tuple(existing)):
-                    existing[0] = min(existing[0], current[0])
-                    existing[1] = min(existing[1], current[1])
-                    existing[2] = max(existing[2], current[2])
-                    existing[3] = max(existing[3], current[3])
-                    changed = True
-                    merged = True
-                    break
-            if not merged:
-                result.append(current)
-        working = result
-    return [tuple(map(int, b)) for b in working]
-
-
-def _map_boxes_to_page(
-    boxes: Sequence[Rect],
-    page_size: Tuple[int, int],
-    offset: Tuple[int, int],
-) -> List[Rect]:
-    mapped: List[Rect] = []
-    offset_x, offset_y = offset
-    page_w, page_h = page_size
-    for x1, y1, x2, y2 in boxes:
-        x1_local = max(0, x1 - offset_x)
-        y1_local = max(0, y1 - offset_y)
-        x2_local = min(page_w, x2 - offset_x)
-        y2_local = min(page_h, y2 - offset_y)
-        if x2_local <= x1_local or y2_local <= y1_local:
-            continue
-        mapped.append((int(x1_local), int(y1_local), int(x2_local), int(y2_local)))
-    return mapped
-
-
-def run_compare(
-    old_path: str,
-    new_path: str,
-    progress_callback: Optional[Callable[[str], None]] = None,
-) -> bytes:
-    def log(message: str) -> None:
-        if progress_callback:
-            progress_callback(message)
-
-    log(f"Opening OLD PDF: {old_path}")
-    old_doc = fitz.open(old_path)
-    log(f"Opening NEW PDF: {new_path}")
-    new_doc = fitz.open(new_path)
-    try:
-        if old_doc.page_count == 0:
-            raise ValueError("OLD PDF has no pages")
-        if new_doc.page_count == 0:
-            raise ValueError("NEW PDF has no pages")
-        log(f"OLD PDF pages: {old_doc.page_count}")
-        log(f"NEW PDF pages: {new_doc.page_count}")
-
-        log("Rendering page 1 of each PDF at 300 DPI")
-        old_image, old_w, old_h = _ensure_grayscale_pixmap(old_doc.load_page(0))
-        new_image, new_w, new_h = _ensure_grayscale_pixmap(new_doc.load_page(0))
-
-        canvas_w = max(old_w, new_w)
-        canvas_h = max(old_h, new_h)
-        letterbox_applied = (canvas_w != old_w) or (canvas_h != old_h) or (canvas_w != new_w) or (canvas_h != new_h)
-        if letterbox_applied:
-            log(f"Letterboxing enabled: canvas {canvas_w}x{canvas_h}")
-        old_canvas, old_offset = _center_on_canvas(old_image, (canvas_h, canvas_w))
-        new_canvas, new_offset = _center_on_canvas(new_image, (canvas_h, canvas_w))
-
-        log("Computing change mask")
-        blur_old = cv2.GaussianBlur(old_canvas, (BLUR_KSIZE, BLUR_KSIZE), 0)
-        blur_new = cv2.GaussianBlur(new_canvas, (BLUR_KSIZE, BLUR_KSIZE), 0)
-        absdiff = cv2.absdiff(blur_old, blur_new)
-        _, change_mask = cv2.threshold(absdiff, THRESH, 255, cv2.THRESH_BINARY)
-        kernel = np.ones((MORPH_KERNEL, MORPH_KERNEL), dtype=np.uint8)
-        change_mask = cv2.morphologyEx(change_mask, cv2.MORPH_CLOSE, kernel)
-        change_mask = cv2.dilate(change_mask, kernel, iterations=DILATE_ITERS)
-        change_mask = cv2.erode(change_mask, kernel, iterations=ERODE_ITERS)
-
-        log("Building ink masks and refining change regions")
-        _, old_ink = cv2.threshold(blur_old, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        _, new_ink = cv2.threshold(blur_new, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        change_mask = cv2.bitwise_and(change_mask, cv2.bitwise_or(old_ink, new_ink))
-
-        old_regions = cv2.bitwise_and(change_mask, old_ink)
-        new_regions = cv2.bitwise_and(change_mask, new_ink)
-
-        log("Extracting candidate boxes for OLD page")
-        old_raw_boxes = _find_candidate_boxes(old_regions, old_ink, absdiff, (canvas_h, canvas_w))
-        log("Extracting candidate boxes for NEW page")
-        new_raw_boxes = _find_candidate_boxes(new_regions, new_ink, absdiff, (canvas_h, canvas_w))
-
-        log("Merging rectangles")
-        old_merged_boxes = _merge_boxes(old_raw_boxes)
-        new_merged_boxes = _merge_boxes(new_raw_boxes)
-
-        log(f"OLD boxes: raw={len(old_raw_boxes)}, merged={len(old_merged_boxes)}")
-        log(f"NEW boxes: raw={len(new_raw_boxes)}, merged={len(new_merged_boxes)}")
-
-        old_page_boxes = _map_boxes_to_page(old_merged_boxes, (old_w, old_h), old_offset)
-        new_page_boxes = _map_boxes_to_page(new_merged_boxes, (new_w, new_h), new_offset)
-
-        if not old_page_boxes and not new_page_boxes:
-            log("No diffs detected")
-
-        log("Composing output PDF")
-        output_doc = fitz.open()
-        output_doc.insert_pdf(old_doc, from_page=0, to_page=0)
-        output_doc.insert_pdf(new_doc, from_page=0, to_page=0)
-
-        old_page = output_doc.load_page(0)
-        new_page = output_doc.load_page(1)
-
-        if old_page_boxes:
-            shape_old = old_page.new_shape()
-            for x1, y1, x2, y2 in old_page_boxes:
-                rect = fitz.Rect(
-                    x1 * PIXEL_TO_POINT,
-                    y1 * PIXEL_TO_POINT,
-                    x2 * PIXEL_TO_POINT,
-                    y2 * PIXEL_TO_POINT,
-                )
-                shape_old.draw_rect(rect)
-            shape_old.finish(
-                color=RED,
-                fill=None,
-                width=STROKE_WIDTH_PT,
-                stroke_opacity=STROKE_OPACITY,
-            )
-            shape_old.commit(overlay=True)
-
-        if new_page_boxes:
-            shape_new = new_page.new_shape()
-            for x1, y1, x2, y2 in new_page_boxes:
-                rect = fitz.Rect(
-                    x1 * PIXEL_TO_POINT,
-                    y1 * PIXEL_TO_POINT,
-                    x2 * PIXEL_TO_POINT,
-                    y2 * PIXEL_TO_POINT,
-                )
-                shape_new.draw_rect(rect)
-            shape_new.finish(
-                color=GREEN,
-                fill=None,
-                width=STROKE_WIDTH_PT,
-                stroke_opacity=STROKE_OPACITY,
-            )
-            shape_new.commit(overlay=True)
-
-        pdf_bytes = output_doc.tobytes()
-        output_doc.close()
-        return pdf_bytes
-    finally:
-        old_doc.close()
-        new_doc.close()
+    def emit(self, record: logging.LogRecord) -> None:
+        message = self.format(record)
+        self.emitter.message.emit(message)
 
 
 class CompareWorker(QObject):
-    progress = Signal(str)
-    done = Signal(bytes)
-    error = Signal(str)
+    """Worker object executing the comparison in a background thread."""
 
-    def __init__(self, old_path: str, new_path: str) -> None:
+    finished = Signal(ComparisonResult)
+    failed = Signal(str)
+
+    def __init__(self, old_path: Path, new_path: Path) -> None:
         super().__init__()
         self.old_path = old_path
         self.new_path = new_path
@@ -302,181 +121,463 @@ class CompareWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            result = run_compare(self.old_path, self.new_path, self.progress.emit)
-            self.done.emit(result)
-        except Exception as exc:  # pragma: no cover - safety net
-            tb_last_line = traceback.format_exc().splitlines()[-1]
-            message = f"{exc.__class__.__name__}: {exc} [{tb_last_line}]"
-            self.error.emit(message)
+            result = run_comparison(self.old_path, self.new_path)
+        except Exception as exc:  # pragma: no cover - Qt thread
+            logger.exception("Comparison failed: %s", exc)
+            self.failed.emit(str(exc))
+            return
+        self.finished.emit(result)
 
 
 class MainWindow(QMainWindow):
+    """Main application window."""
+
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Compare SET – Desktop")
-        self.worker_thread: Optional[QThread] = None
-        self.worker: Optional[CompareWorker] = None
-        self._setup_ui()
+        self.setWindowTitle("Compare SET")
 
-    def _setup_ui(self) -> None:
-        central = QWidget(self)
-        layout = QGridLayout()
-        layout.setColumnStretch(1, 1)
-        central.setLayout(layout)
+        self._log_emitter = LogEmitter()
+        self._log_handler = QtLogHandler(self._log_emitter)
+        self._log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+        logger.addHandler(self._log_handler)
+        self._log_emitter.message.connect(self.append_log)
 
-        self.old_edit = QLineEdit()
-        self.old_edit.setReadOnly(True)
-        self.new_edit = QLineEdit()
-        self.new_edit.setReadOnly(True)
+        self._thread: Optional[QThread] = None
+        self._worker: Optional[CompareWorker] = None
 
-        old_label = QLabel("Old revision (PDF)")
-        new_label = QLabel("New revision (PDF)")
+        self.old_path_edit = QLineEdit()
+        self.new_path_edit = QLineEdit()
+        for line_edit in (self.old_path_edit, self.new_path_edit):
+            line_edit.setPlaceholderText("Select a PDF file")
 
-        self.old_browse = QPushButton("Browse…")
-        self.old_browse.clicked.connect(lambda: self._choose_file(self.old_edit))
-        self.new_browse = QPushButton("Browse…")
-        self.new_browse.clicked.connect(lambda: self._choose_file(self.new_edit))
+        self.old_browse_button = QPushButton("Browse…")
+        self.new_browse_button = QPushButton("Browse…")
+        self.old_browse_button.clicked.connect(lambda: self.select_file(self.old_path_edit))
+        self.new_browse_button.clicked.connect(lambda: self.select_file(self.new_path_edit))
 
         self.compare_button = QPushButton("Compare")
-        self.compare_button.clicked.connect(self._start_compare)
-        self.compare_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-
-        helper = QLabel("Engine is fixed in code. Output: 2-page PDF with translucent rectangles.")
-        helper.setStyleSheet("color: #666666; font-size: 11px;")
+        self.compare_button.clicked.connect(self.start_comparison)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
 
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("font-weight: bold;")
 
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setMinimumHeight(160)
-        self.log_box.setLineWrapMode(QTextEdit.NoWrap)
-        self.log_box.setFontFamily("Consolas")
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setLineWrapMode(QTextEdit.NoWrap)
 
-        layout.addWidget(old_label, 0, 0)
-        layout.addWidget(self.old_edit, 0, 1)
-        layout.addWidget(self.old_browse, 0, 2)
+        central_widget = QWidget()
+        main_layout = QVBoxLayout(central_widget)
 
-        layout.addWidget(new_label, 1, 0)
-        layout.addWidget(self.new_edit, 1, 1)
-        layout.addWidget(self.new_browse, 1, 2)
+        file_layout = QGridLayout()
+        file_layout.addWidget(QLabel("Old revision (PDF)"), 0, 0)
+        file_layout.addWidget(self.old_path_edit, 0, 1)
+        file_layout.addWidget(self.old_browse_button, 0, 2)
+        file_layout.addWidget(QLabel("New revision (PDF)"), 1, 0)
+        file_layout.addWidget(self.new_path_edit, 1, 1)
+        file_layout.addWidget(self.new_browse_button, 1, 2)
 
-        layout.addWidget(self.compare_button, 2, 0, 1, 3)
-        layout.addWidget(helper, 3, 0, 1, 3)
-        layout.addWidget(self.progress_bar, 4, 0, 1, 3)
-        layout.addWidget(self.status_label, 5, 0, 1, 3)
-        layout.addWidget(self.log_box, 6, 0, 1, 3)
+        main_layout.addLayout(file_layout)
+        main_layout.addSpacing(8)
 
-        self.setCentralWidget(central)
-        self.resize(720, 480)
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.compare_button)
+        main_layout.addLayout(button_layout)
 
-    def _choose_file(self, target_edit: QLineEdit) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select PDF",
-            os.path.dirname(target_edit.text()) if target_edit.text() else "",
-            "PDF Files (*.pdf)",
-        )
-        if path:
-            target_edit.setText(path)
+        main_layout.addWidget(self.progress_bar)
+        main_layout.addWidget(self.status_label)
+        main_layout.addWidget(self.log_view)
 
-    def append_log(self, message: str) -> None:
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_box.append(f"[{timestamp}] {message}")
-        self.log_box.moveCursor(QTextCursor.End)
-
-    def _validate_path(self, path: str, label: str) -> Optional[str]:
-        if not path:
-            return f"{label} is required."
-        if not path.lower().endswith(".pdf"):
-            return f"{label} must be a PDF file."
-        if not os.path.isfile(path):
-            return f"{label} not found."
-        return None
-
-    def _start_compare(self) -> None:
-        if self.worker_thread and self.worker_thread.isRunning():
-            return
-        old_path = self.old_edit.text().strip()
-        new_path = self.new_edit.text().strip()
-        for label, path in (("Old revision", old_path), ("New revision", new_path)):
-            error = self._validate_path(path, label)
-            if error:
-                QMessageBox.warning(self, "Invalid Input", error)
-                return
-
-        self.compare_button.setEnabled(False)
-        self.progress_bar.setRange(0, 0)
-        self.status_label.setText("Running comparison…")
-        self.append_log("Starting comparison run")
-
-        self.worker_thread = QThread(self)
-        self.worker = CompareWorker(old_path, new_path)
-        self.worker.moveToThread(self.worker_thread)
-        self.worker.progress.connect(self.append_log)
-        self.worker.done.connect(self._handle_done)
-        self.worker.error.connect(self._handle_error)
-        self.worker.done.connect(self.worker_thread.quit)
-        self.worker.error.connect(self.worker_thread.quit)
-        self.worker_thread.finished.connect(self._cleanup_worker)
-        self.worker_thread.started.connect(self.worker.run)
-        self.worker_thread.start()
-
-    @Slot()
-    def _cleanup_worker(self) -> None:
-        if self.worker:
-            self.worker.deleteLater()
-            self.worker = None
-        if self.worker_thread:
-            self.worker_thread.deleteLater()
-            self.worker_thread = None
-        self.compare_button.setEnabled(True)
-        self.progress_bar.setRange(0, 1)
-        self.progress_bar.setValue(0)
-
-    @Slot(bytes)
-    def _handle_done(self, pdf_bytes: bytes) -> None:
-        self.status_label.setText("Compare finished")
-        self.append_log("Comparison complete. Awaiting save location")
-        suggested_name = f"CompareSet_Result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        default_dir = os.path.dirname(self.new_edit.text()) or os.getcwd()
-        default_path = os.path.join(default_dir, suggested_name)
-        save_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Comparison Result",
-            default_path,
-            "PDF Files (*.pdf)",
-        )
-        if not save_path:
-            self.append_log("Save cancelled by user")
-            self.status_label.setText("Ready")
-            return
-        if not save_path.lower().endswith(".pdf"):
-            save_path += ".pdf"
-        try:
-            with open(save_path, "wb") as fh:
-                fh.write(pdf_bytes)
-        except OSError as exc:
-            QMessageBox.critical(self, "Save Error", f"Failed to write file: {exc}")
-            self.append_log(f"Save error: {exc}")
-            self.status_label.setText("Error during save")
-            return
-        self.append_log(f"Saved result to: {save_path}")
-        self.status_label.setText("Ready")
-        QMessageBox.information(self, "Compare SET", "Comparison PDF saved successfully.")
+        self.setCentralWidget(central_widget)
+        self.resize(720, 520)
 
     @Slot(str)
-    def _handle_error(self, message: str) -> None:
-        self.status_label.setText("Error")
-        self.append_log(message)
-        QMessageBox.critical(self, "Comparison Failed", message)
+    def append_log(self, message: str) -> None:
+        self.log_view.append(message)
+        self.log_view.ensureCursorVisible()
+
+    def select_file(self, target: QLineEdit) -> None:
+        selected, _ = QFileDialog.getOpenFileName(self, "Select PDF", str(Path.home()), "PDF Files (*.pdf)")
+        if selected:
+            target.setText(selected)
+
+    def start_comparison(self) -> None:
+        old_path = Path(self.old_path_edit.text()).expanduser().resolve()
+        new_path = Path(self.new_path_edit.text()).expanduser().resolve()
+
+        if not old_path.is_file() or old_path.suffix.lower() != ".pdf":
+            QMessageBox.warning(self, "Invalid file", "Please select a valid PDF for the old revision.")
+            return
+        if not new_path.is_file() or new_path.suffix.lower() != ".pdf":
+            QMessageBox.warning(self, "Invalid file", "Please select a valid PDF for the new revision.")
+            return
+
+        self.toggle_controls(False)
+        self.progress_bar.setRange(0, 0)
+        self.status_label.setText("Comparing…")
+        logger.info("Starting comparison: %s vs %s", old_path, new_path)
+
+        self._thread = QThread(self)
+        self._worker = CompareWorker(old_path, new_path)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self.on_comparison_finished)
+        self._worker.failed.connect(self.on_comparison_failed)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.failed.connect(self._thread.quit)
+        self._worker.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.start()
+
+    @Slot(ComparisonResult)
+    def on_comparison_finished(self, result: ComparisonResult) -> None:
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.toggle_controls(True)
+        self.status_label.setText("Comparison complete.")
+        logger.info("Comparison finished. Preparing save dialog.")
+
+        default_name = f"CompareSet_Result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save Comparison", default_name, "PDF Files (*.pdf)")
+        if save_path:
+            with open(save_path, "wb") as output_file:
+                output_file.write(result.pdf_bytes)
+            logger.info("Saved diff to %s", save_path)
+            QMessageBox.information(self, "Compare SET", f"Comparison saved to:\n{save_path}")
+        else:
+            logger.info("Save dialog cancelled by user.")
+
+        self._worker = None
+        self._thread = None
+
+    @Slot(str)
+    def on_comparison_failed(self, message: str) -> None:
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.toggle_controls(True)
+        self.status_label.setText("Comparison failed.")
+        QMessageBox.critical(self, "Compare SET", f"Comparison failed:\n{message}")
+        self._worker = None
+        self._thread = None
+
+    def toggle_controls(self, enabled: bool) -> None:
+        for widget in (self.old_browse_button, self.new_browse_button, self.compare_button, self.old_path_edit, self.new_path_edit):
+            widget.setEnabled(enabled)
+
+
+def render_page_to_gray(page: fitz.Page) -> np.ndarray:
+    """Render a page to grayscale numpy array."""
+
+    scale = DPI / 72.0
+    matrix = fitz.Matrix(scale, scale)
+    pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY, alpha=False)
+    array = np.frombuffer(pix.samples, dtype=np.uint8)
+    return array.reshape(pix.height, pix.width)
+
+
+@dataclass
+class PageProcessingResult:
+    """Detailed results for a processed page pair."""
+
+    alignment_method: str
+    old_boxes: List[Rect]
+    new_boxes: List[Rect]
+    old_raw: int
+    new_raw: int
+
+
+def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
+    """Execute the raster diff comparison workflow."""
+
+    summaries: List[PageDiffSummary] = []
+    output_doc = fitz.open()
+    scale = DPI / 72.0
+
+    with fitz.open(old_path) as old_doc, fitz.open(new_path) as new_doc:
+        page_pairs = min(old_doc.page_count, new_doc.page_count)
+        if page_pairs == 0:
+            raise ValueError("No pages available for comparison.")
+        if old_doc.page_count != new_doc.page_count:
+            logger.warning(
+                "Page count mismatch (old=%s, new=%s). Comparing first %s page(s).",
+                old_doc.page_count,
+                new_doc.page_count,
+                page_pairs,
+            )
+
+        for index in range(page_pairs):
+            result = process_page_pair(old_doc.load_page(index), new_doc.load_page(index))
+            logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
+            logger.info(
+                "Page %d OLD boxes: raw=%d merged=%d",
+                index + 1,
+                result.old_raw,
+                len(result.old_boxes),
+            )
+            logger.info(
+                "Page %d NEW boxes: raw=%d merged=%d",
+                index + 1,
+                result.new_raw,
+                len(result.new_boxes),
+            )
+
+            base_index = output_doc.page_count
+            output_doc.insert_pdf(old_doc, from_page=index, to_page=index)
+            output_doc.insert_pdf(new_doc, from_page=index, to_page=index)
+
+            old_page_out = output_doc.load_page(base_index)
+            new_page_out = output_doc.load_page(base_index + 1)
+
+            for rect in result.old_boxes:
+                pdf_rect = fitz.Rect(rect[0] / scale, rect[1] / scale, rect[2] / scale, rect[3] / scale)
+                old_page_out.draw_rect(
+                    pdf_rect,
+                    color=RED,
+                    fill=None,
+                    width=STROKE_WIDTH_PT,
+                    stroke_opacity=STROKE_OPACITY,
+                )
+            for rect in result.new_boxes:
+                pdf_rect = fitz.Rect(rect[0] / scale, rect[1] / scale, rect[2] / scale, rect[3] / scale)
+                new_page_out.draw_rect(
+                    pdf_rect,
+                    color=GREEN,
+                    fill=None,
+                    width=STROKE_WIDTH_PT,
+                    stroke_opacity=STROKE_OPACITY,
+                )
+
+            summaries.append(
+                PageDiffSummary(
+                    index=index + 1,
+                    alignment_method=result.alignment_method,
+                    old_boxes_raw=result.old_raw,
+                    old_boxes_merged=len(result.old_boxes),
+                    new_boxes_raw=result.new_raw,
+                    new_boxes_merged=len(result.new_boxes),
+                )
+            )
+
+    pdf_bytes = output_doc.tobytes()
+    output_doc.close()
+    logger.info("Generated diff with %d page pair(s).", len(summaries))
+    return ComparisonResult(pdf_bytes=pdf_bytes, summaries=summaries)
+
+
+def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessingResult:
+    """Process a pair of pages and return rectangles for old/new differences."""
+
+    old_gray = render_page_to_gray(old_page)
+    new_gray = render_page_to_gray(new_page)
+    aligned_new, alignment_method = align_images(old_gray, new_gray)
+
+    blur_old = cv2.GaussianBlur(old_gray, (BLUR_KSIZE, BLUR_KSIZE), 0)
+    blur_new = cv2.GaussianBlur(aligned_new, (BLUR_KSIZE, BLUR_KSIZE), 0)
+
+    diff = cv2.absdiff(blur_old, blur_new)
+    _, coarse = cv2.threshold(diff, THRESH, 255, cv2.THRESH_BINARY)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_KERNEL, MORPH_KERNEL))
+    coarse = cv2.morphologyEx(coarse, cv2.MORPH_CLOSE, kernel)
+    if DILATE_ITERS:
+        coarse = cv2.dilate(coarse, kernel, iterations=DILATE_ITERS)
+    if ERODE_ITERS:
+        coarse = cv2.erode(coarse, kernel, iterations=ERODE_ITERS)
+
+    refine = compute_refine_mask(blur_old, blur_new, kernel)
+    change_mask = coarse if refine is None else cv2.bitwise_and(coarse, refine)
+
+    _, old_ink = cv2.threshold(blur_old, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    _, new_ink = cv2.threshold(blur_new, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    ink_union = cv2.bitwise_or(old_ink, new_ink)
+    change_mask = cv2.bitwise_and(change_mask, ink_union)
+
+    old_regions = cv2.bitwise_and(change_mask, old_ink)
+    new_regions = cv2.bitwise_and(change_mask, new_ink)
+
+    old_filtered = extract_regions(old_regions, diff)
+    new_filtered = extract_regions(new_regions, diff)
+
+    old_boxes = merge_rectangles(old_filtered)
+    new_boxes = merge_rectangles(new_filtered)
+
+    return PageProcessingResult(
+        alignment_method=alignment_method,
+        old_boxes=old_boxes,
+        new_boxes=new_boxes,
+        old_raw=len(old_filtered),
+        new_raw=len(new_filtered),
+    )
+
+
+def compute_refine_mask(old_img: np.ndarray, new_img: np.ndarray, kernel: np.ndarray) -> Optional[np.ndarray]:
+    """Compute refinement mask using SSIM when available."""
+
+    if structural_similarity is None:
+        return None
+    try:
+        _, ssim_map = structural_similarity(old_img, new_img, full=True)
+    except Exception:  # pragma: no cover - optional dependency runtime errors
+        return None
+    diff_map = (1.0 - ssim_map) * 255.0
+    diff_map = np.clip(diff_map, 0, 255).astype(np.uint8)
+    _, refine = cv2.threshold(diff_map, THRESH, 255, cv2.THRESH_BINARY)
+    refine = cv2.morphologyEx(refine, cv2.MORPH_CLOSE, kernel)
+    return refine
+
+
+def extract_regions(mask: np.ndarray, diff_img: np.ndarray) -> List[Rect]:
+    """Extract filtered bounding boxes from a binary mask."""
+
+    if mask is None or not np.any(mask):
+        return []
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    height, width = mask.shape
+    boxes: List[Rect] = []
+
+    for label_index in range(1, num_labels):
+        x, y, w, h, area = stats[label_index]
+        if area < MIN_AREA or w < MIN_DIM or h < MIN_DIM:
+            continue
+
+        region_mask = labels == label_index
+        mean_diff = float(diff_img[region_mask].mean()) if np.any(region_mask) else 0.0
+        if mean_diff < MEAN_DIFF_MIN:
+            continue
+
+        fg_fraction = area / float(w * h) if w > 0 and h > 0 else 0.0
+        if fg_fraction < MIN_FORE_FRACTION:
+            continue
+
+        pad = max(PADDING_PX, int(min(w, h) * PADDING_FRAC))
+        x1 = max(0, x - pad)
+        y1 = max(0, y - pad)
+        x2 = min(width, x + w + pad)
+        y2 = min(height, y + h + pad)
+        boxes.append(apply_view_expand((x1, y1, x2, y2), width, height))
+
+    return boxes
+
+
+def apply_view_expand(rect: Rect, width: int, height: int) -> Rect:
+    """Apply visual padding expansion to a rectangle."""
+
+    x1, y1, x2, y2 = rect
+    x1 = max(0.0, float(x1))
+    y1 = max(0.0, float(y1))
+    x2 = min(float(width), float(x2))
+    y2 = min(float(height), float(y2))
+
+    cx = (x1 + x2) / 2.0
+    cy = (y1 + y2) / 2.0
+    half_w = max((x2 - x1) / 2.0, MIN_DIM / 2.0) * VIEW_EXPAND
+    half_h = max((y2 - y1) / 2.0, MIN_DIM / 2.0) * VIEW_EXPAND
+
+    expanded_x1 = max(0.0, cx - half_w)
+    expanded_y1 = max(0.0, cy - half_h)
+    expanded_x2 = min(float(width), cx + half_w)
+    expanded_y2 = min(float(height), cy + half_h)
+
+    return (expanded_x1, expanded_y1, expanded_x2, expanded_y2)
+
+
+def merge_rectangles(rectangles: Sequence[Rect]) -> List[Rect]:
+    """Merge overlapping or touching rectangles within a color set."""
+
+    rects = [tuple(rect) for rect in rectangles]
+    if not rects:
+        return []
+
+    merged: List[Rect] = list(rects)
+    changed = True
+    while changed:
+        changed = False
+        next_pass: List[Rect] = []
+        while merged:
+            current = merged.pop()
+            index = 0
+            while index < len(merged):
+                other = merged[index]
+                if rectangles_touch(current, other):
+                    current = (
+                        min(current[0], other[0]),
+                        min(current[1], other[1]),
+                        max(current[2], other[2]),
+                        max(current[3], other[3]),
+                    )
+                    merged.pop(index)
+                    changed = True
+                else:
+                    index += 1
+            next_pass.append(current)
+        merged = next_pass
+    merged.reverse()
+    return merged
+
+
+def rectangles_touch(a: Rect, b: Rect) -> bool:
+    """Return True if rectangles overlap or touch."""
+
+    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+
+def align_images(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndarray, str]:
+    """Align images using ECC with fallbacks."""
+
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, ECC_ITERS, ECC_EPS)
+    old_norm = old_img.astype(np.float32) / 255.0
+    new_norm = new_img.astype(np.float32) / 255.0
+
+    for warp_mode, name in ((cv2.MOTION_AFFINE, "affine"), (cv2.MOTION_EUCLIDEAN, "euclidean")):
+        warp_matrix = np.eye(2, 3, dtype=np.float32)
+        try:
+            cv2.findTransformECC(old_norm, new_norm, warp_matrix, warp_mode, criteria)
+        except cv2.error:
+            continue
+        aligned = cv2.warpAffine(
+            new_img,
+            warp_matrix,
+            (old_img.shape[1], old_img.shape[0]),
+            flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+            borderMode=cv2.BORDER_REFLECT,
+        )
+        return aligned, name
+
+    shift, _ = cv2.phaseCorrelate(old_norm, new_norm)
+    warp_matrix = np.array([[1.0, 0.0, shift[0]], [0.0, 1.0, shift[1]]], dtype=np.float32)
+    aligned = cv2.warpAffine(
+        new_img,
+        warp_matrix,
+        (old_img.shape[1], old_img.shape[0]),
+        flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_REFLECT,
+    )
+    return aligned, "phase_correlation"
+
+
+def configure_logging() -> None:
+    """Configure root logger for console output."""
+
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+        logger.addHandler(handler)
+    logger.propagate = False
+
+
+logger = logging.getLogger("compare_set")
+configure_logging()
 
 
 def main() -> None:
+    """Entry point for the application."""
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
