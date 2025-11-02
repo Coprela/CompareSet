@@ -1,28 +1,5 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.pyd
-
-# C extensions
-*.so
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# Virtual environments
-.venv/
-venv/
-
-# Environment variables
-.env
-
-# PyInstaller
-*.spec
-
-# Misc
+*.log
 .DS_Store
-node_modules/
-frontend/node_modules/
-frontend/dist/
+.env
