@@ -18,6 +18,38 @@ class AnnotationStyle:
     fill_opacity: float = 0.15
 
 
+def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
+    return max(minimum, min(value, maximum))
+
+
+def tint_color(color: tuple[float, float, float], *, blend: float = 0.6) -> tuple[float, float, float]:
+    """Blend an RGB colour with white to create a softer highlight fill."""
+
+    blend = _clamp(blend)
+    return tuple(_clamp(channel + (1.0 - channel) * blend) for channel in color)
+
+
+def make_annotation_style(
+    base_color: tuple[float, float, float],
+    *,
+    stroke_width: float,
+    fill_opacity: float,
+    fill_tint: float = 0.6,
+) -> AnnotationStyle:
+    """Create an annotation style using the given base colour for strokes.
+
+    The fill colour is automatically lightened to improve contrast while keeping
+    the semantic colour association (green for additions, red for removals).
+    """
+
+    return AnnotationStyle(
+        stroke_color=base_color,
+        stroke_width=stroke_width,
+        fill_color=tint_color(base_color, blend=fill_tint),
+        fill_opacity=fill_opacity,
+    )
+
+
 def annotate_pdf(
     result: DiffResult,
     *,
