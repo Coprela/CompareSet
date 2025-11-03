@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -50,6 +51,9 @@ VIEW_MAX_GROW = 24
 MEAN_DIFF_MIN = 14.0
 MEAN_TEXT_DIFF_MIN = 11.0
 MIN_FORE_FRACTION = 0.18
+WORD_IOU_MIN = 0.60
+BASELINE_DELTA_MAX_PX = 2
+ABSMEAN_MAX_UNCHANGED_TXT = 10.0
 EDGE_OVERLAP_MIN = 0.88
 LINE_MIN_LEN = 20
 ECC_EPS = 1e-4
@@ -69,6 +73,7 @@ else:  # pragma: no cover - optional dependency
     structural_similarity = None  # type: ignore
 
 Rect = Tuple[float, float, float, float]
+WordBox = Tuple[str, Rect, int]
 
 
 @dataclass
@@ -97,6 +102,71 @@ class ComparisonResult:
 
     pdf_bytes: bytes
     summaries: List[PageDiffSummary] = field(default_factory=list)
+
+
+def map_pdf_rect_to_pixels(rect: fitz.Rect, zoom: float) -> Tuple[int, int, int, int]:
+    """Map a PDF rectangle to pixel coordinates at the working DPI."""
+
+    bounds = getattr(map_pdf_rect_to_pixels, "_bounds", None)
+    page_width = page_height = None
+    if bounds is not None:
+        page_width, page_height = bounds
+
+    x0 = int(math.floor(rect.x0 * zoom))
+    y0 = int(math.floor(rect.y0 * zoom))
+    x1 = int(math.ceil(rect.x1 * zoom))
+    y1 = int(math.ceil(rect.y1 * zoom))
+
+    if page_width is not None and page_width > 0:
+        x0 = max(0, min(x0, page_width - 1))
+        x1 = max(x0 + 1, min(x1, page_width))
+    else:
+        x1 = max(x0 + 1, x1)
+
+    if page_height is not None and page_height > 0:
+        y0 = max(0, min(y0, page_height - 1))
+        y1 = max(y0 + 1, min(y1, page_height))
+    else:
+        y1 = max(y0 + 1, y1)
+
+    width = max(1, x1 - x0)
+    height = max(1, y1 - y0)
+    return x0, y0, width, height
+
+
+def words_to_pixel_boxes(doc_page: fitz.Page, zoom: float) -> List[WordBox]:
+    """Extract word boxes from a PDF page and convert them to pixel space."""
+
+    page_rect = doc_page.rect
+    page_width = int(round(page_rect.width * zoom))
+    page_height = int(round(page_rect.height * zoom))
+    results: List[WordBox] = []
+
+    setattr(map_pdf_rect_to_pixels, "_bounds", (max(1, page_width), max(1, page_height)))
+    try:
+        for entry in doc_page.get_text("words"):
+            if len(entry) < 5:
+                continue
+            x0, y0, x1, y1, word_text, *_ = entry
+            if not word_text:
+                continue
+            text = str(word_text).strip()
+            if not text:
+                continue
+            rect = fitz.Rect(float(x0), float(y0), float(x1), float(y1))
+            px, py, w_box, h_box = map_pdf_rect_to_pixels(rect, zoom)
+            if w_box <= 0 or h_box <= 0:
+                continue
+            bbox: Rect = (float(px), float(py), float(px + w_box), float(py + h_box))
+            baseline = py + h_box
+            if page_height > 0:
+                baseline = min(baseline, page_height - 1)
+            results.append((text, bbox, int(max(0, baseline))))
+    finally:
+        if hasattr(map_pdf_rect_to_pixels, "_bounds"):
+            delattr(map_pdf_rect_to_pixels, "_bounds")
+
+    return results
 
 
 class LogEmitter(QObject):
@@ -439,6 +509,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     _, preview_mask = cv2.threshold(preview_diff, 20, 255, cv2.THRESH_BINARY)
     nonzero_ratio = float(cv2.countNonZero(preview_mask)) / float(preview_mask.size or 1)
     if nonzero_ratio < 0.0005:
+        logger.info("unchanged-text suppressed: 0 on OLD, 0 on NEW")
         return PageProcessingResult(
             alignment_method="preview_skip",
             old_boxes=[],
@@ -477,6 +548,9 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     change_mask = cv2.bitwise_and(change_mask, ink_union)
 
     groups = prepare_page_text_groups(old_page, new_page, warp_matrix)
+    words_old = words_to_pixel_boxes(old_page, DPI / 72.0)
+    words_new_high = words_to_pixel_boxes(new_page, DPI_HIGH / 72.0)
+    words_new = align_word_boxes(words_new_high, warp_matrix)
 
     old_regions = cv2.bitwise_and(change_mask, old_ink)
     new_regions = cv2.bitwise_and(change_mask, new_ink)
@@ -508,6 +582,29 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
 
     old_boxes = merge_rectangles(old_filtered)
     new_boxes = merge_rectangles(new_filtered)
+
+    old_boxes, suppressed_old = suppress_unchanged_text(
+        old_boxes,
+        diff,
+        edge_old,
+        edge_new,
+        words_old,
+        words_new,
+    )
+    new_boxes, suppressed_new = suppress_unchanged_text(
+        new_boxes,
+        diff,
+        edge_old,
+        edge_new,
+        words_old,
+        words_new,
+    )
+
+    logger.info(
+        "unchanged-text suppressed: %d on OLD, %d on NEW",
+        suppressed_old,
+        suppressed_new,
+    )
 
     return PageProcessingResult(
         alignment_method=alignment_method,
@@ -684,6 +781,19 @@ def prepare_page_text_groups(old_page: fitz.Page, new_page: fitz.Page, warp_matr
         aligned_new.append(TextGroup(group.text, scaled))
 
     return PageTextGroups(old_groups=old_groups, new_groups=aligned_new)
+
+
+def align_word_boxes(words: Sequence[WordBox], warp_matrix: np.ndarray) -> List[WordBox]:
+    """Align new-page word boxes to the old page coordinate space."""
+
+    scale_factor = DPI / DPI_HIGH
+    aligned: List[WordBox] = []
+    for text, rect, _baseline in words:
+        transformed = transform_rect(rect, warp_matrix)
+        scaled = tuple(coord * scale_factor for coord in transformed)
+        baseline = int(round(max(0.0, scaled[3])))
+        aligned.append((text, (scaled[0], scaled[1], scaled[2], scaled[3]), baseline))
+    return aligned
 
 
 def extract_text_groups(page: fitz.Page, dpi: int) -> List[TextGroup]:
@@ -972,6 +1082,131 @@ def compute_edge_overlap(rect: Rect, component_mask: np.ndarray, edge_old: np.nd
         return 0.0
     intersection = int(np.count_nonzero(np.logical_and(old_edges, new_edges)))
     return float(intersection / union_count)
+
+
+def suppress_unchanged_text(
+    candidates: Sequence[Rect],
+    absdiff: np.ndarray,
+    edge_old: np.ndarray,
+    edge_new: np.ndarray,
+    words_old: Sequence[WordBox],
+    words_new: Sequence[WordBox],
+) -> Tuple[List[Rect], int]:
+    """Remove unchanged-text boxes based on word-level comparisons."""
+
+    if not candidates:
+        return [], 0
+
+    height, width = absdiff.shape[:2]
+
+    def clip_rect(rect: Rect) -> Rect:
+        x1 = max(0.0, min(rect[0], float(width)))
+        y1 = max(0.0, min(rect[1], float(height)))
+        x2 = max(x1, min(rect[2], float(width)))
+        y2 = max(y1, min(rect[3], float(height)))
+        return x1, y1, x2, y2
+
+    def clip_word(word: WordBox) -> Optional[WordBox]:
+        text, rect, baseline = word
+        clipped = clip_rect(rect)
+        if clipped[2] <= clipped[0] or clipped[3] <= clipped[1]:
+            return None
+        clamped_baseline = baseline
+        if height > 0:
+            clamped_baseline = min(max(0, baseline), height - 1)
+        return text, clipped, clamped_baseline
+
+    clipped_old = [cw for cw in (clip_word(word) for word in words_old) if cw is not None]
+    clipped_new = [cw for cw in (clip_word(word) for word in words_new) if cw is not None]
+
+    if not clipped_old or not clipped_new:
+        return list(candidates), 0
+
+    kept: List[Rect] = []
+    suppressed = 0
+    kernel = np.ones((3, 3), np.uint8)
+
+    for rect in candidates:
+        clipped = clip_rect(rect)
+        if clipped[2] <= clipped[0] or clipped[3] <= clipped[1]:
+            kept.append(rect)
+            continue
+
+        old_hits = [word for word in clipped_old if compute_iou(word[1], clipped) >= WORD_IOU_MIN]
+        if not old_hits:
+            kept.append(rect)
+            continue
+
+        new_hits = [word for word in clipped_new if compute_iou(word[1], clipped) >= WORD_IOU_MIN]
+        if not new_hits:
+            kept.append(rect)
+            continue
+
+        matches: dict[str, List[WordBox]] = {}
+        for word in new_hits:
+            matches.setdefault(word[0], []).append(word)
+
+        suppressed_here = False
+        mean_absdiff: Optional[float] = None
+        edge_overlap: Optional[float] = None
+        sample_text = ""
+
+        for old_word in old_hits:
+            candidates_new = matches.get(old_word[0])
+            if not candidates_new:
+                continue
+            for new_word in candidates_new:
+                baseline_delta = abs(old_word[2] - new_word[2])
+                if baseline_delta > BASELINE_DELTA_MAX_PX:
+                    continue
+                if mean_absdiff is None or edge_overlap is None:
+                    x1 = max(0, min(width, int(math.floor(clipped[0]))))
+                    y1 = max(0, min(height, int(math.floor(clipped[1]))))
+                    x2 = max(x1 + 1, min(width, int(math.ceil(clipped[2]))))
+                    y2 = max(y1 + 1, min(height, int(math.ceil(clipped[3]))))
+                    if x2 <= x1 or y2 <= y1:
+                        break
+                    roi = absdiff[y1:y2, x1:x2]
+                    mask = np.ones((roi.shape[0], roi.shape[1]), dtype=np.uint8) * 255
+                    eroded = cv2.erode(mask, kernel, iterations=1)
+                    if not np.any(eroded):
+                        eroded = mask
+                    mean_absdiff = float(cv2.mean(roi, mask=eroded)[0])
+
+                    old_edges = edge_old[y1:y2, x1:x2] > 0
+                    new_edges = edge_new[y1:y2, x1:x2] > 0
+                    union = np.logical_or(old_edges, new_edges)
+                    union_count = int(np.count_nonzero(union))
+                    if union_count == 0:
+                        edge_overlap = 0.0
+                    else:
+                        intersection = int(np.count_nonzero(np.logical_and(old_edges, new_edges)))
+                        edge_overlap = float(intersection / union_count)
+
+                if mean_absdiff is None or edge_overlap is None:
+                    continue
+
+                if mean_absdiff <= ABSMEAN_MAX_UNCHANGED_TXT and edge_overlap >= EDGE_OVERLAP_MIN:
+                    suppressed_here = True
+                    sample_text = old_word[0]
+                    break
+            if suppressed_here:
+                break
+
+        if suppressed_here:
+            suppressed += 1
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "unchanged-text veto: %r mean=%.2f overlap=%.3f",
+                    sample_text,
+                    mean_absdiff if mean_absdiff is not None else -1.0,
+                    edge_overlap if edge_overlap is not None else -1.0,
+                )
+            continue
+
+        kept.append(rect)
+
+    return kept, suppressed
 
 
 def apply_view_expand(rect: Rect, width: int, height: int, ink_mask: np.ndarray) -> Rect:
