@@ -54,7 +54,7 @@ EDGE_OVERLAP_MIN = 0.88
 LINE_MIN_LEN = 20
 ECC_EPS = 1e-4
 ECC_ITERS = 300
-STROKE_WIDTH_PT = 0.6
+STROKE_WIDTH_PT = 1.1
 STROKE_OPACITY = 0.55
 RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
@@ -312,6 +312,8 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
     output_doc = fitz.open()
     scale = DPI / 72.0
 
+    diff_found = False
+
     with fitz.open(old_path) as old_doc, fitz.open(new_path) as new_doc:
         page_pairs = min(old_doc.page_count, new_doc.page_count)
         if page_pairs == 0:
@@ -337,6 +339,7 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
                 if not result.old_boxes and not result.new_boxes:
                     logger.info("Page %d: No diffs detected.", index + 1)
                 else:
+                    diff_found = True
                     logger.info(
                         "Page %d OLD boxes: raw=%d merged=%d",
                         index + 1,
@@ -350,14 +353,29 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
                         len(result.new_boxes),
                     )
 
-            base_index = output_doc.page_count
-            if index < old_doc.page_count:
-                output_doc.insert_pdf(old_doc, from_page=index, to_page=index)
-            if index < new_doc.page_count:
-                output_doc.insert_pdf(new_doc, from_page=index, to_page=index)
+            old_insert_index: Optional[int] = None
+            new_insert_index: Optional[int] = None
 
-            if output_doc.page_count >= base_index + 1 and result.old_boxes:
-                old_page_out = output_doc.load_page(base_index)
+            if 0 <= index < old_doc.page_count:
+                old_insert_index = output_doc.page_count
+                output_doc.insert_pdf(
+                    old_doc,
+                    from_page=index,
+                    to_page=index,
+                    start_at=old_insert_index,
+                )
+
+            if 0 <= index < new_doc.page_count:
+                new_insert_index = output_doc.page_count
+                output_doc.insert_pdf(
+                    new_doc,
+                    from_page=index,
+                    to_page=index,
+                    start_at=new_insert_index,
+                )
+
+            if old_insert_index is not None and result.old_boxes:
+                old_page_out = output_doc.load_page(old_insert_index)
                 for rect in result.old_boxes:
                     pdf_rect = fitz.Rect(
                         rect[0] / scale,
@@ -373,8 +391,8 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
                         stroke_opacity=STROKE_OPACITY,
                     )
 
-            if output_doc.page_count >= base_index + 2 and result.new_boxes:
-                new_page_out = output_doc.load_page(base_index + 1)
+            if new_insert_index is not None and result.new_boxes:
+                new_page_out = output_doc.load_page(new_insert_index)
                 for rect in result.new_boxes:
                     pdf_rect = fitz.Rect(
                         rect[0] / scale,
@@ -401,9 +419,14 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
                 )
             )
 
+    if not diff_found:
+        logger.info("No diffs")
+
+    output_pages = output_doc.page_count
     pdf_bytes = output_doc.tobytes()
     output_doc.close()
     logger.info("Generated diff with %d page pair(s).", len(summaries))
+    logger.info("Output document pages: %d", output_pages)
     return ComparisonResult(pdf_bytes=pdf_bytes, summaries=summaries)
 
 
@@ -461,6 +484,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     old_filtered, old_raw = extract_regions(
         old_regions,
         diff,
+        old_low,
         old_ink,
         groups.old_groups,
         groups.new_groups,
@@ -472,6 +496,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     new_filtered, new_raw = extract_regions(
         new_regions,
         diff,
+        new_low,
         new_ink,
         groups.old_groups,
         groups.new_groups,
@@ -729,6 +754,7 @@ def transform_rect(rect: Rect, matrix: np.ndarray) -> Rect:
 def extract_regions(
     mask: np.ndarray,
     diff_img: np.ndarray,
+    base_img: np.ndarray,
     ink_mask: np.ndarray,
     old_groups: Sequence[TextGroup],
     new_groups: Sequence[TextGroup],
@@ -771,6 +797,17 @@ def extract_regions(
         component_mask = np.where(labels == label_idx, 255, 0).astype(np.uint8)
 
         raw_rect = (x, y, x + w_box, y + h_box)
+
+        region = base_img[y : y + h_box, x : x + w_box]
+        std_val = 0.0
+        if region.size:
+            _, stddev = cv2.meanStdDev(region)
+            std_val = float(stddev[0][0])
+
+        mean_val = cv2.mean(diff_img, mask=component_mask)[0]
+        if std_val < 2.0 and mean_val < MEAN_DIFF_MIN:
+            continue
+
         glyph_match = is_identical_text_region(
             raw_rect,
             old_groups,
@@ -783,8 +820,6 @@ def extract_regions(
         )
         if glyph_match:
             continue
-
-        mean_val = cv2.mean(diff_img, mask=component_mask)[0]
         line_region = cv2.bitwise_and(component_mask, line_boost)
         has_line_pixels = cv2.countNonZero(line_region) > 0
         line_evidence = False
@@ -810,6 +845,11 @@ def extract_regions(
             continue
         fore_fraction = float(cv2.countNonZero(foreground)) / float(area)
         if fore_fraction < MIN_FORE_FRACTION and not line_evidence:
+            continue
+
+        short_side = max(1, min(w_box, h_box))
+        aspect_ratio = max(w_box, h_box) / float(short_side)
+        if aspect_ratio >= 5.0 and not line_evidence and fore_fraction < MIN_FORE_FRACTION:
             continue
 
         padded_rect = (
