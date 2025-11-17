@@ -46,6 +46,8 @@ MIN_DIM = 2
 MIN_DIFF_AREA = 20
 MIN_LINE_LENGTH = 50
 MIN_LINE_ASPECT_RATIO = 5.0
+MERGE_IOU_THRESHOLD = 0.10
+MERGE_CENTER_DIST_FACTOR = 0.5
 PADDING_PX = 2
 PADDING_FRAC = 0.01
 VIEW_EXPAND = 1.04
@@ -67,12 +69,15 @@ RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
 DEBUG_DUMPS = False
 PREVIEW_DPI = 100
-MAX_CENTER_SHIFT_PX = 5.0
-SIZE_TOLERANCE = 0.30
-MIN_IOU_FOR_SAME = 0.20
+MAX_CENTER_SHIFT_PX = 10.0
+SIZE_TOLERANCE = 0.40
+MIN_IOU_FOR_SAME = 0.10
+MIN_PATCH_SSIM_FOR_SAME = 0.97
 DIMMING_ENABLED = True
 DIMMING_ALPHA = 0.4
 DIMMING_MODE = "dark"
+PATCH_PAD = 2
+DEBUG_MOVEMENT_SUPPRESSION = False
 
 
 _ssim_spec = util.find_spec("skimage.metrics")
@@ -580,12 +585,11 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     words_new = align_word_boxes(words_new_high, warp_matrix)
 
     detection_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    removed_regions = cv2.dilate(
-        cv2.bitwise_and(change_mask, removed_mask), detection_kernel, iterations=1
-    )
-    added_regions = cv2.dilate(
-        cv2.bitwise_and(change_mask, added_mask), detection_kernel, iterations=1
-    )
+    removed_detection = cv2.dilate(removed_mask, detection_kernel, iterations=1)
+    added_detection = cv2.dilate(added_mask, detection_kernel, iterations=1)
+
+    removed_regions = cv2.bitwise_and(change_mask, removed_detection)
+    added_regions = cv2.bitwise_and(change_mask, added_detection)
 
     old_filtered, old_raw = extract_regions(
         removed_regions,
@@ -612,8 +616,8 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         "new",
     )
 
-    old_boxes = merge_rectangles(old_filtered)
-    new_boxes = merge_rectangles(new_filtered)
+    old_boxes = merge_close_rectangles(merge_rectangles(old_filtered))
+    new_boxes = merge_close_rectangles(merge_rectangles(new_filtered))
 
     old_boxes, suppressed_old = suppress_unchanged_text(
         old_boxes,
@@ -633,7 +637,13 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     )
 
     old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
-    old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(old_boxes, new_boxes)
+    old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(
+        old_boxes, new_boxes, old_low, new_low
+    )
+
+    old_boxes, new_boxes, text_shift_suppressed = suppress_identical_text_pairs(
+        old_boxes, new_boxes, words_old, words_new
+    )
 
     logger.info(
         "unchanged-text suppressed: %d on OLD, %d on NEW",
@@ -644,6 +654,8 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         logger.info("overlap-pruned removals: %d", overlap_suppressed)
     if movement_suppressed:
         logger.info("movement-pruned pairs: %d", movement_suppressed)
+    if text_shift_suppressed:
+        logger.info("text-based movement suppression: %d", text_shift_suppressed)
 
     return PageProcessingResult(
         alignment_method=alignment_method,
@@ -1117,10 +1129,86 @@ def box_iou(a: Rect, b: Rect) -> float:
     return compute_iou(a, b)
 
 
+def compute_patch_similarity(
+    old_img: Optional[np.ndarray],
+    new_img: Optional[np.ndarray],
+    r_box: Rect,
+    a_box: Rect,
+    pad: int = PATCH_PAD,
+) -> float:
+    """Compute SSIM or correlation similarity between two patches.
+
+    Patches are taken from the aligned grayscale images. They are padded, resized to a
+    common size, normalized and compared. A return value of 1.0 means identical.
+    """
+
+    if old_img is None or new_img is None:
+        return 0.0
+
+    height, width = old_img.shape[:2]
+
+    def _clip(box: Rect) -> Tuple[int, int, int, int]:
+        x1 = max(0, int(math.floor(box[0] - pad)))
+        y1 = max(0, int(math.floor(box[1] - pad)))
+        x2 = min(width, int(math.ceil(box[2] + pad)))
+        y2 = min(height, int(math.ceil(box[3] + pad)))
+        x2 = max(x1 + 1, x2)
+        y2 = max(y1 + 1, y2)
+        return x1, y1, x2, y2
+
+    rx1, ry1, rx2, ry2 = _clip(r_box)
+    ax1, ay1, ax2, ay2 = _clip(a_box)
+
+    ref_patch = old_img[ry1:ry2, rx1:rx2]
+    new_patch = new_img[ay1:ay2, ax1:ax2]
+
+    if ref_patch.size == 0 or new_patch.size == 0:
+        return 0.0
+
+    target_w = max(ref_patch.shape[1], new_patch.shape[1])
+    target_h = max(ref_patch.shape[0], new_patch.shape[0])
+    target_w = max(1, target_w)
+    target_h = max(1, target_h)
+
+    if ref_patch.shape[1] != target_w or ref_patch.shape[0] != target_h:
+        ref_patch = cv2.resize(ref_patch, (target_w, target_h), interpolation=cv2.INTER_AREA)
+    if new_patch.shape[1] != target_w or new_patch.shape[0] != target_h:
+        new_patch = cv2.resize(new_patch, (target_w, target_h), interpolation=cv2.INTER_AREA)
+
+    ref_f = ref_patch.astype(np.float32) / 255.0
+    new_f = new_patch.astype(np.float32) / 255.0
+
+    if structural_similarity is not None:
+        try:
+            score = structural_similarity(ref_f, new_f)
+            return float(score)
+        except Exception:
+            pass
+
+    ref_mean = ref_f.mean()
+    new_mean = new_f.mean()
+    ref_std = ref_f.std()
+    new_std = new_f.std()
+    if ref_std == 0.0 or new_std == 0.0:
+        return 0.0
+    norm_ref = (ref_f - ref_mean) / ref_std
+    norm_new = (new_f - new_mean) / new_std
+    corr = float(np.mean(norm_ref * norm_new))
+    return max(0.0, min(1.0, 0.5 + 0.5 * corr))
+
+
 def suppress_moved_pairs(
-    removed_boxes: Sequence[Rect], added_boxes: Sequence[Rect]
+    removed_boxes: Sequence[Rect],
+    added_boxes: Sequence[Rect],
+    old_img: Optional[np.ndarray] = None,
+    new_img: Optional[np.ndarray] = None,
 ) -> Tuple[List[Rect], List[Rect], int]:
-    """Drop pairs of boxes that represent the same object shifted slightly."""
+    """Drop pairs of boxes that represent the same object shifted slightly.
+
+    A geometric filter selects candidate pairs, and a patch similarity score confirms
+    that their content is effectively identical, suppressing false positives from
+    slight movement.
+    """
 
     if not removed_boxes or not added_boxes:
         return list(removed_boxes), list(added_boxes), 0
@@ -1156,6 +1244,85 @@ def suppress_moved_pairs(
 
             iou = box_iou(rbox, abox)
             if iou < MIN_IOU_FOR_SAME:
+                continue
+
+            similarity = compute_patch_similarity(old_img, new_img, rbox, abox, PATCH_PAD)
+            if similarity < MIN_PATCH_SSIM_FOR_SAME:
+                continue
+
+            if DEBUG_MOVEMENT_SUPPRESSION:
+                logger.info(
+                    "movement suppression candidate: shift=%.2f sim=%.3f size=(%.1f,%.1f)/(%.1f,%.1f)",
+                    shift,
+                    similarity,
+                    rw,
+                    rh,
+                    aw,
+                    ah,
+                )
+
+            matched_removed.add(ridx)
+            matched_added.add(aidx)
+            suppressed += 1
+            break
+
+    kept_removed = [box for idx, box in enumerate(removed_boxes) if idx not in matched_removed]
+    kept_added = [box for idx, box in enumerate(added_boxes) if idx not in matched_added]
+    return kept_removed, kept_added, suppressed
+
+
+def suppress_identical_text_pairs(
+    removed_boxes: Sequence[Rect],
+    added_boxes: Sequence[Rect],
+    words_old: Sequence[WordBox],
+    words_new: Sequence[WordBox],
+) -> Tuple[List[Rect], List[Rect], int]:
+    """Suppress pairs where PDF text content is identical but moved slightly."""
+
+    if not removed_boxes or not added_boxes:
+        return list(removed_boxes), list(added_boxes), 0
+
+    suppressed = 0
+    matched_removed: set[int] = set()
+    matched_added: set[int] = set()
+
+    def _normalize_text(text: str) -> str:
+        return " ".join(text.lower().strip().split())
+
+    def _collect_text(words: Sequence[WordBox], rect: Rect) -> str:
+        collected = [w[0] for w in words if compute_iou(w[1], rect) >= WORD_IOU_MIN]
+        return _normalize_text(" ".join(sorted(collected))) if collected else ""
+
+    for ridx, rbox in enumerate(removed_boxes):
+        if ridx in matched_removed:
+            continue
+        rw = rbox[2] - rbox[0]
+        rh = rbox[3] - rbox[1]
+        r_center = box_center(rbox)
+
+        for aidx, abox in enumerate(added_boxes):
+            if aidx in matched_added:
+                continue
+
+            aw = abox[2] - abox[0]
+            ah = abox[3] - abox[1]
+            if rw <= 0 or rh <= 0 or aw <= 0 or ah <= 0:
+                continue
+            if abs(rw - aw) / max(rw, aw) > SIZE_TOLERANCE:
+                continue
+            if abs(rh - ah) / max(rh, ah) > SIZE_TOLERANCE:
+                continue
+
+            a_center = box_center(abox)
+            shift = math.hypot(r_center[0] - a_center[0], r_center[1] - a_center[1])
+            if shift > MAX_CENTER_SHIFT_PX:
+                continue
+
+            old_text = _collect_text(words_old, rbox)
+            new_text = _collect_text(words_new, abox)
+            if not old_text or not new_text:
+                continue
+            if old_text != new_text:
                 continue
 
             matched_removed.add(ridx)
@@ -1458,6 +1625,58 @@ def merge_rectangles(rectangles: Sequence[Rect]) -> List[Rect]:
         merged = next_pass
     merged.reverse()
     return merged
+
+
+def merge_close_rectangles(rectangles: Sequence[Rect]) -> List[Rect]:
+    """Group rectangles that are close enough to describe one dimension cluster."""
+
+    rects = list(rectangles)
+    if not rects:
+        return []
+
+    merged: List[Rect] = []
+    used: set[int] = set()
+
+    for idx, base in enumerate(rects):
+        if idx in used:
+            continue
+        cluster = [base]
+        used.add(idx)
+        changed = True
+        while changed:
+            changed = False
+            cluster_box = (
+                min(r[0] for r in cluster),
+                min(r[1] for r in cluster),
+                max(r[2] for r in cluster),
+                max(r[3] for r in cluster),
+            )
+            cluster_cx, cluster_cy = box_center(cluster_box)
+            cluster_span = (cluster_box[2] - cluster_box[0] + cluster_box[3] - cluster_box[1]) / 2.0
+            for other_idx, other in enumerate(rects):
+                if other_idx in used:
+                    continue
+                if rectangles_touch(cluster_box, other) or compute_iou(cluster_box, other) >= MERGE_IOU_THRESHOLD:
+                    used.add(other_idx)
+                    cluster.append(other)
+                    changed = True
+                    continue
+                ocx, ocy = box_center(other)
+                dist = math.hypot(cluster_cx - ocx, cluster_cy - ocy)
+                other_span = (other[2] - other[0] + other[3] - other[1]) / 2.0
+                if dist <= MERGE_CENTER_DIST_FACTOR * max(cluster_span, other_span):
+                    used.add(other_idx)
+                    cluster.append(other)
+                    changed = True
+        merged_box = (
+            min(r[0] for r in cluster),
+            min(r[1] for r in cluster),
+            max(r[2] for r in cluster),
+            max(r[3] for r in cluster),
+        )
+        merged.append(merged_box)
+
+    return merge_rectangles(merged)
 
 
 def rectangles_touch(a: Rect, b: Rect) -> bool:
