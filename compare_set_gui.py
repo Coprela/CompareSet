@@ -144,6 +144,15 @@ def make_long_path(path: str) -> str:
     if abs_path.startswith("\\\\?\\"):
         return abs_path
 
+    if abs_path.startswith("\\\\"):
+        # UNC paths must use the special ``\\\\?\\UNC`` prefix to remain valid.
+        # Simply pre-pending ``\\\\?\\`` would yield an invalid path such as
+        # ``\\\\?\\server`` which Windows rejects (manifesting as ``\\`` when
+        # ``os.makedirs`` recurses). By swapping the leading ``\\`` for
+        # ``\\\\?\\UNC`` the resulting path stays usable while keeping long-path
+        # support enabled. Example: ``\\\\server\\share`` -> ``\\\\?\\UNC\\server\\share``.
+        return "\\\\?\\UNC" + abs_path[1:]
+
     return "\\\\?\\" + abs_path
 
 
