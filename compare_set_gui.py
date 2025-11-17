@@ -8,6 +8,7 @@ import math
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -25,11 +26,13 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -38,6 +41,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QProgressBar,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -295,6 +300,7 @@ def get_or_create_user_settings(username: str) -> Dict[str, str]:
 def update_user_settings(username: str, **kwargs: str) -> None:
     """Update stored settings for a user."""
 
+    ensure_user_settings_db_initialized()
     allowed_fields = {"language"}
     updates = {key: value for key, value in kwargs.items() if key in allowed_fields}
     if not updates:
@@ -417,6 +423,42 @@ def build_output_filename(old_path: Path) -> str:
     base_name = old_path.stem or old_path.name
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return f"ECR-{base_name}_{timestamp}.pdf"
+
+
+def parse_result_filename(path: Path) -> Optional[Tuple[str, datetime]]:
+    """Parse a result PDF filename into its base name and timestamp."""
+
+    stem = path.stem
+    if not stem.startswith("ECR-"):
+        return None
+    try:
+        base_and_timestamp = stem[4:]
+        base_name, timestamp_text = base_and_timestamp.rsplit("_", 1)
+    except ValueError:
+        return None
+    try:
+        timestamp = datetime.strptime(timestamp_text, "%Y%m%d-%H%M%S")
+    except ValueError:
+        return None
+    return base_name, timestamp
+
+
+def open_with_default_application(path: str) -> None:
+    """Open a file using the operating system default application."""
+
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except Exception:
+        QMessageBox.warning(
+            None,
+            "Compare SET",
+            "Unable to open the selected file with the default application.",
+        )
 
 
 def map_pdf_rect_to_pixels(rect: fitz.Rect, zoom: Zoom) -> Tuple[int, int, int, int]:
@@ -553,6 +595,152 @@ class CompareWorker(QObject):
         self.progress.emit(page_index, total_pages)
 
 
+class HistoryDialog(QDialog):
+    """Dialog showing previous comparisons for the current user."""
+
+    def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.username = username
+        self.user_results_dir = os.path.join(RESULTS_ROOT, username)
+        self.user_logs_dir = os.path.join(LOGS_ROOT, username)
+        self.setWindowTitle("My History")
+
+        layout = QVBoxLayout(self)
+        self.info_label = QLabel()
+        layout.addWidget(self.info_label)
+
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Date/Time", "Base name", "File name", "Actions"])
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        layout.addWidget(self.table)
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.accept)
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(close_button)
+        layout.addLayout(button_row)
+
+        self.refresh_history()
+
+    def refresh_history(self) -> None:
+        entries = self._collect_entries()
+        self.table.setRowCount(len(entries))
+
+        if not entries:
+            self.info_label.setText("No previous comparisons found.")
+        else:
+            self.info_label.setText(f"Showing {len(entries)} result(s) for {self.username}.")
+
+        for row_index, entry in enumerate(entries):
+            timestamp_item = QTableWidgetItem(entry["display_time"])
+            timestamp_item.setData(Qt.UserRole, entry["timestamp"])
+            self.table.setItem(row_index, 0, timestamp_item)
+            self.table.setItem(row_index, 1, QTableWidgetItem(entry["base_name"]))
+            self.table.setItem(row_index, 2, QTableWidgetItem(entry["filename"]))
+
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(0, 0, 0, 0)
+            view_button = QPushButton("View")
+            view_button.clicked.connect(
+                lambda _=False, p=entry["path"]: open_with_default_application(p)
+            )
+            export_button = QPushButton("Export")
+            export_button.clicked.connect(
+                lambda _=False, p=entry["path"], fn=entry["filename"]: self.export_result(p, fn)
+            )
+            action_layout.addWidget(view_button)
+            action_layout.addWidget(export_button)
+
+            if entry.get("log_path"):
+                log_button = QPushButton("View log")
+                log_button.clicked.connect(
+                    lambda _=False, lp=entry["log_path"]: self.view_log(lp)
+                )
+                action_layout.addWidget(log_button)
+
+            action_layout.addStretch()
+            self.table.setCellWidget(row_index, 3, action_widget)
+
+    def _collect_entries(self) -> List[Dict[str, Union[str, datetime]]]:
+        if not os.path.exists(self.user_results_dir):
+            return []
+
+        entries: List[Dict[str, Union[str, datetime]]] = []
+        for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
+            parsed = parse_result_filename(pdf_path)
+            if not parsed:
+                continue
+            base_name, timestamp = parsed
+            log_name = f"ECR-{base_name}_{timestamp.strftime('%Y%m%d-%H%M%S')}_{self.username}.log"
+            log_path = Path(self.user_logs_dir) / log_name
+            entries.append(
+                {
+                    "base_name": base_name,
+                    "timestamp": timestamp,
+                    "display_time": timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                    "filename": pdf_path.name,
+                    "path": str(pdf_path),
+                    "log_path": str(log_path) if log_path.exists() else "",
+                }
+            )
+
+        entries.sort(key=lambda item: item["timestamp"], reverse=True)
+        return entries
+
+    def export_result(self, source_path: str, filename: str) -> None:
+        target_path, _ = QFileDialog.getSaveFileName(
+            self, "Save As", filename, "PDF Files (*.pdf)"
+        )
+        if not target_path:
+            return
+        try:
+            shutil.copyfile(source_path, target_path)
+            QMessageBox.information(
+                self,
+                "Compare SET",
+                f"File exported to:\n{target_path}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Compare SET", f"Unable to export file:\n{exc}")
+
+    def view_log(self, log_path: str) -> None:
+        if not log_path or not os.path.exists(log_path):
+            QMessageBox.information(self, "Compare SET", "Log file not found.")
+            return
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as handle:
+                content = handle.read()
+        except Exception as exc:
+            QMessageBox.warning(self, "Compare SET", f"Unable to read log:\n{exc}")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Comparison Log")
+        layout = QVBoxLayout(dialog)
+        text_view = QTextEdit()
+        text_view.setReadOnly(True)
+        text_view.setPlainText(content)
+        layout.addWidget(text_view)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(close_button)
+        layout.addLayout(button_row)
+        dialog.resize(600, 400)
+        dialog.exec()
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -588,6 +776,8 @@ class MainWindow(QMainWindow):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.request_cancel)
+        self.history_button = QPushButton("My History")
+        self.history_button.clicked.connect(self.open_history)
 
         self.language_combo = QComboBox()
         self.language_combo.addItems(["pt-BR", "en-US"])
@@ -633,6 +823,7 @@ class MainWindow(QMainWindow):
         main_layout.addSpacing(4)
 
         button_layout = QHBoxLayout()
+        button_layout.addWidget(self.history_button)
         button_layout.addStretch()
         button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.compare_button)
@@ -778,6 +969,10 @@ class MainWindow(QMainWindow):
 
     def apply_language_setting(self) -> None:
         self.status_label.setText(f"Ready (Language: {self.current_language})")
+
+    def open_history(self) -> None:
+        dialog = HistoryDialog(self.username, self)
+        dialog.exec()
 
     def _build_admin_panel(self, parent_layout: QVBoxLayout) -> None:
         self.admin_group = QGroupBox("Admin - User Management")
