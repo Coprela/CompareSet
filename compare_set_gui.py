@@ -136,6 +136,14 @@ def make_long_path(path: str) -> str:
     abs_path = os.path.abspath(path)
     if abs_path.startswith("\\\\?\\"):
         return abs_path
+
+    # UNC paths must use the ``\\\\?\\UNC`` prefix to remain valid when expanded
+    # to the Windows long path format (e.g. ``\\\\Server\\Share`` ->
+    # ``\\\\?\\UNC\\Server\\Share``). Without this normalization the doubled
+    # backslashes produce ``\\\\`` which triggers ``WinError 123``.
+    if abs_path.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_path.lstrip("\\")
+
     return "\\\\?\\" + abs_path
 
 
