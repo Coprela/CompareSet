@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import util
@@ -105,15 +106,21 @@ MAX_CANDIDATES_PER_REMOVED = 5
 MAX_BOXES_FOR_MOVEMENT_SUPPRESSION = 1500
 PATCH_SIM_SIZE = 64
 
+MAX_COMPONENTS_PER_PAGE = 2000
+MIN_COMPONENT_AREA = 10
+LINE_LENGTH_THRESHOLD = 30
+
 
 SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
 DATA_ROOT = os.path.join(SERVER_ROOT, "Data")
 RESULTS_ROOT = os.path.join(DATA_ROOT, "Results")
 LOGS_ROOT = os.path.join(DATA_ROOT, "Logs")
 CONFIG_ROOT = os.path.join(DATA_ROOT, "Config")
+RELEASED_ROOT = os.path.join(DATA_ROOT, "Released")
 
 USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
 USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
+RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
 
 
 _ssim_spec = util.find_spec("skimage.metrics")
@@ -137,13 +144,6 @@ def make_long_path(path: str) -> str:
     if abs_path.startswith("\\\\?\\"):
         return abs_path
 
-    # UNC paths must use the ``\\\\?\\UNC`` prefix to remain valid when expanded
-    # to the Windows long path format (e.g. ``\\\\Server\\Share`` ->
-    # ``\\\\?\\UNC\\Server\\Share``). Without this normalization the doubled
-    # backslashes produce ``\\\\`` which triggers ``WinError 123``.
-    if abs_path.startswith("\\\\"):
-        return "\\\\?\\UNC\\" + abs_path.lstrip("\\")
-
     return "\\\\?\\" + abs_path
 
 
@@ -156,7 +156,7 @@ def get_current_username() -> str:
 def ensure_server_directories() -> None:
     """Ensure all shared directories exist."""
 
-    for path in (DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, CONFIG_ROOT):
+    for path in (DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, CONFIG_ROOT, RELEASED_ROOT):
         os.makedirs(make_long_path(path), exist_ok=True)
 
 
@@ -669,7 +669,7 @@ class HistoryDialog(QDialog):
             action_layout.addWidget(view_button)
             action_layout.addWidget(export_button)
 
-            if entry.get("log_path"):
+            if entry.get("log_path") and getattr(self.parent(), "role", "") == "admin":
                 log_button = QPushButton("View log")
                 log_button.clicked.connect(
                     lambda _=False, lp=entry["log_path"]: self.view_log(lp)
@@ -749,6 +749,40 @@ class HistoryDialog(QDialog):
         dialog.exec()
 
 
+class SettingsDialog(QDialog):
+    """Modal dialog to edit per-user settings."""
+
+    def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.username = username
+        self.setWindowTitle("Settings")
+
+        self.language_combo = QComboBox()
+        self.language_combo.addItems(["pt-BR", "en-US"])
+
+        layout = QFormLayout(self)
+        layout.addRow("Language", self.language_combo)
+
+        button_row = QHBoxLayout()
+        ok_button = QPushButton("OK")
+        cancel_button = QPushButton("Cancel")
+        ok_button.clicked.connect(self.accept)
+        cancel_button.clicked.connect(self.reject)
+        button_row.addStretch()
+        button_row.addWidget(cancel_button)
+        button_row.addWidget(ok_button)
+        layout.addRow(button_row)
+
+    def load(self) -> None:
+        settings = get_or_create_user_settings(self.username)
+        language = settings.get("language", "pt-BR")
+        if language in {"pt-BR", "en-US"}:
+            self.language_combo.setCurrentText(language)
+
+    def save(self) -> None:
+        update_user_settings(self.username, language=self.language_combo.currentText())
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -758,7 +792,12 @@ class MainWindow(QMainWindow):
         self.role = role
         self.user_settings = user_settings
         self.current_language = user_settings.get("language", "pt-BR")
+        self.last_browse_dir: Optional[str] = None
         self.setWindowTitle("Compare SET")
+
+        settings_menu = self.menuBar().addMenu("Settings")
+        open_settings_action = settings_menu.addAction("Preferences…")
+        open_settings_action.triggered.connect(self.open_settings_dialog)
 
         self._log_emitter = LogEmitter()
         self._log_handler = QtLogHandler(self._log_emitter)
@@ -786,12 +825,6 @@ class MainWindow(QMainWindow):
         self.cancel_button.clicked.connect(self.request_cancel)
         self.history_button = QPushButton("My History")
         self.history_button.clicked.connect(self.open_history)
-
-        self.language_combo = QComboBox()
-        self.language_combo.addItems(["pt-BR", "en-US"])
-        if self.current_language in {"pt-BR", "en-US"}:
-            self.language_combo.setCurrentText(self.current_language)
-        self.language_combo.currentTextChanged.connect(self.on_language_changed)
 
         self.admin_group: Optional[QGroupBox] = None
         self.user_list: Optional[QListWidget] = None
@@ -823,13 +856,6 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(file_layout)
         main_layout.addSpacing(8)
 
-        language_layout = QHBoxLayout()
-        language_layout.addWidget(QLabel("Language"))
-        language_layout.addWidget(self.language_combo)
-        language_layout.addStretch()
-        main_layout.addLayout(language_layout)
-        main_layout.addSpacing(4)
-
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.history_button)
         button_layout.addStretch()
@@ -841,7 +867,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.status_label)
         if self.role == "admin":
             self._build_admin_panel(main_layout)
-        main_layout.addWidget(self.log_view)
+            main_layout.addWidget(self.log_view)
 
         self.apply_language_setting()
         self.setCentralWidget(central_widget)
@@ -853,9 +879,13 @@ class MainWindow(QMainWindow):
         self.log_view.ensureCursorVisible()
 
     def select_file(self, target: QLineEdit) -> None:
-        selected, _ = QFileDialog.getOpenFileName(self, "Select PDF", str(Path.home()), "PDF Files (*.pdf)")
+        start_dir = self.last_browse_dir or str(Path.home())
+        selected, _ = QFileDialog.getOpenFileName(
+            self, "Select PDF", start_dir, "PDF Files (*.pdf)"
+        )
         if selected:
             target.setText(selected)
+            self.last_browse_dir = os.path.dirname(selected)
 
     @Slot()
     def request_cancel(self) -> None:
@@ -907,14 +937,7 @@ class MainWindow(QMainWindow):
         self.toggle_controls(True)
         self.status_label.setText("Comparison complete.")
         self.cancel_button.setEnabled(False)
-        logger.info("Comparison finished. Preparing save dialog.")
-
-        base_path = self._last_old_path
-        default_path = (
-            base_path.parent / build_output_filename(base_path)
-            if base_path is not None
-            else Path(build_output_filename(Path("CompareSet")))
-        )
+        logger.info("Comparison finished.")
         if result.server_result_path:
             logger.info("Server result stored at %s", result.server_result_path)
         else:
@@ -924,19 +947,12 @@ class MainWindow(QMainWindow):
                 "Result could not be saved to the server. Please contact an administrator.",
             )
 
-        save_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Comparison", str(default_path), "PDF Files (*.pdf)"
-        )
-        if save_path:
-            if result.server_result_path:
-                shutil.copyfile(result.server_result_path, save_path)
-            else:
-                with open(save_path, "wb") as output_file:
-                    output_file.write(result.pdf_bytes)
-            logger.info("Saved diff to %s", save_path)
-            QMessageBox.information(self, "Compare SET", f"Comparison saved to:\n{save_path}")
-        else:
-            logger.info("Save dialog cancelled by user.")
+        if result.server_result_path:
+            QMessageBox.information(
+                self,
+                "Compare SET",
+                f"Comparison stored on server:\n{result.server_result_path}",
+            )
 
         self._worker = None
         self._thread = None
@@ -982,9 +998,23 @@ class MainWindow(QMainWindow):
         dialog = HistoryDialog(self.username, self)
         dialog.exec()
 
+    def open_settings_dialog(self) -> None:
+        dialog = SettingsDialog(self.username, self)
+        dialog.load()
+        if dialog.exec() == QDialog.Accepted:
+            dialog.save()
+            self.current_language = dialog.language_combo.currentText()
+            self.user_settings["language"] = self.current_language
+            self.apply_language_setting()
+
     def _build_admin_panel(self, parent_layout: QVBoxLayout) -> None:
         self.admin_group = QGroupBox("Admin - User Management")
         admin_layout = QVBoxLayout(self.admin_group)
+
+        self.admin_search_input = QLineEdit()
+        self.admin_search_input.setPlaceholderText("Search username…")
+        self.admin_search_input.textChanged.connect(self.refresh_user_list)
+        admin_layout.addWidget(self.admin_search_input)
 
         self.user_list = QListWidget()
         self.user_list.currentItemChanged.connect(self.on_user_selected)
@@ -1024,7 +1054,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Admin", f"Could not load users:\n{exc}")
             return
         self.user_list.clear()
+        search_text = (self.admin_search_input.text() or "").lower().strip()
         for user in users:
+            if search_text and search_text not in user.get("username", "").lower():
+                continue
             status = "Active" if user.get("is_active") else "Inactive"
             item = QListWidgetItem(f"{user['username']} - {user['role']} ({status})")
             item.setData(Qt.UserRole, user)
@@ -1205,23 +1238,30 @@ def run_comparison(
                 old_insert_index: Optional[int] = None
                 new_insert_index: Optional[int] = None
 
-                if 0 <= index < old_doc.page_count:
-                    old_insert_index = output_doc.page_count
-                    output_doc.insert_pdf(
-                        old_doc,
-                        from_page=index,
-                        to_page=index,
-                        start_at=old_insert_index,
-                    )
+                try:
+                    if 0 <= index < old_doc.page_count:
+                        old_insert_index = output_doc.page_count
+                        output_doc.insert_pdf(
+                            old_doc,
+                            from_page=index,
+                            to_page=min(index, old_doc.page_count - 1),
+                            start_at=old_insert_index,
+                        )
 
-                if 0 <= index < new_doc.page_count:
-                    new_insert_index = output_doc.page_count
-                    output_doc.insert_pdf(
-                        new_doc,
-                        from_page=index,
-                        to_page=index,
-                        start_at=new_insert_index,
+                    if 0 <= index < new_doc.page_count:
+                        new_insert_index = output_doc.page_count
+                        output_doc.insert_pdf(
+                            new_doc,
+                            from_page=index,
+                            to_page=min(index, new_doc.page_count - 1),
+                            start_at=new_insert_index,
+                        )
+                except IndexError:
+                    write_log(
+                        f"[Page {index + 1}] Insert PDF failed due to invalid page range"
                     )
+                    logger.exception("Insert PDF failed")
+                    continue
 
                 write_log(f"[Page {index + 1}] Spotlight rendering")
                 if old_insert_index is not None and result.old_boxes:
@@ -1294,6 +1334,19 @@ def run_comparison(
         exc_text = traceback.format_exc()
         write_log("Exception during comparison:")
         write_log(exc_text)
+
+        try:
+            error_dir = os.path.join(LOGS_ROOT, "Error")
+            os.makedirs(make_long_path(error_dir), exist_ok=True)
+            base_name = old_path.stem or old_path.name
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            username = get_current_username()
+            error_filename = f"ECR_ERROR-{base_name}_{timestamp}_{username}.log"
+            error_path = make_long_path(os.path.join(error_dir, error_filename))
+            if LOG_FILE and os.path.exists(LOG_FILE):
+                shutil.copyfile(LOG_FILE, error_path)
+        except Exception:
+            pass
         raise
 
 
@@ -1860,9 +1913,9 @@ def extract_regions(
 
     kernel = np.ones((3, 3), np.uint8)
     indices = list(range(1, num_labels))
-    if len(indices) > 1500:
+    if len(indices) > MAX_COMPONENTS_PER_PAGE:
         indices.sort(key=lambda idx: stats[idx, cv2.CC_STAT_AREA], reverse=True)
-        kept = indices[:400]
+        kept = indices[:MAX_COMPONENTS_PER_PAGE]
         logger.info(
             "%s regions truncated: kept %d of %d components", label, len(kept), len(indices)
         )
@@ -1875,13 +1928,13 @@ def extract_regions(
         h_box = stats[label_idx, cv2.CC_STAT_HEIGHT]
 
         area = w_box * h_box
-        aspect_ratio = max(w_box, h_box) / float(max(1, min(w_box, h_box)))
         longest_side = max(w_box, h_box)
+        aspect_ratio = longest_side / float(max(1, min(w_box, h_box)))
         is_thin_line = (
             aspect_ratio >= MIN_LINE_ASPECT_RATIO and longest_side >= MIN_LINE_LENGTH
         )
 
-        if (area < MIN_DIFF_AREA and not is_thin_line) or w_box < MIN_DIM or h_box < MIN_DIM:
+        if (area < MIN_COMPONENT_AREA and longest_side < LINE_LENGTH_THRESHOLD) or w_box < MIN_DIM or h_box < MIN_DIM:
             continue
 
         component_mask = np.where(labels == label_idx, 255, 0).astype(np.uint8)
