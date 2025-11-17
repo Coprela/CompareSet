@@ -42,8 +42,10 @@ THRESH = 28
 MORPH_KERNEL = 3
 DILATE_ITERS = 2
 ERODE_ITERS = 1
-MIN_AREA = 36
 MIN_DIM = 2
+MIN_DIFF_AREA = 20
+MIN_LINE_LENGTH = 50
+MIN_LINE_ASPECT_RATIO = 5.0
 PADDING_PX = 2
 PADDING_FRAC = 0.01
 VIEW_EXPAND = 1.04
@@ -65,6 +67,12 @@ RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
 DEBUG_DUMPS = False
 PREVIEW_DPI = 100
+MAX_CENTER_SHIFT_PX = 5.0
+SIZE_TOLERANCE = 0.30
+MIN_IOU_FOR_SAME = 0.20
+DIMMING_ENABLED = True
+DIMMING_ALPHA = 0.4
+DIMMING_MODE = "dark"
 
 
 _ssim_spec = util.find_spec("skimage.metrics")
@@ -447,6 +455,7 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 
             if old_insert_index is not None and result.old_boxes:
                 old_page_out = output_doc.load_page(old_insert_index)
+                apply_dimming_overlay(old_page_out, result.old_boxes, scale)
                 for rect in result.old_boxes:
                     pdf_rect = fitz.Rect(
                         rect[0] / scale,
@@ -464,6 +473,7 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 
             if new_insert_index is not None and result.new_boxes:
                 new_page_out = output_doc.load_page(new_insert_index)
+                apply_dimming_overlay(new_page_out, result.new_boxes, scale)
                 for rect in result.new_boxes:
                     pdf_rect = fitz.Rect(
                         rect[0] / scale,
@@ -548,10 +558,20 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     _, old_ink = cv2.threshold(blur_old, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     _, new_ink = cv2.threshold(blur_new, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
+    old_bin = (old_ink > 0).astype(np.uint8)
+    new_bin = (new_ink > 0).astype(np.uint8)
+
+    removed_mask = np.where(np.logical_and(old_bin == 1, new_bin == 0), 255, 0).astype(np.uint8)
+    added_mask = np.where(np.logical_and(new_bin == 1, old_bin == 0), 255, 0).astype(np.uint8)
+
     ink_union = cv2.bitwise_or(old_ink, new_ink)
     change_mask = cv2.bitwise_and(change_mask, ink_union)
 
-    # Ensure thin line work is not suppressed by intensity gating.
+    # Ensure thin line work is not suppressed by intensity gating and preserve added / removed ink explicitly.
+    change_mask = cv2.bitwise_or(
+        change_mask,
+        cv2.bitwise_or(removed_mask, added_mask),
+    )
     change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
 
     groups = prepare_page_text_groups(old_page, new_page, warp_matrix)
@@ -559,11 +579,16 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     words_new_high = words_to_pixel_boxes(new_page, DPI_HIGH / 72.0)
     words_new = align_word_boxes(words_new_high, warp_matrix)
 
-    old_regions = cv2.bitwise_and(change_mask, old_ink)
-    new_regions = cv2.bitwise_and(change_mask, new_ink)
+    detection_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    removed_regions = cv2.dilate(
+        cv2.bitwise_and(change_mask, removed_mask), detection_kernel, iterations=1
+    )
+    added_regions = cv2.dilate(
+        cv2.bitwise_and(change_mask, added_mask), detection_kernel, iterations=1
+    )
 
     old_filtered, old_raw = extract_regions(
-        old_regions,
+        removed_regions,
         diff,
         old_low,
         old_ink,
@@ -575,7 +600,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         "old",
     )
     new_filtered, new_raw = extract_regions(
-        new_regions,
+        added_regions,
         diff,
         new_low,
         new_ink,
@@ -608,6 +633,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     )
 
     old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
+    old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(old_boxes, new_boxes)
 
     logger.info(
         "unchanged-text suppressed: %d on OLD, %d on NEW",
@@ -616,6 +642,8 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     )
     if overlap_suppressed:
         logger.info("overlap-pruned removals: %d", overlap_suppressed)
+    if movement_suppressed:
+        logger.info("movement-pruned pairs: %d", movement_suppressed)
 
     return PageProcessingResult(
         alignment_method=alignment_method,
@@ -907,14 +935,19 @@ def extract_regions(
         indices = kept
 
     for label_idx in indices:
-        area = stats[label_idx, cv2.CC_STAT_AREA]
-        if area < MIN_AREA:
-            continue
         x = stats[label_idx, cv2.CC_STAT_LEFT]
         y = stats[label_idx, cv2.CC_STAT_TOP]
         w_box = stats[label_idx, cv2.CC_STAT_WIDTH]
         h_box = stats[label_idx, cv2.CC_STAT_HEIGHT]
-        if w_box < MIN_DIM or h_box < MIN_DIM:
+
+        area = w_box * h_box
+        aspect_ratio = max(w_box, h_box) / float(max(1, min(w_box, h_box)))
+        longest_side = max(w_box, h_box)
+        is_thin_line = (
+            aspect_ratio >= MIN_LINE_ASPECT_RATIO and longest_side >= MIN_LINE_LENGTH
+        )
+
+        if (area < MIN_DIFF_AREA and not is_thin_line) or w_box < MIN_DIM or h_box < MIN_DIM:
             continue
 
         component_mask = np.where(labels == label_idx, 255, 0).astype(np.uint8)
@@ -1069,6 +1102,94 @@ def compute_iou(a: Rect, b: Rect) -> float:
     if union <= 0.0:
         return 0.0
     return float(inter_area / union)
+
+
+def box_center(box: Rect) -> Tuple[float, float]:
+    """Return the center point of an axis-aligned rectangle."""
+
+    x1, y1, x2, y2 = box
+    return (0.5 * (x1 + x2), 0.5 * (y1 + y2))
+
+
+def box_iou(a: Rect, b: Rect) -> float:
+    """Alias to compute IoU with clearer naming for box matching."""
+
+    return compute_iou(a, b)
+
+
+def suppress_moved_pairs(
+    removed_boxes: Sequence[Rect], added_boxes: Sequence[Rect]
+) -> Tuple[List[Rect], List[Rect], int]:
+    """Drop pairs of boxes that represent the same object shifted slightly."""
+
+    if not removed_boxes or not added_boxes:
+        return list(removed_boxes), list(added_boxes), 0
+
+    matched_removed: set[int] = set()
+    matched_added: set[int] = set()
+    suppressed = 0
+
+    for ridx, rbox in enumerate(removed_boxes):
+        rw = rbox[2] - rbox[0]
+        rh = rbox[3] - rbox[1]
+        r_center = box_center(rbox)
+
+        for aidx, abox in enumerate(added_boxes):
+            if aidx in matched_added:
+                continue
+
+            aw = abox[2] - abox[0]
+            ah = abox[3] - abox[1]
+
+            if rw <= 0 or rh <= 0 or aw <= 0 or ah <= 0:
+                continue
+
+            if abs(rw - aw) / max(rw, aw) > SIZE_TOLERANCE:
+                continue
+            if abs(rh - ah) / max(rh, ah) > SIZE_TOLERANCE:
+                continue
+
+            a_center = box_center(abox)
+            shift = math.hypot(r_center[0] - a_center[0], r_center[1] - a_center[1])
+            if shift > MAX_CENTER_SHIFT_PX:
+                continue
+
+            iou = box_iou(rbox, abox)
+            if iou < MIN_IOU_FOR_SAME:
+                continue
+
+            matched_removed.add(ridx)
+            matched_added.add(aidx)
+            suppressed += 1
+            break
+
+    kept_removed = [box for idx, box in enumerate(removed_boxes) if idx not in matched_removed]
+    kept_added = [box for idx, box in enumerate(added_boxes) if idx not in matched_added]
+    return kept_removed, kept_added, suppressed
+
+
+def apply_dimming_overlay(page: fitz.Page, boxes: Sequence[Rect], scale: float) -> None:
+    """Dim everything outside the provided boxes using an even-odd fill overlay."""
+
+    if not DIMMING_ENABLED or not boxes:
+        return
+
+    shape = page.new_shape()
+    shape.draw_rect(page.rect)
+    for rect in boxes:
+        pdf_rect = fitz.Rect(
+            rect[0] / scale, rect[1] / scale, rect[2] / scale, rect[3] / scale
+        )
+        shape.draw_rect(pdf_rect)
+
+    dim_color = (0.0, 0.0, 0.0) if DIMMING_MODE.lower() == "dark" else (1.0, 1.0, 1.0)
+    shape.finish(
+        fill=dim_color,
+        color=None,
+        even_odd=True,
+        fill_opacity=DIMMING_ALPHA,
+    )
+    shape.commit()
 
 
 def drop_overlapping_removals(
