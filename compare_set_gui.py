@@ -6,11 +6,12 @@ from __future__ import annotations
 import logging
 import math
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import util
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Union
 
 import cv2
 import fitz
@@ -35,8 +36,14 @@ from PySide6.QtWidgets import (
 # =============================================================================
 # Pipeline configuration (internal constants)
 # =============================================================================
-DPI = 300
-DPI_HIGH = 600
+BASE_RENDER_DPI = 200
+ALLOW_NON_UNIFORM_SCALE = True
+MAX_RENDER_WIDTH = 5000
+MAX_RENDER_HEIGHT = 5000
+DEBUG_PERFORMANCE = False
+
+DPI = BASE_RENDER_DPI
+DPI_HIGH = int(BASE_RENDER_DPI * 2)
 BLUR_KSIZE = 3
 THRESH = 28
 MORPH_KERNEL = 3
@@ -78,6 +85,9 @@ DIMMING_ALPHA = 0.4
 DIMMING_MODE = "dark"
 PATCH_PAD = 2
 DEBUG_MOVEMENT_SUPPRESSION = False
+MAX_CANDIDATES_PER_REMOVED = 5
+MAX_BOXES_FOR_FULL_MATCHING = 1000
+PATCH_SIM_SIZE = 80
 
 
 _ssim_spec = util.find_spec("skimage.metrics")
@@ -88,6 +98,7 @@ else:  # pragma: no cover - optional dependency
 
 Rect = Tuple[float, float, float, float]
 WordBox = Tuple[str, Rect, int]
+Zoom = Union[float, Tuple[float, float]]
 
 
 @dataclass
@@ -118,7 +129,35 @@ class ComparisonResult:
     summaries: List[PageDiffSummary] = field(default_factory=list)
 
 
-def map_pdf_rect_to_pixels(rect: fitz.Rect, zoom: float) -> Tuple[int, int, int, int]:
+def remove_signature_widgets(pdf_doc: fitz.Document) -> None:
+    """Remove visible signature widgets so they do not affect rendering."""
+
+    def _is_signature(annot: fitz.Annot) -> bool:
+        if annot.type[0] != fitz.PDF_ANNOT_WIDGET:
+            return False
+        field_type = getattr(annot, "field_type", None)
+        if field_type == getattr(fitz, "PDF_WIDGET_TYPE_SIG", None):
+            return True
+        type_string = str(getattr(annot, "field_type_string", "") or "").lower()
+        return "sig" in type_string
+
+    for page_index in range(pdf_doc.page_count):
+        page = pdf_doc.load_page(page_index)
+        annots = list(page.annots() or [])
+        for annot in annots:
+            if _is_signature(annot):
+                page.delete_annot(annot)
+
+
+def build_output_filename(old_path: Path) -> str:
+    """Create a timestamped output filename based on the first input."""
+
+    base_name = old_path.stem or old_path.name
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"ECR-{base_name}_{timestamp}.pdf"
+
+
+def map_pdf_rect_to_pixels(rect: fitz.Rect, zoom: Zoom) -> Tuple[int, int, int, int]:
     """Map a PDF rectangle to pixel coordinates at the working DPI."""
 
     bounds = getattr(map_pdf_rect_to_pixels, "_bounds", None)
@@ -126,10 +165,12 @@ def map_pdf_rect_to_pixels(rect: fitz.Rect, zoom: float) -> Tuple[int, int, int,
     if bounds is not None:
         page_width, page_height = bounds
 
-    x0 = int(math.floor(rect.x0 * zoom))
-    y0 = int(math.floor(rect.y0 * zoom))
-    x1 = int(math.ceil(rect.x1 * zoom))
-    y1 = int(math.ceil(rect.y1 * zoom))
+    zx, zy = zoom if isinstance(zoom, tuple) else (zoom, zoom)
+
+    x0 = int(math.floor(rect.x0 * zx))
+    y0 = int(math.floor(rect.y0 * zy))
+    x1 = int(math.ceil(rect.x1 * zx))
+    y1 = int(math.ceil(rect.y1 * zy))
 
     if page_width is not None and page_width > 0:
         x0 = max(0, min(x0, page_width - 1))
@@ -148,12 +189,14 @@ def map_pdf_rect_to_pixels(rect: fitz.Rect, zoom: float) -> Tuple[int, int, int,
     return x0, y0, width, height
 
 
-def words_to_pixel_boxes(doc_page: fitz.Page, zoom: float) -> List[WordBox]:
+def words_to_pixel_boxes(doc_page: fitz.Page, zoom: Zoom) -> List[WordBox]:
     """Extract word boxes from a PDF page and convert them to pixel space."""
 
+    zx, zy = zoom if isinstance(zoom, tuple) else (zoom, zoom)
+
     page_rect = doc_page.rect
-    page_width = int(round(page_rect.width * zoom))
-    page_height = int(round(page_rect.height * zoom))
+    page_width = int(round(page_rect.width * zx))
+    page_height = int(round(page_rect.height * zy))
     results: List[WordBox] = []
 
     setattr(map_pdf_rect_to_pixels, "_bounds", (max(1, page_width), max(1, page_height)))
@@ -263,6 +306,8 @@ class MainWindow(QMainWindow):
         self.log_view.setReadOnly(True)
         self.log_view.setLineWrapMode(QTextEdit.NoWrap)
 
+        self._last_old_path: Optional[Path] = None
+
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
 
@@ -315,6 +360,8 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Comparing…")
         logger.info("Starting comparison: %s vs %s", old_path, new_path)
 
+        self._last_old_path = old_path
+
         self._thread = QThread(self)
         self._worker = CompareWorker(old_path, new_path)
         self._worker.moveToThread(self._thread)
@@ -335,8 +382,15 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Comparison complete.")
         logger.info("Comparison finished. Preparing save dialog.")
 
-        default_name = f"CompareSet_Result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save Comparison", default_name, "PDF Files (*.pdf)")
+        base_path = self._last_old_path
+        default_path = (
+            base_path.parent / build_output_filename(base_path)
+            if base_path is not None
+            else Path(build_output_filename(Path("CompareSet")))
+        )
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Comparison", str(default_path), "PDF Files (*.pdf)"
+        )
         if save_path:
             with open(save_path, "wb") as output_file:
                 output_file.write(result.pdf_bytes)
@@ -378,6 +432,7 @@ class PageProcessingResult:
     new_boxes: List[Rect]
     old_raw: int
     new_raw: int
+    pixel_scale: float
     preview_skipped: bool = False
 
 
@@ -394,23 +449,19 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 
     summaries: List[PageDiffSummary] = []
     output_doc = fitz.open()
-    scale = DPI / 72.0
 
     diff_found = False
 
     with fitz.open(old_path) as old_doc, fitz.open(new_path) as new_doc:
-        page_pairs = min(old_doc.page_count, new_doc.page_count)
-        if page_pairs == 0:
-            raise ValueError("No pages available for comparison.")
         if old_doc.page_count != new_doc.page_count:
-            logger.warning(
-                "Page count mismatch (old=%s, new=%s). Comparing first %s page(s).",
-                old_doc.page_count,
-                new_doc.page_count,
-                page_pairs,
-            )
+            raise ValueError("OLD and NEW PDFs must have the same number of pages for comparison.")
+        if old_doc.page_count == 0:
+            raise ValueError("No pages available for comparison.")
 
-        for index in range(page_pairs):
+        remove_signature_widgets(old_doc)
+        remove_signature_widgets(new_doc)
+
+        for index in range(old_doc.page_count):
             old_page = old_doc.load_page(index)
             new_page = new_doc.load_page(index)
             result = process_page_pair(old_page, new_page)
@@ -460,13 +511,13 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 
             if old_insert_index is not None and result.old_boxes:
                 old_page_out = output_doc.load_page(old_insert_index)
-                apply_dimming_overlay(old_page_out, result.old_boxes, scale)
+                apply_dimming_overlay(old_page_out, result.old_boxes, result.pixel_scale)
                 for rect in result.old_boxes:
                     pdf_rect = fitz.Rect(
-                        rect[0] / scale,
-                        rect[1] / scale,
-                        rect[2] / scale,
-                        rect[3] / scale,
+                        rect[0] / result.pixel_scale,
+                        rect[1] / result.pixel_scale,
+                        rect[2] / result.pixel_scale,
+                        rect[3] / result.pixel_scale,
                     )
                     old_page_out.draw_rect(
                         pdf_rect,
@@ -478,13 +529,13 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 
             if new_insert_index is not None and result.new_boxes:
                 new_page_out = output_doc.load_page(new_insert_index)
-                apply_dimming_overlay(new_page_out, result.new_boxes, scale)
+                apply_dimming_overlay(new_page_out, result.new_boxes, result.pixel_scale)
                 for rect in result.new_boxes:
                     pdf_rect = fitz.Rect(
-                        rect[0] / scale,
-                        rect[1] / scale,
-                        rect[2] / scale,
-                        rect[3] / scale,
+                        rect[0] / result.pixel_scale,
+                        rect[1] / result.pixel_scale,
+                        rect[2] / result.pixel_scale,
+                        rect[3] / result.pixel_scale,
                     )
                     new_page_out.draw_rect(
                         pdf_rect,
@@ -519,8 +570,18 @@ def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
 def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessingResult:
     """Process a pair of pages and return rectangles for old/new differences."""
 
-    preview_old = render_page_to_gray(old_page, PREVIEW_DPI)
-    preview_new = render_page_to_gray(new_page, PREVIEW_DPI)
+    perf_start = time.perf_counter()
+
+    old_high, new_high, old_zoom_high, new_zoom_high_x, new_zoom_high_y = render_normalized_pages(
+        old_page, new_page, DPI_HIGH
+    )
+    perf_after_render = time.perf_counter()
+
+    preview_zoom = compute_zoom(old_page.rect, PREVIEW_DPI)
+    preview_scale = preview_zoom / old_zoom_high if old_zoom_high else 1.0
+    preview_old = downsample_to_working_resolution(old_high, scale_factor=preview_scale)
+    preview_new = downsample_to_working_resolution(new_high, scale_factor=preview_scale)
+    perf_after_preview = time.perf_counter()
     preview_diff = cv2.absdiff(preview_old, preview_new)
     _, preview_mask = cv2.threshold(preview_diff, 20, 255, cv2.THRESH_BINARY)
     nonzero_ratio = float(cv2.countNonZero(preview_mask)) / float(preview_mask.size or 1)
@@ -532,15 +593,25 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
             new_boxes=[],
             old_raw=0,
             new_raw=0,
+            pixel_scale=compute_zoom(old_page.rect, DPI),
             preview_skipped=True,
         )
 
-    old_high = render_page_to_gray(old_page, DPI_HIGH)
-    new_high = render_page_to_gray(new_page, DPI_HIGH)
     aligned_new_high, alignment_method, warp_matrix = align_images(old_high, new_high)
+    perf_after_align = time.perf_counter()
 
-    old_low = downsample_to_working_resolution(old_high)
-    new_low = downsample_to_working_resolution(aligned_new_high)
+    old_zoom_work = compute_zoom(old_page.rect, DPI)
+    scale_high_to_work = old_zoom_work / old_zoom_high if old_zoom_high else 1.0
+    work_width = int(round(old_high.shape[1] * scale_high_to_work))
+    work_height = int(round(old_high.shape[0] * scale_high_to_work))
+
+    old_low = downsample_to_working_resolution(
+        old_high, target_size=(max(1, work_width), max(1, work_height))
+    )
+    new_low = downsample_to_working_resolution(
+        aligned_new_high, target_size=(max(1, work_width), max(1, work_height))
+    )
+    perf_after_resample = time.perf_counter()
 
     blur_old = cv2.GaussianBlur(old_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
     blur_new = cv2.GaussianBlur(new_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
@@ -579,10 +650,17 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     )
     change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
 
-    groups = prepare_page_text_groups(old_page, new_page, warp_matrix)
-    words_old = words_to_pixel_boxes(old_page, DPI / 72.0)
-    words_new_high = words_to_pixel_boxes(new_page, DPI_HIGH / 72.0)
-    words_new = align_word_boxes(words_new_high, warp_matrix)
+    groups = prepare_page_text_groups(
+        old_page,
+        new_page,
+        warp_matrix,
+        old_zoom_work,
+        (new_zoom_high_x, new_zoom_high_y),
+        scale_high_to_work,
+    )
+    words_old = words_to_pixel_boxes(old_page, old_zoom_work)
+    words_new_high = words_to_pixel_boxes(new_page, (new_zoom_high_x, new_zoom_high_y))
+    words_new = align_word_boxes(words_new_high, warp_matrix, scale_high_to_work)
 
     detection_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     removed_detection = cv2.dilate(removed_mask, detection_kernel, iterations=1)
@@ -615,6 +693,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         line_boost,
         "new",
     )
+    perf_after_regions = time.perf_counter()
 
     old_boxes = merge_close_rectangles(merge_rectangles(old_filtered))
     new_boxes = merge_close_rectangles(merge_rectangles(new_filtered))
@@ -657,23 +736,69 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     if text_shift_suppressed:
         logger.info("text-based movement suppression: %d", text_shift_suppressed)
 
+    if DEBUG_PERFORMANCE:
+        logger.info(
+            "performance page %d: render=%.3fs preview=%.3fs align=%.3fs resample=%.3fs regions=%.3fs",
+            getattr(old_page, "number", -1) + 1,
+            perf_after_render - perf_start,
+            perf_after_preview - perf_after_render,
+            perf_after_align - perf_after_preview,
+            perf_after_resample - perf_after_align,
+            perf_after_regions - perf_after_resample,
+        )
+
     return PageProcessingResult(
         alignment_method=alignment_method,
         old_boxes=old_boxes,
         new_boxes=new_boxes,
         old_raw=old_raw,
         new_raw=new_raw,
+        pixel_scale=old_zoom_work,
     )
 
 
-def render_page_to_gray(page: fitz.Page, dpi: int) -> np.ndarray:
-    """Render a page to a grayscale numpy array at the requested DPI."""
+def compute_zoom(rect: fitz.Rect, dpi: int) -> float:
+    """Compute a DPI-based zoom while clamping to configured pixel limits."""
 
-    scale = dpi / 72.0
-    matrix = fitz.Matrix(scale, scale)
+    base_zoom = dpi / 72.0
+    max_zoom_w = MAX_RENDER_WIDTH / rect.width if rect.width > 0 else base_zoom
+    max_zoom_h = MAX_RENDER_HEIGHT / rect.height if rect.height > 0 else base_zoom
+    return max(1e-3, min(base_zoom, max_zoom_w, max_zoom_h))
+
+
+def render_page_to_gray(page: fitz.Page, scale_x: float, scale_y: Optional[float] = None) -> np.ndarray:
+    """Render a page to a grayscale numpy array using explicit scaling."""
+
+    sy = scale_y if scale_y is not None else scale_x
+    matrix = fitz.Matrix(scale_x, sy)
     pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY, alpha=False)
     array = np.frombuffer(pix.samples, dtype=np.uint8)
     return array.reshape(pix.height, pix.width)
+
+
+def render_normalized_pages(
+    old_page: fitz.Page, new_page: fitz.Page, dpi: int
+) -> Tuple[np.ndarray, np.ndarray, float, float, float]:
+    """Render both pages to the same pixel size based on the OLD page."""
+
+    old_zoom = compute_zoom(old_page.rect, dpi)
+    scale_x = old_page.rect.width / new_page.rect.width if new_page.rect.width else 1.0
+    scale_y = old_page.rect.height / new_page.rect.height if new_page.rect.height else 1.0
+    if not ALLOW_NON_UNIFORM_SCALE:
+        uniform = min(scale_x, scale_y)
+        scale_x = scale_y = uniform
+
+    new_zoom_x = old_zoom * scale_x
+    new_zoom_y = old_zoom * scale_y
+
+    old_img = render_page_to_gray(old_page, old_zoom)
+    new_img = render_page_to_gray(new_page, new_zoom_x, new_zoom_y)
+
+    target_width, target_height = old_img.shape[1], old_img.shape[0]
+    if new_img.shape[0] != target_height or new_img.shape[1] != target_width:
+        new_img = cv2.resize(new_img, (target_width, target_height), interpolation=cv2.INTER_AREA)
+
+    return old_img, new_img, old_zoom, new_zoom_x, new_zoom_y
 
 
 def align_images(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndarray, str, np.ndarray]:
@@ -746,11 +871,19 @@ def align_images(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndarray, 
     return aligned, f"{best_method}:{best_cc:.3f}", warp_matrix
 
 
-def downsample_to_working_resolution(image: np.ndarray) -> np.ndarray:
+def downsample_to_working_resolution(
+    image: np.ndarray, *, scale_factor: Optional[float] = None, target_size: Optional[Tuple[int, int]] = None
+) -> np.ndarray:
     """Downsample the high DPI image to the working DPI using area resampling."""
 
-    target_width = int(round(image.shape[1] * (DPI / DPI_HIGH)))
-    target_height = int(round(image.shape[0] * (DPI / DPI_HIGH)))
+    if target_size is None:
+        factor = scale_factor if scale_factor is not None else (DPI / DPI_HIGH)
+        target_width = int(round(image.shape[1] * factor))
+        target_height = int(round(image.shape[0] * factor))
+    else:
+        target_width, target_height = target_size
+    target_width = max(1, target_width)
+    target_height = max(1, target_height)
     return cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
 
@@ -820,13 +953,19 @@ def compute_ssim_mask(old_img: np.ndarray, new_img: np.ndarray) -> Optional[np.n
     return mask
 
 
-def prepare_page_text_groups(old_page: fitz.Page, new_page: fitz.Page, warp_matrix: np.ndarray) -> PageTextGroups:
+def prepare_page_text_groups(
+    old_page: fitz.Page,
+    new_page: fitz.Page,
+    warp_matrix: np.ndarray,
+    old_scale: float,
+    new_scales: Tuple[float, float],
+    scale_factor: float,
+) -> PageTextGroups:
     """Extract grouped text runs for both pages and align the new groups."""
 
-    old_groups = extract_text_groups(old_page, DPI)
-    new_high_groups = extract_text_groups(new_page, DPI_HIGH)
+    old_groups = extract_text_groups(old_page, old_scale, old_scale)
+    new_high_groups = extract_text_groups(new_page, new_scales[0], new_scales[1])
 
-    scale_factor = DPI / DPI_HIGH
     aligned_new: List[TextGroup] = []
     for group in new_high_groups:
         transformed = transform_rect(group.bbox, warp_matrix)
@@ -836,10 +975,9 @@ def prepare_page_text_groups(old_page: fitz.Page, new_page: fitz.Page, warp_matr
     return PageTextGroups(old_groups=old_groups, new_groups=aligned_new)
 
 
-def align_word_boxes(words: Sequence[WordBox], warp_matrix: np.ndarray) -> List[WordBox]:
+def align_word_boxes(words: Sequence[WordBox], warp_matrix: np.ndarray, scale_factor: float) -> List[WordBox]:
     """Align new-page word boxes to the old page coordinate space."""
 
-    scale_factor = DPI / DPI_HIGH
     aligned: List[WordBox] = []
     for text, rect, _baseline in words:
         transformed = transform_rect(rect, warp_matrix)
@@ -849,11 +987,11 @@ def align_word_boxes(words: Sequence[WordBox], warp_matrix: np.ndarray) -> List[
     return aligned
 
 
-def extract_text_groups(page: fitz.Page, dpi: int) -> List[TextGroup]:
-    """Extract grouped text regions from a PDF page at the specified DPI."""
+def extract_text_groups(page: fitz.Page, scale_x: float, scale_y: Optional[float] = None) -> List[TextGroup]:
+    """Extract grouped text regions from a PDF page at the specified scale."""
 
     text = page.get_text("rawdict")
-    scale = dpi / 72.0
+    scale_y_val = scale_y if scale_y is not None else scale_x
     groups: List[TextGroup] = []
     for block in text.get("blocks", []):
         if block.get("type") != 0:
@@ -873,7 +1011,12 @@ def extract_text_groups(page: fitz.Page, dpi: int) -> List[TextGroup]:
                             groups.append(
                                 TextGroup(
                                     "".join(current_text),
-                                    (min_x * scale, min_y * scale, max_x * scale, max_y * scale),
+                                    (
+                                        min_x * scale_x,
+                                        min_y * scale_y_val,
+                                        max_x * scale_x,
+                                        max_y * scale_y_val,
+                                    ),
                                 )
                             )
                             current_text = []
@@ -890,7 +1033,12 @@ def extract_text_groups(page: fitz.Page, dpi: int) -> List[TextGroup]:
                     groups.append(
                         TextGroup(
                             "".join(current_text),
-                            (min_x * scale, min_y * scale, max_x * scale, max_y * scale),
+                            (
+                                min_x * scale_x,
+                                min_y * scale_y_val,
+                                max_x * scale_x,
+                                max_y * scale_y_val,
+                            ),
                         )
                     )
     return groups
@@ -1165,15 +1313,11 @@ def compute_patch_similarity(
     if ref_patch.size == 0 or new_patch.size == 0:
         return 0.0
 
-    target_w = max(ref_patch.shape[1], new_patch.shape[1])
-    target_h = max(ref_patch.shape[0], new_patch.shape[0])
-    target_w = max(1, target_w)
-    target_h = max(1, target_h)
+    target_w = max(1, PATCH_SIM_SIZE)
+    target_h = max(1, PATCH_SIM_SIZE)
 
-    if ref_patch.shape[1] != target_w or ref_patch.shape[0] != target_h:
-        ref_patch = cv2.resize(ref_patch, (target_w, target_h), interpolation=cv2.INTER_AREA)
-    if new_patch.shape[1] != target_w or new_patch.shape[0] != target_h:
-        new_patch = cv2.resize(new_patch, (target_w, target_h), interpolation=cv2.INTER_AREA)
+    ref_patch = cv2.resize(ref_patch, (target_w, target_h), interpolation=cv2.INTER_AREA)
+    new_patch = cv2.resize(new_patch, (target_w, target_h), interpolation=cv2.INTER_AREA)
 
     ref_f = ref_patch.astype(np.float32) / 255.0
     new_f = new_patch.astype(np.float32) / 255.0
@@ -1216,11 +1360,14 @@ def suppress_moved_pairs(
     matched_removed: set[int] = set()
     matched_added: set[int] = set()
     suppressed = 0
+    heavy_load = (len(removed_boxes) + len(added_boxes)) > MAX_BOXES_FOR_FULL_MATCHING
 
     for ridx, rbox in enumerate(removed_boxes):
         rw = rbox[2] - rbox[0]
         rh = rbox[3] - rbox[1]
         r_center = box_center(rbox)
+
+        candidates: List[Tuple[float, int, Rect]] = []
 
         for aidx, abox in enumerate(added_boxes):
             if aidx in matched_added:
@@ -1246,7 +1393,12 @@ def suppress_moved_pairs(
             if iou < MIN_IOU_FOR_SAME:
                 continue
 
-            similarity = compute_patch_similarity(old_img, new_img, rbox, abox, PATCH_PAD)
+            candidates.append((shift, aidx, abox))
+
+        candidates.sort(key=lambda entry: entry[0])
+
+        for shift, aidx, abox in candidates[:MAX_CANDIDATES_PER_REMOVED]:
+            similarity = 1.0 if heavy_load else compute_patch_similarity(old_img, new_img, rbox, abox, PATCH_PAD)
             if similarity < MIN_PATCH_SSIM_FOR_SAME:
                 continue
 
@@ -1257,8 +1409,8 @@ def suppress_moved_pairs(
                     similarity,
                     rw,
                     rh,
-                    aw,
-                    ah,
+                    abox[2] - abox[0],
+                    abox[3] - abox[1],
                 )
 
             matched_removed.add(ridx)
