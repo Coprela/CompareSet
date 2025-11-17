@@ -45,9 +45,9 @@ ERODE_ITERS = 1
 MIN_AREA = 36
 MIN_DIM = 2
 PADDING_PX = 2
-PADDING_FRAC = 0.02
-VIEW_EXPAND = 1.08
-VIEW_MAX_GROW = 24
+PADDING_FRAC = 0.01
+VIEW_EXPAND = 1.04
+VIEW_MAX_GROW = 12
 MEAN_DIFF_MIN = 14.0
 MEAN_TEXT_DIFF_MIN = 11.0
 MIN_FORE_FRACTION = 0.18
@@ -55,7 +55,7 @@ WORD_IOU_MIN = 0.60
 BASELINE_DELTA_MAX_PX = 2
 ABSMEAN_MAX_UNCHANGED_TXT = 10.0
 EDGE_OVERLAP_MIN = 0.88
-LINE_MIN_LEN = 20
+LINE_MIN_LEN = 12
 ECC_EPS = 1e-4
 ECC_ITERS = 300
 STROKE_WIDTH_PT = 1.1
@@ -600,11 +600,15 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         words_new,
     )
 
+    old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
+
     logger.info(
         "unchanged-text suppressed: %d on OLD, %d on NEW",
         suppressed_old,
         suppressed_new,
     )
+    if overlap_suppressed:
+        logger.info("overlap-pruned removals: %d", overlap_suppressed)
 
     return PageProcessingResult(
         alignment_method=alignment_method,
@@ -741,12 +745,14 @@ def compute_edge_mask(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndar
 def compute_line_boost(diff_img: np.ndarray) -> np.ndarray:
     """Enhance thin-line differences using anisotropic closings."""
 
-    canny = cv2.Canny(diff_img, 40, 120)
+    canny = cv2.Canny(diff_img, 30, 90)
     kx = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1))
     ky = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
     close_x = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, kx)
     close_y = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, ky)
-    return cv2.bitwise_or(close_x, close_y)
+    combined = cv2.bitwise_or(close_x, close_y)
+    dilated = cv2.dilate(combined, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)), iterations=1)
+    return dilated
 
 
 def compute_ssim_mask(old_img: np.ndarray, new_img: np.ndarray) -> Optional[np.ndarray]:
@@ -1058,6 +1064,27 @@ def compute_iou(a: Rect, b: Rect) -> float:
     return float(inter_area / union)
 
 
+def drop_overlapping_removals(
+    old_boxes: Sequence[Rect],
+    new_boxes: Sequence[Rect],
+    *,
+    iou_threshold: float = 0.65,
+) -> Tuple[List[Rect], int]:
+    """Remove removal boxes that overlap additions, avoiding false deletions."""
+
+    if not old_boxes or not new_boxes:
+        return list(old_boxes), 0
+
+    pruned: List[Rect] = []
+    suppressed = 0
+    for old_rect in old_boxes:
+        if any(compute_iou(old_rect, new_rect) >= iou_threshold for new_rect in new_boxes):
+            suppressed += 1
+            continue
+        pruned.append(old_rect)
+    return pruned, suppressed
+
+
 def compute_edge_overlap(rect: Rect, component_mask: np.ndarray, edge_old: np.ndarray, edge_new: np.ndarray) -> float:
     """Compute overlap ratio between old/new edge maps inside a region."""
 
@@ -1232,7 +1259,7 @@ def apply_view_expand(rect: Rect, width: int, height: int, ink_mask: np.ndarray)
     expanded_y2 = min(float(height), cy + half_h + extra_h)
 
     expanded = (expanded_x1, expanded_y1, expanded_x2, expanded_y2)
-    if compute_rect_ink_fraction(expanded, ink_mask) < 0.15:
+    if compute_rect_ink_fraction(expanded, ink_mask) < 0.22:
         return (x1, y1, x2, y2)
     return expanded
 
