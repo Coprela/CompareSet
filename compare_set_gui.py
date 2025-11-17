@@ -5,25 +5,35 @@ from __future__ import annotations
 
 import logging
 import math
+import os
+import shutil
+import sqlite3
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import util
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import cv2
 import fitz
 import numpy as np
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QFileDialog,
+    QFormLayout,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -91,6 +101,16 @@ MAX_BOXES_FOR_MOVEMENT_SUPPRESSION = 1500
 PATCH_SIM_SIZE = 64
 
 
+SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
+DATA_ROOT = os.path.join(SERVER_ROOT, "Data")
+RESULTS_ROOT = os.path.join(DATA_ROOT, "Results")
+LOGS_ROOT = os.path.join(DATA_ROOT, "Logs")
+CONFIG_ROOT = os.path.join(DATA_ROOT, "Config")
+
+USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
+USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
+
+
 _ssim_spec = util.find_spec("skimage.metrics")
 if _ssim_spec is not None:  # pragma: no cover - optional dependency
     from skimage.metrics import structural_similarity  # type: ignore
@@ -103,6 +123,203 @@ Zoom = Union[float, Tuple[float, float]]
 
 
 LOG_FILE: Optional[str] = None
+
+
+def make_long_path(path: str) -> str:
+    """Return a Windows long-path-safe absolute path."""
+
+    abs_path = os.path.abspath(path)
+    if abs_path.startswith("\\\\?\\"):
+        return abs_path
+    return "\\\\?\\" + abs_path
+
+
+def get_current_username() -> str:
+    """Return the current Windows username for authentication."""
+
+    return os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
+
+
+def ensure_server_directories() -> None:
+    """Ensure all shared directories exist."""
+
+    for path in (DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, CONFIG_ROOT):
+        os.makedirs(make_long_path(path), exist_ok=True)
+
+
+def ensure_users_db_initialized() -> None:
+    """Create the Users table if needed and seed an admin if empty."""
+
+    ensure_server_directories()
+    conn = sqlite3.connect(make_long_path(USERS_DB_PATH))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS Users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL,
+                is_active INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        cursor = conn.execute("SELECT COUNT(*) FROM Users")
+        total = cursor.fetchone()[0]
+        if total == 0:
+            now = datetime.utcnow().isoformat()
+            seed_user = get_current_username()
+            conn.execute(
+                "INSERT INTO Users (username, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (seed_user, "admin", 1, now, now),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_user_role(username: str) -> Optional[str]:
+    """Return the active role for the given user, if any."""
+
+    conn = sqlite3.connect(make_long_path(USERS_DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT role, is_active FROM Users WHERE username = ?", (username,)
+        ).fetchone()
+        if row and row["is_active"]:
+            return str(row["role"])
+        return None
+    finally:
+        conn.close()
+
+
+def list_users() -> List[Dict[str, Union[str, int]]]:
+    """Return all users for admin display."""
+
+    conn = sqlite3.connect(make_long_path(USERS_DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT username, role, is_active FROM Users ORDER BY username").fetchall()
+        return [
+            {"username": row["username"], "role": row["role"], "is_active": int(row["is_active"])}
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def add_user(username: str, role: str) -> None:
+    """Add a new active user entry."""
+
+    now = datetime.utcnow().isoformat()
+    conn = sqlite3.connect(make_long_path(USERS_DB_PATH))
+    try:
+        conn.execute(
+            "INSERT INTO Users (username, role, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+            (username.strip(), role, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_user_record(username: str, *, role: Optional[str] = None, is_active: Optional[int] = None) -> None:
+    """Update role and/or activation state for a user."""
+
+    now = datetime.utcnow().isoformat()
+    conn = sqlite3.connect(make_long_path(USERS_DB_PATH))
+    try:
+        if role is not None:
+            conn.execute(
+                "UPDATE Users SET role = ?, updated_at = ? WHERE username = ?",
+                (role, now, username),
+            )
+        if is_active is not None:
+            conn.execute(
+                "UPDATE Users SET is_active = ?, updated_at = ? WHERE username = ?",
+                (is_active, now, username),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def ensure_user_settings_db_initialized() -> None:
+    """Create the user settings table when missing."""
+
+    ensure_server_directories()
+    conn = sqlite3.connect(make_long_path(USER_SETTINGS_DB_PATH))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS UserSettings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                language TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_or_create_user_settings(username: str) -> Dict[str, str]:
+    """Fetch or create settings for a user."""
+
+    ensure_user_settings_db_initialized()
+    conn = sqlite3.connect(make_long_path(USER_SETTINGS_DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT username, language FROM UserSettings WHERE username = ?", (username,)
+        ).fetchone()
+        if row:
+            return {"username": row["username"], "language": row["language"]}
+        now = datetime.utcnow().isoformat()
+        default_language = "pt-BR"
+        conn.execute(
+            "INSERT INTO UserSettings (username, language, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (username, default_language, now, now),
+        )
+        conn.commit()
+        return {"username": username, "language": default_language}
+    finally:
+        conn.close()
+
+
+def update_user_settings(username: str, **kwargs: str) -> None:
+    """Update stored settings for a user."""
+
+    allowed_fields = {"language"}
+    updates = {key: value for key, value in kwargs.items() if key in allowed_fields}
+    if not updates:
+        return
+
+    now = datetime.utcnow().isoformat()
+    assignments = ", ".join(f"{field} = ?" for field in updates)
+    values = list(updates.values())
+    values.extend([now, username])
+
+    conn = sqlite3.connect(make_long_path(USER_SETTINGS_DB_PATH))
+    try:
+        conn.execute(
+            f"UPDATE UserSettings SET {assignments}, updated_at = ? WHERE username = ?",
+            tuple(values),
+        )
+        if conn.total_changes == 0:
+            default_language = updates.get("language", "pt-BR")
+            conn.execute(
+                "INSERT INTO UserSettings (username, language, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (username, default_language, now, now),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 class CancellationRequested(Exception):
@@ -135,6 +352,7 @@ class ComparisonResult:
     """Container for comparison output."""
 
     pdf_bytes: bytes
+    server_result_path: Optional[str] = None
     summaries: List[PageDiffSummary] = field(default_factory=list)
     cancelled: bool = False
 
@@ -142,18 +360,13 @@ class ComparisonResult:
 def init_log(base_name: str) -> str:
     """Initialize a crash-proof log file for the current execution."""
 
-    logs_dir = Path(__file__).resolve().parent / "logs"
-    logs_dir.mkdir(exist_ok=True)
-
+    ensure_server_directories()
+    username = get_current_username()
+    user_logs_dir = os.path.join(LOGS_ROOT, username)
+    os.makedirs(make_long_path(user_logs_dir), exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    username = os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
     filename = f"ECR-{base_name}_{timestamp}_{username}.log"
-    absolute_path = str((logs_dir / filename).resolve())
-
-    if os.name == "nt" and not absolute_path.startswith("\\\\?\\"):
-        safe_path = "\\\\?\\" + absolute_path
-    else:
-        safe_path = absolute_path
+    safe_path = make_long_path(os.path.join(user_logs_dir, filename))
 
     global LOG_FILE
     LOG_FILE = safe_path
@@ -343,8 +556,12 @@ class CompareWorker(QObject):
 class MainWindow(QMainWindow):
     """Main application window."""
 
-    def __init__(self) -> None:
+    def __init__(self, username: str, role: str, user_settings: Dict[str, str]) -> None:
         super().__init__()
+        self.username = username
+        self.role = role
+        self.user_settings = user_settings
+        self.current_language = user_settings.get("language", "pt-BR")
         self.setWindowTitle("Compare SET")
 
         self._log_emitter = LogEmitter()
@@ -372,12 +589,21 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.request_cancel)
 
+        self.language_combo = QComboBox()
+        self.language_combo.addItems(["pt-BR", "en-US"])
+        if self.current_language in {"pt-BR", "en-US"}:
+            self.language_combo.setCurrentText(self.current_language)
+        self.language_combo.currentTextChanged.connect(self.on_language_changed)
+
+        self.admin_group: Optional[QGroupBox] = None
+        self.user_list: Optional[QListWidget] = None
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)
 
-        self.status_label = QLabel("Ready")
+        self.status_label = QLabel(f"Ready (Language: {self.current_language})")
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
@@ -399,6 +625,13 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(file_layout)
         main_layout.addSpacing(8)
 
+        language_layout = QHBoxLayout()
+        language_layout.addWidget(QLabel("Language"))
+        language_layout.addWidget(self.language_combo)
+        language_layout.addStretch()
+        main_layout.addLayout(language_layout)
+        main_layout.addSpacing(4)
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         button_layout.addWidget(self.cancel_button)
@@ -407,8 +640,11 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.progress_bar)
         main_layout.addWidget(self.status_label)
+        if self.role == "admin":
+            self._build_admin_panel(main_layout)
         main_layout.addWidget(self.log_view)
 
+        self.apply_language_setting()
         self.setCentralWidget(central_widget)
         self.resize(720, 520)
 
@@ -480,12 +716,24 @@ class MainWindow(QMainWindow):
             if base_path is not None
             else Path(build_output_filename(Path("CompareSet")))
         )
+        if result.server_result_path:
+            logger.info("Server result stored at %s", result.server_result_path)
+        else:
+            QMessageBox.warning(
+                self,
+                "Compare SET",
+                "Result could not be saved to the server. Please contact an administrator.",
+            )
+
         save_path, _ = QFileDialog.getSaveFileName(
             self, "Save Comparison", str(default_path), "PDF Files (*.pdf)"
         )
         if save_path:
-            with open(save_path, "wb") as output_file:
-                output_file.write(result.pdf_bytes)
+            if result.server_result_path:
+                shutil.copyfile(result.server_result_path, save_path)
+            else:
+                with open(save_path, "wb") as output_file:
+                    output_file.write(result.pdf_bytes)
             logger.info("Saved diff to %s", save_path)
             QMessageBox.information(self, "Compare SET", f"Comparison saved to:\n{save_path}")
         else:
@@ -521,6 +769,105 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, max(1, total_pages))
         self.progress_bar.setValue(page_index)
         self.status_label.setText(f"Processing page {page_index} of {total_pages}…")
+
+    def on_language_changed(self, language: str) -> None:
+        self.user_settings["language"] = language
+        update_user_settings(self.username, language=language)
+        self.current_language = language
+        self.apply_language_setting()
+
+    def apply_language_setting(self) -> None:
+        self.status_label.setText(f"Ready (Language: {self.current_language})")
+
+    def _build_admin_panel(self, parent_layout: QVBoxLayout) -> None:
+        self.admin_group = QGroupBox("Admin - User Management")
+        admin_layout = QVBoxLayout(self.admin_group)
+
+        self.user_list = QListWidget()
+        self.user_list.currentItemChanged.connect(self.on_user_selected)
+        admin_layout.addWidget(self.user_list)
+
+        self.admin_username_input = QLineEdit()
+        self.admin_role_combo = QComboBox()
+        self.admin_role_combo.addItems(["admin", "user", "viewer"])
+        self.admin_active_checkbox = QCheckBox("Active")
+        self.admin_active_checkbox.setChecked(True)
+
+        form_layout = QFormLayout()
+        form_layout.addRow("Username", self.admin_username_input)
+        form_layout.addRow("Role", self.admin_role_combo)
+        form_layout.addRow("Status", self.admin_active_checkbox)
+        admin_layout.addLayout(form_layout)
+
+        button_row = QHBoxLayout()
+        self.add_user_button = QPushButton("Add User")
+        self.update_user_button = QPushButton("Save Changes")
+        button_row.addWidget(self.add_user_button)
+        button_row.addWidget(self.update_user_button)
+        admin_layout.addLayout(button_row)
+
+        self.add_user_button.clicked.connect(self.on_add_user)
+        self.update_user_button.clicked.connect(self.on_update_user)
+
+        parent_layout.addWidget(self.admin_group)
+        self.refresh_user_list()
+
+    def refresh_user_list(self) -> None:
+        if not self.user_list:
+            return
+        try:
+            users = list_users()
+        except Exception as exc:
+            QMessageBox.critical(self, "Admin", f"Could not load users:\n{exc}")
+            return
+        self.user_list.clear()
+        for user in users:
+            status = "Active" if user.get("is_active") else "Inactive"
+            item = QListWidgetItem(f"{user['username']} - {user['role']} ({status})")
+            item.setData(Qt.UserRole, user)
+            self.user_list.addItem(item)
+
+    def on_user_selected(
+        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
+    ) -> None:
+        if not current:
+            return
+        data = current.data(Qt.UserRole) or {}
+        self.admin_username_input.setText(data.get("username", ""))
+        self.admin_role_combo.setCurrentText(str(data.get("role", "user")))
+        self.admin_active_checkbox.setChecked(bool(data.get("is_active", 0)))
+
+    def on_add_user(self) -> None:
+        username = self.admin_username_input.text().strip()
+        role = self.admin_role_combo.currentText()
+        if not username:
+            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
+            return
+        try:
+            add_user(username, role)
+            QMessageBox.information(self, "Admin", "User added successfully.")
+            self.refresh_user_list()
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, "Admin", "User already exists.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Admin", f"Unable to add user:\n{exc}")
+
+    def on_update_user(self) -> None:
+        if not self.user_list or not self.user_list.currentItem():
+            QMessageBox.warning(self, "Admin", "Select a user to update.")
+            return
+        username = self.admin_username_input.text().strip()
+        role = self.admin_role_combo.currentText()
+        is_active = 1 if self.admin_active_checkbox.isChecked() else 0
+        if not username:
+            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
+            return
+        try:
+            update_user_record(username, role=role, is_active=is_active)
+            QMessageBox.information(self, "Admin", "User updated.")
+            self.refresh_user_list()
+        except Exception as exc:
+            QMessageBox.critical(self, "Admin", f"Unable to update user:\n{exc}")
 
     def toggle_controls(self, enabled: bool) -> None:
         for widget in (
@@ -575,9 +922,18 @@ def run_comparison(
     try:
         log_path = init_log(old_path.stem or old_path.name)
         configure_logging()
+        username = get_current_username()
+        user_results_dir = os.path.join(RESULTS_ROOT, username)
+        os.makedirs(make_long_path(user_results_dir), exist_ok=True)
+        result_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_name = f"ECR-{old_path.stem or old_path.name}_{result_timestamp}.pdf"
+        server_result_path = make_long_path(os.path.join(user_results_dir, output_name))
         write_log("=== CompareSet run started ===")
+        write_log(f"User: {username}")
         write_log(f"Log file: {log_path}")
-        write_log(f"Comparing OLD={old_path} NEW={new_path}")
+        write_log(f"Results directory: {server_result_path}")
+        write_log(f"OLD file: {old_path}")
+        write_log(f"NEW file: {new_path}")
 
         summaries: List[PageDiffSummary] = []
         output_doc = fitz.open()
@@ -720,10 +1076,14 @@ def run_comparison(
         output_pages = output_doc.page_count
         pdf_bytes = output_doc.tobytes()
         output_doc.close()
+        with open(server_result_path, "wb") as output_handle:
+            output_handle.write(pdf_bytes)
         logger.info("Generated diff with %d page pair(s).", len(summaries))
         logger.info("Output document pages: %d", output_pages)
         write_log("Comparison finished successfully")
-        return ComparisonResult(pdf_bytes=pdf_bytes, summaries=summaries)
+        return ComparisonResult(
+            pdf_bytes=pdf_bytes, server_result_path=server_result_path, summaries=summaries
+        )
     except CancellationRequested:
         write_log("Comparison cancelled by user")
         return ComparisonResult(pdf_bytes=b"", summaries=[], cancelled=True)
@@ -2158,7 +2518,31 @@ def main() -> None:
     """Entry point for the application."""
 
     app = QApplication(sys.argv)
-    window = MainWindow()
+    ensure_server_directories()
+    ensure_users_db_initialized()
+
+    username = get_current_username()
+    role = get_user_role(username)
+
+    if role is None:
+        QMessageBox.critical(
+            None,
+            "Compare SET",
+            "Your user is not authorized to use CompareSet. Please contact an administrator.",
+        )
+        sys.exit(1)
+
+    ensure_user_settings_db_initialized()
+    user_settings = get_or_create_user_settings(username)
+
+    init_log("session")
+    configure_logging()
+    write_log("=== CompareSet startup ===")
+    write_log(f"User: {username}")
+    write_log(f"Role: {role}")
+    write_log(f"User settings file: {USER_SETTINGS_DB_PATH}")
+
+    window = MainWindow(username, role, user_settings)
     window.show()
     sys.exit(app.exec())
 
