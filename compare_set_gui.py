@@ -38,8 +38,8 @@ from PySide6.QtWidgets import (
 # =============================================================================
 BASE_RENDER_DPI = 200
 ALLOW_NON_UNIFORM_SCALE = True
-MAX_RENDER_WIDTH = 5000
-MAX_RENDER_HEIGHT = 5000
+MAX_RENDER_WIDTH = 6000
+MAX_RENDER_HEIGHT = 6000
 DEBUG_PERFORMANCE = False
 
 DPI = BASE_RENDER_DPI
@@ -83,11 +83,12 @@ MIN_PATCH_SSIM_FOR_SAME = 0.97
 DIMMING_ENABLED = True
 DIMMING_ALPHA = 0.4
 DIMMING_MODE = "dark"
+DIMMING_FEATHER = 2
 PATCH_PAD = 2
 DEBUG_MOVEMENT_SUPPRESSION = False
 MAX_CANDIDATES_PER_REMOVED = 5
-MAX_BOXES_FOR_FULL_MATCHING = 1000
-PATCH_SIM_SIZE = 80
+MAX_BOXES_FOR_MOVEMENT_SUPPRESSION = 1500
+PATCH_SIM_SIZE = 64
 
 
 _ssim_spec = util.find_spec("skimage.metrics")
@@ -99,6 +100,14 @@ else:  # pragma: no cover - optional dependency
 Rect = Tuple[float, float, float, float]
 WordBox = Tuple[str, Rect, int]
 Zoom = Union[float, Tuple[float, float]]
+
+
+LOG_FILE: Optional[str] = None
+
+
+class CancellationRequested(Exception):
+    """Raised when the user requests cancellation."""
+
 
 
 @dataclass
@@ -127,9 +136,46 @@ class ComparisonResult:
 
     pdf_bytes: bytes
     summaries: List[PageDiffSummary] = field(default_factory=list)
+    cancelled: bool = False
 
 
-def remove_signature_widgets(pdf_doc: fitz.Document) -> None:
+def init_log(base_name: str) -> str:
+    """Initialize a crash-proof log file for the current execution."""
+
+    logs_dir = Path(__file__).resolve().parent / "logs"
+    logs_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    username = os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
+    filename = f"ECR-{base_name}_{timestamp}_{username}.log"
+    absolute_path = str((logs_dir / filename).resolve())
+
+    if os.name == "nt" and not absolute_path.startswith("\\\\?\\"):
+        safe_path = "\\\\?\\" + absolute_path
+    else:
+        safe_path = absolute_path
+
+    global LOG_FILE
+    LOG_FILE = safe_path
+    return safe_path
+
+
+def write_log(message: str) -> None:
+    """Append a message to the persistent log, flushing immediately."""
+
+    if not LOG_FILE:
+        return
+
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as handle:
+            handle.write(message + "\n")
+            handle.flush()
+    except Exception:
+        # Logging must not break the workflow.
+        pass
+
+
+def remove_signature_widgets(pdf_doc: fitz.Document) -> int:
     """Remove visible signature widgets so they do not affect rendering."""
 
     def _is_signature(annot: fitz.Annot) -> bool:
@@ -141,12 +187,15 @@ def remove_signature_widgets(pdf_doc: fitz.Document) -> None:
         type_string = str(getattr(annot, "field_type_string", "") or "").lower()
         return "sig" in type_string
 
+    removed = 0
     for page_index in range(pdf_doc.page_count):
         page = pdf_doc.load_page(page_index)
         annots = list(page.annots() or [])
         for annot in annots:
             if _is_signature(annot):
                 page.delete_annot(annot)
+                removed += 1
+    return removed
 
 
 def build_output_filename(old_path: Path) -> str:
@@ -232,6 +281,14 @@ class LogEmitter(QObject):
     message = Signal(str)
 
 
+class PersistentLogHandler(logging.Handler):
+    """Logging handler that mirrors messages into the crash-proof log."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        msg = self.format(record)
+        write_log(msg)
+
+
 class QtLogHandler(logging.Handler):
     """Logging handler that forwards messages to Qt widgets."""
 
@@ -249,21 +306,38 @@ class CompareWorker(QObject):
 
     finished = Signal(ComparisonResult)
     failed = Signal(str)
+    progress = Signal(int, int)
+    cancelled = Signal()
 
     def __init__(self, old_path: Path, new_path: Path) -> None:
         super().__init__()
         self.old_path = old_path
         self.new_path = new_path
+        self._cancel_event = threading.Event()
 
     @Slot()
     def run(self) -> None:
         try:
-            result = run_comparison(self.old_path, self.new_path)
+            result = run_comparison(
+                self.old_path,
+                self.new_path,
+                update_progress=self._emit_progress,
+                is_cancel_requested=self._cancel_event.is_set,
+            )
         except Exception as exc:  # pragma: no cover - Qt thread
             logger.exception("Comparison failed: %s", exc)
             self.failed.emit(str(exc))
             return
+        if result.cancelled:
+            self.cancelled.emit()
+            return
         self.finished.emit(result)
+
+    def request_cancel(self) -> None:
+        self._cancel_event.set()
+
+    def _emit_progress(self, page_index: int, total_pages: int) -> None:
+        self.progress.emit(page_index, total_pages)
 
 
 class MainWindow(QMainWindow):
@@ -294,6 +368,9 @@ class MainWindow(QMainWindow):
 
         self.compare_button = QPushButton("Compare")
         self.compare_button.clicked.connect(self.start_comparison)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.request_cancel)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
@@ -324,6 +401,7 @@ class MainWindow(QMainWindow):
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
+        button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.compare_button)
         main_layout.addLayout(button_layout)
 
@@ -344,6 +422,14 @@ class MainWindow(QMainWindow):
         if selected:
             target.setText(selected)
 
+    @Slot()
+    def request_cancel(self) -> None:
+        if self._worker is not None:
+            logger.info("Cancellation requested by user.")
+            self._worker.request_cancel()
+            self.cancel_button.setEnabled(False)
+            self.status_label.setText("Cancelling…")
+
     def start_comparison(self) -> None:
         old_path = Path(self.old_path_edit.text()).expanduser().resolve()
         new_path = Path(self.new_path_edit.text()).expanduser().resolve()
@@ -357,7 +443,9 @@ class MainWindow(QMainWindow):
 
         self.toggle_controls(False)
         self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
         self.status_label.setText("Comparing…")
+        self.cancel_button.setEnabled(True)
         logger.info("Starting comparison: %s vs %s", old_path, new_path)
 
         self._last_old_path = old_path
@@ -368,8 +456,11 @@ class MainWindow(QMainWindow):
         self._thread.started.connect(self._worker.run)
         self._worker.finished.connect(self.on_comparison_finished)
         self._worker.failed.connect(self.on_comparison_failed)
+        self._worker.cancelled.connect(self.on_comparison_cancelled)
+        self._worker.progress.connect(self.on_progress_update)
         self._worker.finished.connect(self._thread.quit)
         self._worker.failed.connect(self._thread.quit)
+        self._worker.cancelled.connect(self._thread.quit)
         self._worker.finished.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
         self._thread.start()
@@ -380,6 +471,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
         self.status_label.setText("Comparison complete.")
+        self.cancel_button.setEnabled(False)
         logger.info("Comparison finished. Preparing save dialog.")
 
         base_path = self._last_old_path
@@ -408,9 +500,27 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
         self.status_label.setText("Comparison failed.")
+        self.cancel_button.setEnabled(False)
         QMessageBox.critical(self, "Compare SET", f"Comparison failed:\n{message}")
         self._worker = None
         self._thread = None
+
+    @Slot()
+    def on_comparison_cancelled(self) -> None:
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.toggle_controls(True)
+        self.status_label.setText("Comparison cancelled.")
+        self.cancel_button.setEnabled(False)
+        QMessageBox.information(self, "Compare SET", "Comparison was cancelled.")
+        self._worker = None
+        self._thread = None
+
+    @Slot(int, int)
+    def on_progress_update(self, page_index: int, total_pages: int) -> None:
+        self.progress_bar.setRange(0, max(1, total_pages))
+        self.progress_bar.setValue(page_index)
+        self.status_label.setText(f"Processing page {page_index} of {total_pages}…")
 
     def toggle_controls(self, enabled: bool) -> None:
         for widget in (
@@ -421,6 +531,7 @@ class MainWindow(QMainWindow):
             self.new_path_edit,
         ):
             widget.setEnabled(enabled)
+        self.cancel_button.setEnabled(not enabled and self._worker is not None)
 
 
 @dataclass
@@ -444,138 +555,211 @@ class PageTextGroups:
     new_groups: List[TextGroup]
 
 
-def run_comparison(old_path: Path, new_path: Path) -> ComparisonResult:
+def run_comparison(
+    old_path: Path,
+    new_path: Path,
+    *,
+    update_progress: Optional[Callable[[int, int], None]] = None,
+    is_cancel_requested: Optional[Callable[[], bool]] = None,
+) -> ComparisonResult:
     """Execute the raster diff comparison workflow."""
 
-    summaries: List[PageDiffSummary] = []
-    output_doc = fitz.open()
+    update_progress = update_progress or (lambda _a, _b: None)
+    is_cancel_requested = is_cancel_requested or (lambda: False)
 
-    diff_found = False
+    def _check_cancel() -> None:
+        if is_cancel_requested():
+            write_log("Cancellation requested; aborting run.")
+            raise CancellationRequested()
 
-    with fitz.open(old_path) as old_doc, fitz.open(new_path) as new_doc:
-        if old_doc.page_count != new_doc.page_count:
-            raise ValueError("OLD and NEW PDFs must have the same number of pages for comparison.")
-        if old_doc.page_count == 0:
-            raise ValueError("No pages available for comparison.")
+    try:
+        log_path = init_log(old_path.stem or old_path.name)
+        configure_logging()
+        write_log("=== CompareSet run started ===")
+        write_log(f"Log file: {log_path}")
+        write_log(f"Comparing OLD={old_path} NEW={new_path}")
 
-        remove_signature_widgets(old_doc)
-        remove_signature_widgets(new_doc)
+        summaries: List[PageDiffSummary] = []
+        output_doc = fitz.open()
 
-        for index in range(old_doc.page_count):
-            old_page = old_doc.load_page(index)
-            new_page = new_doc.load_page(index)
-            result = process_page_pair(old_page, new_page)
+        diff_found = False
 
-            if result.preview_skipped:
-                logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
-                logger.info("Page %d: no change (preview)", index + 1)
-            else:
-                logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
-                if not result.old_boxes and not result.new_boxes:
-                    logger.info("Page %d: No diffs detected.", index + 1)
-                else:
-                    diff_found = True
-                    logger.info(
-                        "Page %d OLD boxes: raw=%d merged=%d",
-                        index + 1,
-                        result.old_raw,
-                        len(result.old_boxes),
-                    )
-                    logger.info(
-                        "Page %d NEW boxes: raw=%d merged=%d",
-                        index + 1,
-                        result.new_raw,
-                        len(result.new_boxes),
-                    )
+        with fitz.open(old_path) as old_doc, fitz.open(new_path) as new_doc:
+            if old_doc.page_count != new_doc.page_count:
+                raise ValueError("OLD and NEW PDFs must have the same number of pages for comparison.")
+            if old_doc.page_count == 0:
+                raise ValueError("No pages available for comparison.")
 
-            old_insert_index: Optional[int] = None
-            new_insert_index: Optional[int] = None
-
-            if 0 <= index < old_doc.page_count:
-                old_insert_index = output_doc.page_count
-                output_doc.insert_pdf(
-                    old_doc,
-                    from_page=index,
-                    to_page=index,
-                    start_at=old_insert_index,
-                )
-
-            if 0 <= index < new_doc.page_count:
-                new_insert_index = output_doc.page_count
-                output_doc.insert_pdf(
-                    new_doc,
-                    from_page=index,
-                    to_page=index,
-                    start_at=new_insert_index,
-                )
-
-            if old_insert_index is not None and result.old_boxes:
-                old_page_out = output_doc.load_page(old_insert_index)
-                apply_dimming_overlay(old_page_out, result.old_boxes, result.pixel_scale)
-                for rect in result.old_boxes:
-                    pdf_rect = fitz.Rect(
-                        rect[0] / result.pixel_scale,
-                        rect[1] / result.pixel_scale,
-                        rect[2] / result.pixel_scale,
-                        rect[3] / result.pixel_scale,
-                    )
-                    old_page_out.draw_rect(
-                        pdf_rect,
-                        color=RED,
-                        fill=None,
-                        width=STROKE_WIDTH_PT,
-                        stroke_opacity=STROKE_OPACITY,
-                    )
-
-            if new_insert_index is not None and result.new_boxes:
-                new_page_out = output_doc.load_page(new_insert_index)
-                apply_dimming_overlay(new_page_out, result.new_boxes, result.pixel_scale)
-                for rect in result.new_boxes:
-                    pdf_rect = fitz.Rect(
-                        rect[0] / result.pixel_scale,
-                        rect[1] / result.pixel_scale,
-                        rect[2] / result.pixel_scale,
-                        rect[3] / result.pixel_scale,
-                    )
-                    new_page_out.draw_rect(
-                        pdf_rect,
-                        color=GREEN,
-                        fill=None,
-                        width=STROKE_WIDTH_PT,
-                        stroke_opacity=STROKE_OPACITY,
-                    )
-
-            summaries.append(
-                PageDiffSummary(
-                    index=index + 1,
-                    alignment_method=result.alignment_method,
-                    old_boxes_raw=result.old_raw,
-                    old_boxes_merged=len(result.old_boxes),
-                    new_boxes_raw=result.new_raw,
-                    new_boxes_merged=len(result.new_boxes),
-                )
+            write_log(f"Total pages: {old_doc.page_count}")
+            removed_old = remove_signature_widgets(old_doc)
+            removed_new = remove_signature_widgets(new_doc)
+            write_log(
+                f"Signature widgets removed - OLD: {removed_old} NEW: {removed_new}"
             )
 
-    if not diff_found:
-        logger.info("No diffs")
+            for index in range(old_doc.page_count):
+                _check_cancel()
+                write_log(f"[Page {index + 1}] Rasterization start")
+                page_start = time.perf_counter()
+                old_page = old_doc.load_page(index)
+                new_page = new_doc.load_page(index)
+                result = process_page_pair(
+                    old_page,
+                    new_page,
+                    index,
+                    is_cancel_requested=is_cancel_requested,
+                )
+                write_log(
+                    f"[Page {index + 1}] Rasterization complete in {time.perf_counter() - page_start:.3f}s"
+                )
 
-    output_pages = output_doc.page_count
-    pdf_bytes = output_doc.tobytes()
-    output_doc.close()
-    logger.info("Generated diff with %d page pair(s).", len(summaries))
-    logger.info("Output document pages: %d", output_pages)
-    return ComparisonResult(pdf_bytes=pdf_bytes, summaries=summaries)
+                if result.preview_skipped:
+                    logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
+                    logger.info("Page %d: no change (preview)", index + 1)
+                    write_log(f"[Page {index + 1}] Preview skip, no diffs")
+                else:
+                    logger.info("Page %d alignment: %s", index + 1, result.alignment_method)
+                    if not result.old_boxes and not result.new_boxes:
+                        logger.info("Page %d: No diffs detected.", index + 1)
+                        write_log(f"[Page {index + 1}] No diffs detected")
+                    else:
+                        diff_found = True
+                        logger.info(
+                            "Page %d OLD boxes: raw=%d merged=%d",
+                            index + 1,
+                            result.old_raw,
+                            len(result.old_boxes),
+                        )
+                        logger.info(
+                            "Page %d NEW boxes: raw=%d merged=%d",
+                            index + 1,
+                            result.new_raw,
+                            len(result.new_boxes),
+                        )
+                        write_log(
+                            f"[Page {index + 1}] Boxes OLD raw={result.old_raw} merged={len(result.old_boxes)}"
+                        )
+                        write_log(
+                            f"[Page {index + 1}] Boxes NEW raw={result.new_raw} merged={len(result.new_boxes)}"
+                        )
+
+                old_insert_index: Optional[int] = None
+                new_insert_index: Optional[int] = None
+
+                if 0 <= index < old_doc.page_count:
+                    old_insert_index = output_doc.page_count
+                    output_doc.insert_pdf(
+                        old_doc,
+                        from_page=index,
+                        to_page=index,
+                        start_at=old_insert_index,
+                    )
+
+                if 0 <= index < new_doc.page_count:
+                    new_insert_index = output_doc.page_count
+                    output_doc.insert_pdf(
+                        new_doc,
+                        from_page=index,
+                        to_page=index,
+                        start_at=new_insert_index,
+                    )
+
+                write_log(f"[Page {index + 1}] Spotlight rendering")
+                if old_insert_index is not None and result.old_boxes:
+                    old_page_out = output_doc.load_page(old_insert_index)
+                    apply_dimming_overlay(old_page_out, result.old_boxes, result.pixel_scale)
+                    for rect in result.old_boxes:
+                        pdf_rect = fitz.Rect(
+                            rect[0] / result.pixel_scale,
+                            rect[1] / result.pixel_scale,
+                            rect[2] / result.pixel_scale,
+                            rect[3] / result.pixel_scale,
+                        )
+                        old_page_out.draw_rect(
+                            pdf_rect,
+                            color=RED,
+                            fill=None,
+                            width=STROKE_WIDTH_PT,
+                            stroke_opacity=STROKE_OPACITY,
+                        )
+
+                if new_insert_index is not None and result.new_boxes:
+                    new_page_out = output_doc.load_page(new_insert_index)
+                    apply_dimming_overlay(new_page_out, result.new_boxes, result.pixel_scale)
+                    for rect in result.new_boxes:
+                        pdf_rect = fitz.Rect(
+                            rect[0] / result.pixel_scale,
+                            rect[1] / result.pixel_scale,
+                            rect[2] / result.pixel_scale,
+                            rect[3] / result.pixel_scale,
+                        )
+                        new_page_out.draw_rect(
+                            pdf_rect,
+                            color=GREEN,
+                            fill=None,
+                            width=STROKE_WIDTH_PT,
+                            stroke_opacity=STROKE_OPACITY,
+                        )
+
+                write_log(f"[Page {index + 1}] Page output complete")
+                summaries.append(
+                    PageDiffSummary(
+                        index=index + 1,
+                        alignment_method=result.alignment_method,
+                        old_boxes_raw=result.old_raw,
+                        old_boxes_merged=len(result.old_boxes),
+                        new_boxes_raw=result.new_raw,
+                        new_boxes_merged=len(result.new_boxes),
+                    )
+                )
+                update_progress(index + 1, old_doc.page_count)
+
+        if not diff_found:
+            logger.info("No diffs")
+
+        output_pages = output_doc.page_count
+        pdf_bytes = output_doc.tobytes()
+        output_doc.close()
+        logger.info("Generated diff with %d page pair(s).", len(summaries))
+        logger.info("Output document pages: %d", output_pages)
+        write_log("Comparison finished successfully")
+        return ComparisonResult(pdf_bytes=pdf_bytes, summaries=summaries)
+    except CancellationRequested:
+        write_log("Comparison cancelled by user")
+        return ComparisonResult(pdf_bytes=b"", summaries=[], cancelled=True)
+    except Exception:
+        exc_text = traceback.format_exc()
+        write_log("Exception during comparison:")
+        write_log(exc_text)
+        raise
 
 
-def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessingResult:
+def process_page_pair(
+    old_page: fitz.Page,
+    new_page: fitz.Page,
+    page_index: int,
+    *,
+    is_cancel_requested: Optional[Callable[[], bool]] = None,
+) -> PageProcessingResult:
     """Process a pair of pages and return rectangles for old/new differences."""
 
     perf_start = time.perf_counter()
+    cancel_check = is_cancel_requested or (lambda: False)
 
+    def _check_cancel() -> None:
+        if cancel_check():
+            write_log(f"[Page {page_index + 1}] Cancellation requested")
+            raise CancellationRequested()
+
+    _check_cancel()
+    write_log(f"[Page {page_index + 1}] High-DPI render start")
     old_high, new_high, old_zoom_high, new_zoom_high_x, new_zoom_high_y = render_normalized_pages(
         old_page, new_page, DPI_HIGH
     )
     perf_after_render = time.perf_counter()
+    write_log(
+        f"[Page {page_index + 1}] High-DPI render complete in {perf_after_render - perf_start:.3f}s"
+    )
 
     preview_zoom = compute_zoom(old_page.rect, PREVIEW_DPI)
     preview_scale = preview_zoom / old_zoom_high if old_zoom_high else 1.0
@@ -587,6 +771,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     nonzero_ratio = float(cv2.countNonZero(preview_mask)) / float(preview_mask.size or 1)
     if nonzero_ratio < 0.0005:
         logger.info("unchanged-text suppressed: 0 on OLD, 0 on NEW")
+        write_log(f"[Page {page_index + 1}] Preview skip after {perf_after_preview - perf_after_render:.3f}s")
         return PageProcessingResult(
             alignment_method="preview_skip",
             old_boxes=[],
@@ -597,8 +782,12 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
             preview_skipped=True,
         )
 
+    _check_cancel()
     aligned_new_high, alignment_method, warp_matrix = align_images(old_high, new_high)
     perf_after_align = time.perf_counter()
+    write_log(
+        f"[Page {page_index + 1}] Alignment ({alignment_method}) completed in {perf_after_align - perf_after_preview:.3f}s"
+    )
 
     old_zoom_work = compute_zoom(old_page.rect, DPI)
     scale_high_to_work = old_zoom_work / old_zoom_high if old_zoom_high else 1.0
@@ -612,7 +801,12 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         aligned_new_high, target_size=(max(1, work_width), max(1, work_height))
     )
     perf_after_resample = time.perf_counter()
+    write_log(
+        f"[Page {page_index + 1}] Downsampled to working resolution in {perf_after_resample - perf_after_align:.3f}s"
+    )
 
+    _check_cancel()
+    write_log(f"[Page {page_index + 1}] Diff mask creation")
     blur_old = cv2.GaussianBlur(old_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
     blur_new = cv2.GaussianBlur(new_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
 
@@ -650,6 +844,8 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     )
     change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
 
+    _check_cancel()
+    write_log(f"[Page {page_index + 1}] Bounding box extraction")
     groups = prepare_page_text_groups(
         old_page,
         new_page,
@@ -694,10 +890,14 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         "new",
     )
     perf_after_regions = time.perf_counter()
+    write_log(f"[Page {page_index + 1}] Regions extracted in {perf_after_regions - perf_after_resample:.3f}s")
 
+    _check_cancel()
+    write_log(f"[Page {page_index + 1}] Rectangle merging")
     old_boxes = merge_close_rectangles(merge_rectangles(old_filtered))
     new_boxes = merge_close_rectangles(merge_rectangles(new_filtered))
 
+    write_log(f"[Page {page_index + 1}] Unchanged text suppression")
     old_boxes, suppressed_old = suppress_unchanged_text(
         old_boxes,
         diff,
@@ -716,13 +916,21 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     )
 
     old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
+    write_log(f"[Page {page_index + 1}] Movement suppression (geometry/SSIM)")
     old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(
         old_boxes, new_boxes, old_low, new_low
     )
+    write_log(f"[Page {page_index + 1}] Movement suppression removed {movement_suppressed} pairs")
 
     old_boxes, new_boxes, text_shift_suppressed = suppress_identical_text_pairs(
         old_boxes, new_boxes, words_old, words_new
     )
+    write_log(f"[Page {page_index + 1}] Text-based movement suppression removed {text_shift_suppressed} pairs")
+
+    old_boxes, new_boxes, identical_text_suppressed = filter_identical_text_regions(
+        old_boxes, new_boxes, words_old, words_new
+    )
+    write_log(f"[Page {page_index + 1}] Text filter removed {identical_text_suppressed} regions")
 
     logger.info(
         "unchanged-text suppressed: %d on OLD, %d on NEW",
@@ -735,6 +943,8 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
         logger.info("movement-pruned pairs: %d", movement_suppressed)
     if text_shift_suppressed:
         logger.info("text-based movement suppression: %d", text_shift_suppressed)
+    if identical_text_suppressed:
+        logger.info("text filter removed regions: %d", identical_text_suppressed)
 
     if DEBUG_PERFORMANCE:
         logger.info(
@@ -747,6 +957,7 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
             perf_after_regions - perf_after_resample,
         )
 
+    _check_cancel()
     return PageProcessingResult(
         alignment_method=alignment_method,
         old_boxes=old_boxes,
@@ -1360,7 +1571,21 @@ def suppress_moved_pairs(
     matched_removed: set[int] = set()
     matched_added: set[int] = set()
     suppressed = 0
-    heavy_load = (len(removed_boxes) + len(added_boxes)) > MAX_BOXES_FOR_FULL_MATCHING
+    total_boxes = len(removed_boxes) + len(added_boxes)
+    heavy_load = total_boxes > MAX_BOXES_FOR_MOVEMENT_SUPPRESSION
+
+    def _area(rect: Rect) -> float:
+        return max(0.0, rect[2] - rect[0]) * max(0.0, rect[3] - rect[1])
+
+    def _cutoff(values: Sequence[float]) -> float:
+        if not values:
+            return float("inf")
+        sorted_vals = sorted(values, reverse=True)
+        keep_index = max(0, int(math.ceil(len(sorted_vals) * 0.2)) - 1)
+        return sorted_vals[keep_index]
+
+    removed_cut = _cutoff([_area(box) for box in removed_boxes]) if heavy_load else 0.0
+    added_cut = _cutoff([_area(box) for box in added_boxes]) if heavy_load else 0.0
 
     for ridx, rbox in enumerate(removed_boxes):
         rw = rbox[2] - rbox[0]
@@ -1398,7 +1623,10 @@ def suppress_moved_pairs(
         candidates.sort(key=lambda entry: entry[0])
 
         for shift, aidx, abox in candidates[:MAX_CANDIDATES_PER_REMOVED]:
-            similarity = 1.0 if heavy_load else compute_patch_similarity(old_img, new_img, rbox, abox, PATCH_PAD)
+            r_area = _area(rbox)
+            a_area = _area(abox)
+            needs_ssim = not heavy_load or (r_area >= removed_cut and a_area >= added_cut)
+            similarity = 1.0 if not needs_ssim else compute_patch_similarity(old_img, new_img, rbox, abox, PATCH_PAD)
             if similarity < MIN_PATCH_SSIM_FOR_SAME:
                 continue
 
@@ -1487,28 +1715,98 @@ def suppress_identical_text_pairs(
     return kept_removed, kept_added, suppressed
 
 
+def filter_identical_text_regions(
+    removed_boxes: Sequence[Rect],
+    added_boxes: Sequence[Rect],
+    words_old: Sequence[WordBox],
+    words_new: Sequence[WordBox],
+) -> Tuple[List[Rect], List[Rect], int]:
+    """Remove regions where text content matches between OLD and NEW."""
+
+    def _normalize(text: str) -> str:
+        return " ".join(text.lower().strip().split())
+
+    def _collect(rect: Rect) -> Tuple[str, str]:
+        old_text = [w[0] for w in words_old if compute_iou(w[1], rect) >= WORD_IOU_MIN]
+        new_text = [w[0] for w in words_new if compute_iou(w[1], rect) >= WORD_IOU_MIN]
+        norm_old = _normalize(" ".join(sorted(old_text))) if old_text else ""
+        norm_new = _normalize(" ".join(sorted(new_text))) if new_text else ""
+        return norm_old, norm_new
+
+    suppressed = 0
+    kept_removed: List[Rect] = []
+    kept_added: List[Rect] = []
+
+    for rect in removed_boxes:
+        old_text, new_text = _collect(rect)
+        if old_text and old_text == new_text:
+            suppressed += 1
+            continue
+        kept_removed.append(rect)
+
+    for rect in added_boxes:
+        old_text, new_text = _collect(rect)
+        if new_text and old_text == new_text:
+            suppressed += 1
+            continue
+        kept_added.append(rect)
+
+    return kept_removed, kept_added, suppressed
+
+
 def apply_dimming_overlay(page: fitz.Page, boxes: Sequence[Rect], scale: float) -> None:
     """Dim everything outside the provided boxes using an even-odd fill overlay."""
 
     if not DIMMING_ENABLED or not boxes:
         return
 
-    shape = page.new_shape()
-    shape.draw_rect(page.rect)
-    for rect in boxes:
-        pdf_rect = fitz.Rect(
-            rect[0] / scale, rect[1] / scale, rect[2] / scale, rect[3] / scale
-        )
-        shape.draw_rect(pdf_rect)
-
     dim_color = (0.0, 0.0, 0.0) if DIMMING_MODE.lower() == "dark" else (1.0, 1.0, 1.0)
-    shape.finish(
-        fill=dim_color,
-        color=None,
-        even_odd=True,
-        fill_opacity=DIMMING_ALPHA,
-    )
-    shape.commit()
+    feather = max(0.0, DIMMING_FEATHER) / max(scale, 1e-6)
+
+    try:
+        shape = page.new_shape()
+        shape.draw_rect(page.rect)
+        for rect in boxes:
+            pdf_rect = fitz.Rect(
+                (rect[0] / scale) - feather,
+                (rect[1] / scale) - feather,
+                (rect[2] / scale) + feather,
+                (rect[3] / scale) + feather,
+            )
+            pdf_rect = pdf_rect & page.rect
+            shape.draw_rect(pdf_rect)
+
+        shape.finish(
+            fill=dim_color,
+            color=None,
+            even_odd=True,
+            fill_opacity=DIMMING_ALPHA,
+        )
+        shape.commit()
+    except Exception:
+        # Fallback: overlay + holes set to zero opacity.
+        page.draw_rect(
+            page.rect,
+            color=None,
+            fill=dim_color,
+            fill_opacity=DIMMING_ALPHA,
+            overlay=True,
+        )
+        for rect in boxes:
+            pdf_rect = fitz.Rect(
+                rect[0] / scale,
+                rect[1] / scale,
+                rect[2] / scale,
+                rect[3] / scale,
+            )
+            pdf_rect = pdf_rect & page.rect
+            page.draw_rect(
+                pdf_rect,
+                color=None,
+                fill=dim_color,
+                fill_opacity=0.0,
+                overlay=True,
+            )
 
 
 def drop_overlapping_removals(
@@ -1841,10 +2139,14 @@ def configure_logging() -> None:
     """Configure root logger for console output."""
 
     logger.setLevel(logging.INFO)
-    if not logger.handlers:
+    if not any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers):
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
         logger.addHandler(handler)
+    if LOG_FILE and not any(isinstance(handler, PersistentLogHandler) for handler in logger.handlers):
+        file_handler = PersistentLogHandler()
+        file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+        logger.addHandler(file_handler)
     logger.propagate = False
 
 
