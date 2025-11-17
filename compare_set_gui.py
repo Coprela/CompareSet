@@ -51,8 +51,9 @@ VIEW_MAX_GROW = 12
 MEAN_DIFF_MIN = 14.0
 MEAN_TEXT_DIFF_MIN = 11.0
 MIN_FORE_FRACTION = 0.18
-WORD_IOU_MIN = 0.60
-BASELINE_DELTA_MAX_PX = 2
+WORD_IOU_MIN = 0.50
+BASELINE_DELTA_MAX_PX = 4
+WORD_SHIFT_TOLERANCE_PX = 6
 ABSMEAN_MAX_UNCHANGED_TXT = 10.0
 EDGE_OVERLAP_MIN = 0.88
 LINE_MIN_LEN = 12
@@ -534,8 +535,11 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
     intensity_mask = compute_intensity_mask(diff)
     edge_old, edge_new, edge_mask = compute_edge_mask(blur_old, blur_new)
     line_boost = compute_line_boost(diff)
+    line_emphasis = cv2.dilate(
+        line_boost, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1
+    )
 
-    change_mask = cv2.bitwise_and(intensity_mask, cv2.bitwise_or(edge_mask, line_boost))
+    change_mask = cv2.bitwise_and(intensity_mask, cv2.bitwise_or(edge_mask, line_emphasis))
 
     ssim_mask = compute_ssim_mask(blur_old, blur_new)
     if ssim_mask is not None:
@@ -546,6 +550,9 @@ def process_page_pair(old_page: fitz.Page, new_page: fitz.Page) -> PageProcessin
 
     ink_union = cv2.bitwise_or(old_ink, new_ink)
     change_mask = cv2.bitwise_and(change_mask, ink_union)
+
+    # Ensure thin line work is not suppressed by intensity gating.
+    change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
 
     groups = prepare_page_text_groups(old_page, new_page, warp_matrix)
     words_old = words_to_pixel_boxes(old_page, DPI / 72.0)
@@ -1153,6 +1160,23 @@ def suppress_unchanged_text(
     suppressed = 0
     kernel = np.ones((3, 3), np.uint8)
 
+    def _is_word_match(old_word: WordBox, new_word: WordBox) -> bool:
+        if abs(old_word[2] - new_word[2]) > BASELINE_DELTA_MAX_PX:
+            return False
+
+        iou = compute_iou(old_word[1], new_word[1])
+        if iou >= WORD_IOU_MIN:
+            return True
+
+        ox1, oy1, ox2, oy2 = old_word[1]
+        nx1, ny1, nx2, ny2 = new_word[1]
+        old_cx = 0.5 * (ox1 + ox2)
+        old_cy = 0.5 * (oy1 + oy2)
+        new_cx = 0.5 * (nx1 + nx2)
+        new_cy = 0.5 * (ny1 + ny2)
+        shift = math.hypot(old_cx - new_cx, old_cy - new_cy)
+        return shift <= WORD_SHIFT_TOLERANCE_PX
+
     for rect in candidates:
         clipped = clip_rect(rect)
         if clipped[2] <= clipped[0] or clipped[3] <= clipped[1]:
@@ -1183,8 +1207,7 @@ def suppress_unchanged_text(
             if not candidates_new:
                 continue
             for new_word in candidates_new:
-                baseline_delta = abs(old_word[2] - new_word[2])
-                if baseline_delta > BASELINE_DELTA_MAX_PX:
+                if not _is_word_match(old_word, new_word):
                     continue
                 if mean_absdiff is None or edge_overlap is None:
                     x1 = max(0, min(width, int(math.floor(clipped[0]))))
