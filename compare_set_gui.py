@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -118,6 +117,7 @@ SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
 DATA_ROOT = os.path.join(SERVER_ROOT, "Data")
 RESULTS_ROOT = os.path.join(DATA_ROOT, "Results")
 LOGS_ROOT = os.path.join(DATA_ROOT, "Logs")
+ERROR_LOGS_ROOT = os.path.join(LOGS_ROOT, "Error")
 CONFIG_ROOT = os.path.join(DATA_ROOT, "Config")
 RELEASED_ROOT = os.path.join(DATA_ROOT, "Released")
 
@@ -168,7 +168,14 @@ def get_current_username() -> str:
 def ensure_server_directories() -> None:
     """Ensure all shared directories exist."""
 
-    for path in (DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, CONFIG_ROOT, RELEASED_ROOT):
+    for path in (
+        DATA_ROOT,
+        RESULTS_ROOT,
+        LOGS_ROOT,
+        ERROR_LOGS_ROOT,
+        CONFIG_ROOT,
+        RELEASED_ROOT,
+    ):
         os.makedirs(make_long_path(path), exist_ok=True)
 
 
@@ -221,17 +228,30 @@ def get_user_role(username: str) -> Optional[str]:
 
 
 def list_users() -> List[Dict[str, Union[str, int]]]:
-    """Return all users for admin display."""
+    """Return all users for admin display, including email if available."""
 
+    ensure_user_settings_db_initialized()
     conn = sqlite3.connect(make_long_path(USERS_DB_PATH))
+    settings_conn = sqlite3.connect(make_long_path(USER_SETTINGS_DB_PATH))
     try:
         conn.row_factory = sqlite3.Row
+        settings_conn.row_factory = sqlite3.Row
+        email_map = {
+            row["username"]: row["email"]
+            for row in settings_conn.execute("SELECT username, email FROM UserSettings")
+        }
         rows = conn.execute("SELECT username, role, is_active FROM Users ORDER BY username").fetchall()
         return [
-            {"username": row["username"], "role": row["role"], "is_active": int(row["is_active"])}
+            {
+                "username": row["username"],
+                "role": row["role"],
+                "is_active": int(row["is_active"]),
+                "email": email_map.get(row["username"], ""),
+            }
             for row in rows
         ]
     finally:
+        settings_conn.close()
         conn.close()
 
 
@@ -283,11 +303,18 @@ def ensure_user_settings_db_initialized() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 language TEXT NOT NULL,
+                email TEXT NOT NULL DEFAULT "",
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
             """
         )
+        # Backfill email column for existing deployments
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(UserSettings)").fetchall()
+        }
+        if "email" not in columns:
+            conn.execute("ALTER TABLE UserSettings ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -301,18 +328,23 @@ def get_or_create_user_settings(username: str) -> Dict[str, str]:
     try:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT username, language FROM UserSettings WHERE username = ?", (username,)
+            "SELECT username, language, email FROM UserSettings WHERE username = ?",
+            (username,),
         ).fetchone()
         if row:
-            return {"username": row["username"], "language": row["language"]}
+            return {
+                "username": row["username"],
+                "language": row["language"],
+                "email": row["email"],
+            }
         now = datetime.utcnow().isoformat()
         default_language = "pt-BR"
         conn.execute(
-            "INSERT INTO UserSettings (username, language, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO UserSettings (username, language, email, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
             (username, default_language, now, now),
         )
         conn.commit()
-        return {"username": username, "language": default_language}
+        return {"username": username, "language": default_language, "email": ""}
     finally:
         conn.close()
 
@@ -321,7 +353,7 @@ def update_user_settings(username: str, **kwargs: str) -> None:
     """Update stored settings for a user."""
 
     ensure_user_settings_db_initialized()
-    allowed_fields = {"language"}
+    allowed_fields = {"language", "email"}
     updates = {key: value for key, value in kwargs.items() if key in allowed_fields}
     if not updates:
         return
@@ -339,10 +371,125 @@ def update_user_settings(username: str, **kwargs: str) -> None:
         )
         if conn.total_changes == 0:
             default_language = updates.get("language", "pt-BR")
+            default_email = updates.get("email", "")
             conn.execute(
-                "INSERT INTO UserSettings (username, language, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (username, default_language, now, now),
+                "INSERT INTO UserSettings (username, language, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (username, default_language, default_email, now, now),
             )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def ensure_released_db_initialized() -> None:
+    """Create the Released table if needed."""
+
+    ensure_server_directories()
+    conn = sqlite3.connect(make_long_path(RELEASED_DB_PATH))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS Released (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL UNIQUE,
+                name_file_old TEXT NOT NULL,
+                revision_old TEXT NOT NULL,
+                name_file_new TEXT NOT NULL,
+                revision_new TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                source_result TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_released_entries() -> List[Dict[str, str]]:
+    """Return all released ECR metadata."""
+
+    ensure_released_db_initialized()
+    conn = sqlite3.connect(make_long_path(RELEASED_DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT filename, name_file_old, revision_old, name_file_new, revision_new, created_by, created_at, source_result FROM Released ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def find_released_entry(filename: str) -> Optional[Dict[str, str]]:
+    """Return an existing released entry by filename if present."""
+
+    ensure_released_db_initialized()
+    conn = sqlite3.connect(make_long_path(RELEASED_DB_PATH))
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT filename, name_file_old, revision_old, name_file_new, revision_new, created_by, created_at, source_result FROM Released WHERE filename = ?",
+            (filename,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def record_released_entry(
+    *,
+    filename: str,
+    name_file_old: str,
+    revision_old: str,
+    name_file_new: str,
+    revision_new: str,
+    created_by: str,
+    source_result: str,
+) -> None:
+    """Insert or replace a released entry for the current user."""
+
+    ensure_released_db_initialized()
+    conn = sqlite3.connect(make_long_path(RELEASED_DB_PATH))
+    try:
+        now = datetime.utcnow().isoformat()
+        conn.execute(
+            """
+            INSERT INTO Released (filename, name_file_old, revision_old, name_file_new, revision_new, created_by, created_at, source_result)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(filename) DO UPDATE SET
+                name_file_old=excluded.name_file_old,
+                revision_old=excluded.revision_old,
+                name_file_new=excluded.name_file_new,
+                revision_new=excluded.revision_new,
+                created_by=excluded.created_by,
+                created_at=excluded.created_at,
+                source_result=excluded.source_result
+            """,
+            (
+                filename,
+                name_file_old,
+                revision_old,
+                name_file_new,
+                revision_new,
+                created_by,
+                now,
+                source_result,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_released_entry(filename: str) -> None:
+    """Remove an entry from the released registry."""
+
+    ensure_released_db_initialized()
+    conn = sqlite3.connect(make_long_path(RELEASED_DB_PATH))
+    try:
+        conn.execute("DELETE FROM Released WHERE filename = ?", (filename,))
         conn.commit()
     finally:
         conn.close()
@@ -624,6 +771,7 @@ class HistoryDialog(QDialog):
         self.user_results_dir = os.path.join(RESULTS_ROOT, username)
         self.user_logs_dir = os.path.join(LOGS_ROOT, username)
         self.setWindowTitle("My History")
+        self.entries: List[Dict[str, Union[str, datetime]]] = []
 
         layout = QVBoxLayout(self)
         self.info_label = QLabel()
@@ -642,25 +790,31 @@ class HistoryDialog(QDialog):
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         layout.addWidget(self.table)
 
+        self.released_button = QPushButton("Released")
+        self.released_button.clicked.connect(self.send_selected_to_released)
+        clear_button = QPushButton("Limpar Histórico")
+        clear_button.clicked.connect(self.clear_history)
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.accept)
         button_row = QHBoxLayout()
         button_row.addStretch()
+        button_row.addWidget(clear_button)
+        button_row.addWidget(self.released_button)
         button_row.addWidget(close_button)
         layout.addLayout(button_row)
 
         self.refresh_history()
 
     def refresh_history(self) -> None:
-        entries = self._collect_entries()
-        self.table.setRowCount(len(entries))
+        self.entries = self._collect_entries()
+        self.table.setRowCount(len(self.entries))
 
-        if not entries:
+        if not self.entries:
             self.info_label.setText("No previous comparisons found.")
         else:
-            self.info_label.setText(f"Showing {len(entries)} result(s) for {self.username}.")
+            self.info_label.setText(f"Showing {len(self.entries)} result(s) for {self.username}.")
 
-        for row_index, entry in enumerate(entries):
+        for row_index, entry in enumerate(self.entries):
             timestamp_item = QTableWidgetItem(entry["display_time"])
             timestamp_item.setData(Qt.UserRole, entry["timestamp"])
             self.table.setItem(row_index, 0, timestamp_item)
@@ -690,6 +844,22 @@ class HistoryDialog(QDialog):
 
             action_layout.addStretch()
             self.table.setCellWidget(row_index, 3, action_widget)
+
+        self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+        total_width = (
+            self.table.verticalHeader().width()
+            + self.table.horizontalHeader().length()
+            + self.table.frameWidth() * 4
+        )
+        total_height = (
+            self.table.horizontalHeader().height()
+            + sum(self.table.rowHeight(row) for row in range(self.table.rowCount()))
+            + self.table.frameWidth() * 4
+            + self.info_label.sizeHint().height()
+            + 100
+        )
+        self.resize(max(self.width(), total_width + 40), max(320, min(total_height, 720)))
 
     def _collect_entries(self) -> List[Dict[str, Union[str, datetime]]]:
         if not os.path.exists(self.user_results_dir):
@@ -760,6 +930,81 @@ class HistoryDialog(QDialog):
         dialog.resize(600, 400)
         dialog.exec()
 
+    def send_selected_to_released(self) -> None:
+        if self.table.currentRow() < 0 or self.table.currentRow() >= len(self.entries):
+            QMessageBox.information(self, "ECR Released", "Selecione um registro para liberar.")
+            return
+
+        entry = self.entries[self.table.currentRow()]
+        dialog = ReleaseDialog(self)
+        dialog.name_file_old.setText(f"{entry['base_name']}.pdf")
+        dialog.name_file_new.setText(f"{entry['base_name']}.pdf")
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        data = dialog.data()
+        new_base = Path(data["name_file_new"]).stem
+        target_filename = f"ECR-{new_base}{data['revision_new']}_{self.username}.pdf"
+        existing = find_released_entry(target_filename)
+        if existing and existing.get("created_by") != self.username:
+            QMessageBox.warning(
+                self,
+                "ECR Released",
+                "Já existe um ECR liberado com este nome por outro usuário.",
+            )
+            return
+
+        target_dir = os.path.join(RELEASED_ROOT, self.username)
+        os.makedirs(make_long_path(target_dir), exist_ok=True)
+        target_path = make_long_path(os.path.join(target_dir, target_filename))
+
+        try:
+            if existing and existing.get("created_by") == self.username:
+                if os.path.exists(existing.get("source_result", "")):
+                    os.remove(make_long_path(existing["source_result"]))
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            shutil.move(make_long_path(str(entry["path"])), target_path)
+            record_released_entry(
+                filename=target_filename,
+                name_file_old=data["name_file_old"],
+                revision_old=data["revision_old"],
+                name_file_new=data["name_file_new"],
+                revision_new=data["revision_new"],
+                created_by=self.username,
+                source_result=target_path,
+            )
+            QMessageBox.information(
+                self,
+                "ECR Released",
+                f"Arquivo liberado em:\n{target_path}",
+            )
+            self.refresh_history()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "ECR Released",
+                f"Não foi possível enviar o arquivo para Released:\n{exc}",
+            )
+
+    def clear_history(self) -> None:
+        if not os.path.exists(self.user_results_dir):
+            QMessageBox.information(self, "My History", "Nenhum histórico para limpar.")
+            return
+        if QMessageBox.question(
+            self,
+            "Limpar Histórico",
+            "Remover todos os resultados exibidos? Esta ação não pode ser desfeita.",
+        ) != QMessageBox.Yes:
+            return
+        try:
+            for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
+                pdf_path.unlink(missing_ok=True)
+            self.refresh_history()
+            QMessageBox.information(self, "My History", "Histórico limpo.")
+        except Exception as exc:
+            QMessageBox.critical(self, "My History", f"Erro ao limpar histórico:\n{exc}")
+
 
 class SettingsDialog(QDialog):
     """Modal dialog to edit per-user settings."""
@@ -795,6 +1040,328 @@ class SettingsDialog(QDialog):
         update_user_settings(self.username, language=self.language_combo.currentText())
 
 
+class EmailPromptDialog(QDialog):
+    """Blocking prompt requesting the user's email address."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Compare SET")
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        self.label = QLabel("Por favor, insira seu e-mail.")
+        self.email_edit = QLineEdit()
+        self.email_edit.setPlaceholderText("email@dominio.com")
+        layout.addWidget(self.label)
+        layout.addWidget(self.email_edit)
+
+        button_row = QHBoxLayout()
+        self.ok_button = QPushButton("OK")
+        self.ok_button.clicked.connect(self.accept)
+        button_row.addStretch()
+        button_row.addWidget(self.ok_button)
+        layout.addLayout(button_row)
+
+    def get_email(self) -> str:
+        return self.email_edit.text().strip()
+
+
+class AdminDialog(QDialog):
+    """Dialog for managing users, detached from the main window."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Administração")
+        self.resize(480, 520)
+
+        layout = QVBoxLayout(self)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search username…")
+        self.search_input.textChanged.connect(self.refresh_user_list)
+        layout.addWidget(self.search_input)
+
+        self.user_list = QListWidget()
+        self.user_list.currentItemChanged.connect(self.on_user_selected)
+        layout.addWidget(self.user_list)
+
+        self.admin_username_input = QLineEdit()
+        self.admin_role_combo = QComboBox()
+        self.admin_role_combo.addItems(["admin", "user", "viewer"])
+        self.admin_active_checkbox = QCheckBox("Active")
+        self.admin_active_checkbox.setChecked(True)
+        self.email_label = QLabel("")
+
+        form_layout = QFormLayout()
+        form_layout.addRow("Username", self.admin_username_input)
+        form_layout.addRow("Role", self.admin_role_combo)
+        form_layout.addRow("Status", self.admin_active_checkbox)
+        form_layout.addRow("Email", self.email_label)
+        layout.addLayout(form_layout)
+
+        button_row = QHBoxLayout()
+        self.add_user_button = QPushButton("Add User")
+        self.update_user_button = QPushButton("Save Changes")
+        button_row.addWidget(self.add_user_button)
+        button_row.addWidget(self.update_user_button)
+        layout.addLayout(button_row)
+
+        self.add_user_button.clicked.connect(self.on_add_user)
+        self.update_user_button.clicked.connect(self.on_update_user)
+
+        self.refresh_user_list()
+
+    def refresh_user_list(self) -> None:
+        try:
+            users = list_users()
+        except Exception as exc:
+            QMessageBox.critical(self, "Admin", f"Could not load users:\n{exc}")
+            return
+        self.user_list.clear()
+        search_text = (self.search_input.text() or "").lower().strip()
+        for user in users:
+            if search_text and search_text not in str(user.get("username", "")).lower():
+                continue
+            status = "Active" if user.get("is_active") else "Inactive"
+            email = user.get("email") or "(sem e-mail)"
+            item = QListWidgetItem(f"{user['username']} - {email} - {user['role']} ({status})")
+            item.setData(Qt.UserRole, user)
+            self.user_list.addItem(item)
+
+    def on_user_selected(
+        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
+    ) -> None:
+        if not current:
+            return
+        data = current.data(Qt.UserRole) or {}
+        self.admin_username_input.setText(data.get("username", ""))
+        self.admin_role_combo.setCurrentText(str(data.get("role", "user")))
+        self.admin_active_checkbox.setChecked(bool(data.get("is_active", 0)))
+        self.email_label.setText(data.get("email") or "")
+
+    def on_add_user(self) -> None:
+        username = self.admin_username_input.text().strip()
+        role = self.admin_role_combo.currentText()
+        if not username:
+            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
+            return
+        try:
+            add_user(username, role)
+            QMessageBox.information(self, "Admin", "User added successfully.")
+            self.refresh_user_list()
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, "Admin", "User already exists.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Admin", f"Unable to add user:\n{exc}")
+
+    def on_update_user(self) -> None:
+        if not self.user_list or not self.user_list.currentItem():
+            QMessageBox.warning(self, "Admin", "Select a user to update.")
+            return
+        username = self.admin_username_input.text().strip()
+        role = self.admin_role_combo.currentText()
+        is_active = 1 if self.admin_active_checkbox.isChecked() else 0
+        if not username:
+            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
+            return
+        try:
+            update_user_record(username, role=role, is_active=is_active)
+            QMessageBox.information(self, "Admin", "User updated.")
+            self.refresh_user_list()
+        except Exception as exc:
+            QMessageBox.critical(self, "Admin", f"Unable to update user:\n{exc}")
+
+
+class ReleaseDialog(QDialog):
+    """Dialog that captures required metadata before releasing an ECR."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("ECR Released")
+
+        self.name_file_old = QLineEdit()
+        self.rev_old = QLineEdit()
+        self.name_file_new = QLineEdit()
+        self.rev_new = QLineEdit()
+
+        layout = QFormLayout(self)
+        layout.addRow("Name File OLD", self.name_file_old)
+        layout.addRow("Revision File OLD", self.rev_old)
+        layout.addRow("Name File NEW", self.name_file_new)
+        layout.addRow("Revision File NEW", self.rev_new)
+
+        button_row = QHBoxLayout()
+        cancel = QPushButton("Cancel")
+        ok = QPushButton("Send to Released")
+        cancel.clicked.connect(self.reject)
+        ok.clicked.connect(self._validate)
+        button_row.addStretch()
+        button_row.addWidget(cancel)
+        button_row.addWidget(ok)
+        layout.addRow(button_row)
+
+    def _validate(self) -> None:
+        fields = [
+            self.name_file_old.text().strip(),
+            self.rev_old.text().strip(),
+            self.name_file_new.text().strip(),
+            self.rev_new.text().strip(),
+        ]
+        if any(not value for value in fields):
+            QMessageBox.warning(
+                self,
+                "ECR Released",
+                "All fields are required before sending to Released.",
+            )
+            return
+        self.accept()
+
+    def data(self) -> Dict[str, str]:
+        return {
+            "name_file_old": self.name_file_old.text().strip(),
+            "revision_old": self.rev_old.text().strip(),
+            "name_file_new": self.name_file_new.text().strip(),
+            "revision_new": self.rev_new.text().strip(),
+        }
+
+
+class ReleasedDialog(QDialog):
+    """Dialog showing all released ECRs with search and actions."""
+
+    def __init__(self, role: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.role = role
+        self.setWindowTitle("ECR Released")
+        self.resize(800, 420)
+
+        layout = QVBoxLayout(self)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by file or user…")
+        self.search_input.textChanged.connect(self.refresh)
+        layout.addWidget(self.search_input)
+
+        self.table = QTableWidget(0, 9)
+        self.table.setHorizontalHeaderLabels(
+            [
+                "Date/Time",
+                "Name File OLD",
+                "Revision File OLD",
+                "Name File NEW",
+                "Revision File NEW",
+                "Created by",
+                "Status",
+                "File name",
+                "Actions",
+            ]
+        )
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        layout.addWidget(self.table)
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.accept)
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(close_button)
+        layout.addLayout(button_row)
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        entries = list_released_entries()
+        search_text = (self.search_input.text() or "").lower().strip()
+        if search_text:
+            entries = [
+                entry
+                for entry in entries
+                if search_text in entry.get("filename", "").lower()
+                or search_text in entry.get("created_by", "").lower()
+            ]
+
+        self.table.setRowCount(len(entries))
+        for row_index, entry in enumerate(entries):
+            created_at = entry.get("created_at", "")
+            try:
+                display_time = datetime.fromisoformat(created_at).strftime("%d/%m/%Y %H:%M:%S")
+            except Exception:
+                display_time = created_at
+            self.table.setItem(row_index, 0, QTableWidgetItem(display_time))
+            self.table.setItem(row_index, 1, QTableWidgetItem(entry.get("name_file_old", "")))
+            self.table.setItem(row_index, 2, QTableWidgetItem(entry.get("revision_old", "")))
+            self.table.setItem(row_index, 3, QTableWidgetItem(entry.get("name_file_new", "")))
+            self.table.setItem(row_index, 4, QTableWidgetItem(entry.get("revision_new", "")))
+            self.table.setItem(row_index, 5, QTableWidgetItem(entry.get("created_by", "")))
+            self.table.setItem(row_index, 6, QTableWidgetItem("Released"))
+            self.table.setItem(row_index, 7, QTableWidgetItem(entry.get("filename", "")))
+
+            actions = QWidget()
+            actions_layout = QHBoxLayout(actions)
+            actions_layout.setContentsMargins(0, 0, 0, 0)
+            view_btn = QPushButton("View")
+            export_btn = QPushButton("Export")
+            view_btn.clicked.connect(
+                lambda _=False, p=entry.get("source_result", ""): open_with_default_application(p)
+            )
+            export_btn.clicked.connect(
+                lambda _=False, p=entry.get("source_result", ""), fn=entry.get("filename", ""): self.export_file(p, fn)
+            )
+            actions_layout.addWidget(view_btn)
+            actions_layout.addWidget(export_btn)
+            if self.role == "admin":
+                delete_btn = QPushButton("Delete")
+                delete_btn.clicked.connect(
+                    lambda _=False, e=entry: self.delete_entry(e)
+                )
+                actions_layout.addWidget(delete_btn)
+            actions_layout.addStretch()
+            self.table.setCellWidget(row_index, 8, actions)
+
+    def export_file(self, source_path: str, filename: str) -> None:
+        if not source_path:
+            QMessageBox.warning(self, "ECR Released", "No file available to export.")
+            return
+        target_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Released", filename or "released.pdf", "PDF Files (*.pdf)"
+        )
+        if not target_path:
+            return
+        try:
+            shutil.copyfile(source_path, target_path)
+            QMessageBox.information(self, "ECR Released", f"File exported to:\n{target_path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "ECR Released", f"Unable to export file:\n{exc}")
+
+    def delete_entry(self, entry: Dict[str, str]) -> None:
+        filename = entry.get("filename", "")
+        source_path = entry.get("source_result", "")
+        if not filename:
+            return
+        if QMessageBox.question(
+            self,
+            "Delete Released",
+            f"Remove {filename}? This will delete the released copy.",
+        ) != QMessageBox.Yes:
+            return
+        try:
+            if source_path and os.path.exists(source_path):
+                os.remove(source_path)
+            delete_released_entry(filename)
+            self.refresh()
+        except Exception as exc:
+            QMessageBox.critical(self, "Delete Released", f"Unable to delete file:\n{exc}")
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -806,10 +1373,6 @@ class MainWindow(QMainWindow):
         self.current_language = user_settings.get("language", "pt-BR")
         self.last_browse_dir: Optional[str] = None
         self.setWindowTitle("Compare SET")
-
-        settings_menu = self.menuBar().addMenu("Settings")
-        open_settings_action = settings_menu.addAction("Preferences…")
-        open_settings_action.triggered.connect(self.open_settings_dialog)
 
         self._log_emitter = LogEmitter()
         self._log_handler = QtLogHandler(self._log_emitter)
@@ -837,9 +1400,11 @@ class MainWindow(QMainWindow):
         self.cancel_button.clicked.connect(self.request_cancel)
         self.history_button = QPushButton("My History")
         self.history_button.clicked.connect(self.open_history)
-
-        self.admin_group: Optional[QGroupBox] = None
-        self.user_list: Optional[QListWidget] = None
+        self.released_button = QPushButton("Released")
+        self.released_button.clicked.connect(self.open_released)
+        self.settings_button = QPushButton("Configurações")
+        self.settings_button.clicked.connect(self.open_settings_dialog)
+        self.admin_button: Optional[QPushButton] = None
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
@@ -870,6 +1435,8 @@ class MainWindow(QMainWindow):
 
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.history_button)
+        button_layout.addWidget(self.released_button)
+        button_layout.addWidget(self.settings_button)
         button_layout.addStretch()
         button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.compare_button)
@@ -878,12 +1445,15 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.progress_bar)
         main_layout.addWidget(self.status_label)
         if self.role == "admin":
-            self._build_admin_panel(main_layout)
+            self.admin_button = QPushButton("Administração")
+            self.admin_button.clicked.connect(self.open_admin_dialog)
+            main_layout.addWidget(self.admin_button)
             main_layout.addWidget(self.log_view)
 
         self.apply_language_setting()
         self.setCentralWidget(central_widget)
         self.resize(720, 520)
+        self.prompt_for_email_if_missing()
 
     @Slot(str)
     def append_log(self, message: str) -> None:
@@ -1010,6 +1580,10 @@ class MainWindow(QMainWindow):
         dialog = HistoryDialog(self.username, self)
         dialog.exec()
 
+    def open_released(self) -> None:
+        dialog = ReleasedDialog(self.role, self)
+        dialog.exec()
+
     def open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self.username, self)
         dialog.load()
@@ -1019,103 +1593,22 @@ class MainWindow(QMainWindow):
             self.user_settings["language"] = self.current_language
             self.apply_language_setting()
 
-    def _build_admin_panel(self, parent_layout: QVBoxLayout) -> None:
-        self.admin_group = QGroupBox("Admin - User Management")
-        admin_layout = QVBoxLayout(self.admin_group)
+    def open_admin_dialog(self) -> None:
+        dialog = AdminDialog(self)
+        dialog.exec()
 
-        self.admin_search_input = QLineEdit()
-        self.admin_search_input.setPlaceholderText("Search username…")
-        self.admin_search_input.textChanged.connect(self.refresh_user_list)
-        admin_layout.addWidget(self.admin_search_input)
-
-        self.user_list = QListWidget()
-        self.user_list.currentItemChanged.connect(self.on_user_selected)
-        admin_layout.addWidget(self.user_list)
-
-        self.admin_username_input = QLineEdit()
-        self.admin_role_combo = QComboBox()
-        self.admin_role_combo.addItems(["admin", "user", "viewer"])
-        self.admin_active_checkbox = QCheckBox("Active")
-        self.admin_active_checkbox.setChecked(True)
-
-        form_layout = QFormLayout()
-        form_layout.addRow("Username", self.admin_username_input)
-        form_layout.addRow("Role", self.admin_role_combo)
-        form_layout.addRow("Status", self.admin_active_checkbox)
-        admin_layout.addLayout(form_layout)
-
-        button_row = QHBoxLayout()
-        self.add_user_button = QPushButton("Add User")
-        self.update_user_button = QPushButton("Save Changes")
-        button_row.addWidget(self.add_user_button)
-        button_row.addWidget(self.update_user_button)
-        admin_layout.addLayout(button_row)
-
-        self.add_user_button.clicked.connect(self.on_add_user)
-        self.update_user_button.clicked.connect(self.on_update_user)
-
-        parent_layout.addWidget(self.admin_group)
-        self.refresh_user_list()
-
-    def refresh_user_list(self) -> None:
-        if not self.user_list:
-            return
-        try:
-            users = list_users()
-        except Exception as exc:
-            QMessageBox.critical(self, "Admin", f"Could not load users:\n{exc}")
-            return
-        self.user_list.clear()
-        search_text = (self.admin_search_input.text() or "").lower().strip()
-        for user in users:
-            if search_text and search_text not in user.get("username", "").lower():
-                continue
-            status = "Active" if user.get("is_active") else "Inactive"
-            item = QListWidgetItem(f"{user['username']} - {user['role']} ({status})")
-            item.setData(Qt.UserRole, user)
-            self.user_list.addItem(item)
-
-    def on_user_selected(
-        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
-    ) -> None:
-        if not current:
-            return
-        data = current.data(Qt.UserRole) or {}
-        self.admin_username_input.setText(data.get("username", ""))
-        self.admin_role_combo.setCurrentText(str(data.get("role", "user")))
-        self.admin_active_checkbox.setChecked(bool(data.get("is_active", 0)))
-
-    def on_add_user(self) -> None:
-        username = self.admin_username_input.text().strip()
-        role = self.admin_role_combo.currentText()
-        if not username:
-            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
-            return
-        try:
-            add_user(username, role)
-            QMessageBox.information(self, "Admin", "User added successfully.")
-            self.refresh_user_list()
-        except sqlite3.IntegrityError:
-            QMessageBox.warning(self, "Admin", "User already exists.")
-        except Exception as exc:
-            QMessageBox.critical(self, "Admin", f"Unable to add user:\n{exc}")
-
-    def on_update_user(self) -> None:
-        if not self.user_list or not self.user_list.currentItem():
-            QMessageBox.warning(self, "Admin", "Select a user to update.")
-            return
-        username = self.admin_username_input.text().strip()
-        role = self.admin_role_combo.currentText()
-        is_active = 1 if self.admin_active_checkbox.isChecked() else 0
-        if not username:
-            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
-            return
-        try:
-            update_user_record(username, role=role, is_active=is_active)
-            QMessageBox.information(self, "Admin", "User updated.")
-            self.refresh_user_list()
-        except Exception as exc:
-            QMessageBox.critical(self, "Admin", f"Unable to update user:\n{exc}")
+    def prompt_for_email_if_missing(self) -> None:
+        current_email = (self.user_settings.get("email") or "").strip()
+        while not current_email:
+            dialog = EmailPromptDialog(self)
+            if dialog.exec() == QDialog.Accepted:
+                current_email = dialog.get_email()
+                if current_email:
+                    self.user_settings["email"] = current_email
+                    update_user_settings(self.username, email=current_email)
+                    break
+            else:
+                current_email = ""
 
     def toggle_controls(self, enabled: bool) -> None:
         for widget in (
@@ -1348,13 +1841,12 @@ def run_comparison(
         write_log(exc_text)
 
         try:
-            error_dir = os.path.join(LOGS_ROOT, "Error")
-            os.makedirs(make_long_path(error_dir), exist_ok=True)
+            os.makedirs(make_long_path(ERROR_LOGS_ROOT), exist_ok=True)
             base_name = old_path.stem or old_path.name
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             username = get_current_username()
             error_filename = f"ECR_ERROR-{base_name}_{timestamp}_{username}.txt"
-            error_path = make_long_path(os.path.join(error_dir, error_filename))
+            error_path = make_long_path(os.path.join(ERROR_LOGS_ROOT, error_filename))
             if LOG_FILE and os.path.exists(LOG_FILE):
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as handle:
@@ -1487,6 +1979,8 @@ def process_page_pair(
     line_diff_mask = cv2.dilate(
         line_diff_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1
     )
+    bridge_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    change_mask = cv2.morphologyEx(change_mask, cv2.MORPH_CLOSE, bridge_kernel, iterations=1)
     line_removed_regions = cv2.bitwise_and(line_diff_mask, removed_detection)
     line_added_regions = cv2.bitwise_and(line_diff_mask, added_detection)
 
@@ -1592,6 +2086,16 @@ def process_page_pair(
         old_boxes, new_boxes, words_old, words_new
     )
     write_log(f"[Page {page_index + 1}] Text filter removed {identical_text_suppressed} regions")
+
+    old_boxes, old_stable = drop_stable_regions(
+        old_boxes, diff, old_high, aligned_new_high, similarity_cutoff=0.988
+    )
+    new_boxes, new_stable = drop_stable_regions(
+        new_boxes, diff, aligned_new_high, old_high, similarity_cutoff=0.988
+    )
+    write_log(
+        f"[Page {page_index + 1}] Stable-region pruning removed old={old_stable} new={new_stable}"
+    )
 
     logger.info(
         "unchanged-text suppressed: %d on OLD, %d on NEW",
@@ -1961,6 +2465,12 @@ def extract_regions(
     height, width = mask.shape
     rectangles: List[Rect] = []
     pad = max(PADDING_PX, int(min(width, height) * PADDING_FRAC))
+    global_std = 0.0
+    try:
+        _, std = cv2.meanStdDev(diff_img)
+        global_std = float(std[0][0]) if std is not None else 0.0
+    except Exception:
+        global_std = 0.0
 
     kernel = np.ones((3, 3), np.uint8)
     raw_components = list(range(1, num_labels))
@@ -2017,6 +2527,14 @@ def extract_regions(
 
         mean_val = cv2.mean(diff_img, mask=component_mask)[0]
         mean_threshold = MEAN_DIFF_MIN * (0.7 if is_thin_line else 1.0)
+        cx1 = max(0, x - pad * 2)
+        cy1 = max(0, y - pad * 2)
+        cx2 = min(width, x + w_box + pad * 2)
+        cy2 = min(height, y + h_box + pad * 2)
+        context_mask = np.zeros_like(mask)
+        context_mask[cy1:cy2, cx1:cx2] = 255
+        context_mean = cv2.mean(diff_img, mask=context_mask)[0]
+        adaptive_delta = mean_threshold - min(mean_threshold * 0.25, global_std * 0.6)
         if std_val < 2.0 and mean_val < mean_threshold:
             continue
 
@@ -2050,6 +2568,8 @@ def extract_regions(
                 line_evidence = False
 
         if mean_val < mean_threshold and not line_evidence:
+            continue
+        if (mean_val - context_mean) < adaptive_delta and not line_evidence:
             continue
 
         foreground = cv2.bitwise_and(component_mask, ink_mask)
@@ -2238,6 +2758,47 @@ def compute_patch_similarity(
     norm_new = (new_f - new_mean) / new_std
     corr = float(np.mean(norm_ref * norm_new))
     return max(0.0, min(1.0, 0.5 + 0.5 * corr))
+
+
+def drop_stable_regions(
+    boxes: Sequence[Rect],
+    diff_img: Optional[np.ndarray],
+    ref_img: Optional[np.ndarray],
+    cmp_img: Optional[np.ndarray],
+    *,
+    mean_threshold: float = MEAN_DIFF_MIN,
+    similarity_cutoff: float = 0.985,
+) -> Tuple[List[Rect], int]:
+    """Filter out boxes whose patches are nearly identical and low-energy.
+
+    This reduces false positives from background noise while retaining genuine
+    differences due to low similarity scores or higher local mean differences.
+    """
+
+    if diff_img is None or ref_img is None or cmp_img is None:
+        return list(boxes), 0
+
+    height, width = diff_img.shape[:2]
+    kept: List[Rect] = []
+    suppressed = 0
+
+    for box in boxes:
+        x1 = max(0, int(math.floor(box[0])))
+        y1 = max(0, int(math.floor(box[1])))
+        x2 = min(width, int(math.ceil(box[2])))
+        y2 = min(height, int(math.ceil(box[3])))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        mask = np.zeros((height, width), dtype=np.uint8)
+        mask[y1:y2, x1:x2] = 255
+        mean_val = cv2.mean(diff_img, mask=mask)[0]
+        similarity = compute_patch_similarity(ref_img, cmp_img, box, box, PATCH_PAD)
+        if similarity >= similarity_cutoff and mean_val < mean_threshold * 0.85:
+            suppressed += 1
+            continue
+        kept.append(box)
+
+    return kept, suppressed
 
 
 def suppress_moved_pairs(
@@ -2848,6 +3409,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     ensure_server_directories()
     ensure_users_db_initialized()
+    ensure_released_db_initialized()
 
     username = get_current_username()
     role = get_user_role(username)
