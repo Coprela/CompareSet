@@ -62,6 +62,8 @@ DPI = BASE_RENDER_DPI
 DPI_HIGH = int(BASE_RENDER_DPI * 2)
 BLUR_KSIZE = 3
 THRESH = 28
+ADAPTIVE_DIFF_STD_FACTOR = 0.6
+ADAPTIVE_DIFF_MIN_INCREASE = 6.0
 MORPH_KERNEL = 3
 DILATE_ITERS = 1
 ERODE_ITERS = 0
@@ -78,6 +80,7 @@ VIEW_MAX_GROW = 12
 MEAN_DIFF_MIN = 14.0
 MEAN_TEXT_DIFF_MIN = 11.0
 MIN_FORE_FRACTION = 0.18
+MIN_FORE_FRACTION_LINE_BONUS = 0.12
 WORD_IOU_MIN = 0.50
 BASELINE_DELTA_MAX_PX = 4
 WORD_SHIFT_TOLERANCE_PX = 6
@@ -92,10 +95,10 @@ RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
 DEBUG_DUMPS = False
 PREVIEW_DPI = 100
-MAX_CENTER_SHIFT_PX = 3.0
+MAX_CENTER_SHIFT_PX = 5.0
 SIZE_TOLERANCE = 0.30
-MIN_IOU_FOR_SAME = 0.50
-MIN_PATCH_SSIM_FOR_SAME = 0.985
+MIN_IOU_FOR_SAME = 0.45
+MIN_PATCH_SSIM_FOR_SAME = 0.97
 DIMMING_ENABLED = True
 DIMMING_ALPHA = 0.4
 DIMMING_MODE = "dark"
@@ -1350,9 +1353,15 @@ def run_comparison(
             base_name = old_path.stem or old_path.name
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             username = get_current_username()
-            error_filename = f"ECR_ERROR-{base_name}_{timestamp}_{username}.log"
+            error_filename = f"ECR_ERROR-{base_name}_{timestamp}_{username}.txt"
             error_path = make_long_path(os.path.join(error_dir, error_filename))
             if LOG_FILE and os.path.exists(LOG_FILE):
+                try:
+                    with open(LOG_FILE, "a", encoding="utf-8") as handle:
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                except Exception:
+                    pass
                 shutil.copyfile(LOG_FILE, error_path)
         except Exception:
             pass
@@ -1752,13 +1761,20 @@ def downsample_to_working_resolution(
 def compute_intensity_mask(diff: np.ndarray) -> np.ndarray:
     """Compute the intensity-based change mask."""
 
-    _, coarse = cv2.threshold(diff, THRESH, 255, cv2.THRESH_BINARY)
+    mean_val = float(diff.mean())
+    std_val = float(diff.std())
+    adaptive = mean_val + std_val * ADAPTIVE_DIFF_STD_FACTOR + ADAPTIVE_DIFF_MIN_INCREASE
+    threshold_value = max(THRESH, adaptive)
+    _, coarse = cv2.threshold(diff, threshold_value, 255, cv2.THRESH_BINARY)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_KERNEL, MORPH_KERNEL))
     coarse = cv2.morphologyEx(coarse, cv2.MORPH_CLOSE, kernel)
     if DILATE_ITERS:
         coarse = cv2.dilate(coarse, kernel, iterations=DILATE_ITERS)
     if ERODE_ITERS:
         coarse = cv2.erode(coarse, kernel, iterations=ERODE_ITERS)
+    if std_val < 4.0:
+        cleaner = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        coarse = cv2.morphologyEx(coarse, cv2.MORPH_OPEN, cleaner)
     return coarse
 
 
@@ -2000,7 +2016,8 @@ def extract_regions(
             std_val = float(stddev[0][0])
 
         mean_val = cv2.mean(diff_img, mask=component_mask)[0]
-        if std_val < 2.0 and mean_val < MEAN_DIFF_MIN:
+        mean_threshold = MEAN_DIFF_MIN * (0.7 if is_thin_line else 1.0)
+        if std_val < 2.0 and mean_val < mean_threshold:
             continue
 
         glyph_match = is_identical_text_region(
@@ -2032,14 +2049,17 @@ def extract_regions(
             except cv2.error:
                 line_evidence = False
 
-        if mean_val < MEAN_DIFF_MIN and not line_evidence:
+        if mean_val < mean_threshold and not line_evidence:
             continue
 
         foreground = cv2.bitwise_and(component_mask, ink_mask)
         if area == 0:
             continue
         fore_fraction = float(cv2.countNonZero(foreground)) / float(area)
-        if fore_fraction < MIN_FORE_FRACTION and not line_evidence:
+        fore_cutoff = MIN_FORE_FRACTION
+        if line_evidence or is_thin_line:
+            fore_cutoff = min(fore_cutoff, MIN_FORE_FRACTION_LINE_BONUS)
+        if fore_fraction < fore_cutoff and not line_evidence:
             continue
 
         short_side = max(1, min(w_box, h_box))
