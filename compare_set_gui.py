@@ -63,11 +63,11 @@ DPI_HIGH = int(BASE_RENDER_DPI * 2)
 BLUR_KSIZE = 3
 THRESH = 28
 MORPH_KERNEL = 3
-DILATE_ITERS = 2
-ERODE_ITERS = 1
+DILATE_ITERS = 1
+ERODE_ITERS = 0
 MIN_DIM = 2
 MIN_DIFF_AREA = 20
-MIN_LINE_LENGTH = 50
+MIN_LINE_LENGTH = 30
 MIN_LINE_ASPECT_RATIO = 5.0
 MERGE_IOU_THRESHOLD = 0.10
 MERGE_CENTER_DIST_FACTOR = 0.5
@@ -92,10 +92,10 @@ RED = (1.0, 0.0, 0.0)
 GREEN = (0.0, 1.0, 0.0)
 DEBUG_DUMPS = False
 PREVIEW_DPI = 100
-MAX_CENTER_SHIFT_PX = 10.0
-SIZE_TOLERANCE = 0.40
-MIN_IOU_FOR_SAME = 0.10
-MIN_PATCH_SSIM_FOR_SAME = 0.97
+MAX_CENTER_SHIFT_PX = 3.0
+SIZE_TOLERANCE = 0.30
+MIN_IOU_FOR_SAME = 0.50
+MIN_PATCH_SSIM_FOR_SAME = 0.985
 DIMMING_ENABLED = True
 DIMMING_ALPHA = 0.4
 DIMMING_MODE = "dark"
@@ -1394,7 +1394,7 @@ def process_page_pair(
             new_boxes=[],
             old_raw=0,
             new_raw=0,
-            pixel_scale=compute_zoom(old_page.rect, DPI),
+            pixel_scale=old_zoom_high,
             preview_skipped=True,
         )
 
@@ -1405,26 +1405,10 @@ def process_page_pair(
         f"[Page {page_index + 1}] Alignment ({alignment_method}) completed in {perf_after_align - perf_after_preview:.3f}s"
     )
 
-    old_zoom_work = compute_zoom(old_page.rect, DPI)
-    scale_high_to_work = old_zoom_work / old_zoom_high if old_zoom_high else 1.0
-    work_width = int(round(old_high.shape[1] * scale_high_to_work))
-    work_height = int(round(old_high.shape[0] * scale_high_to_work))
-
-    old_low = downsample_to_working_resolution(
-        old_high, target_size=(max(1, work_width), max(1, work_height))
-    )
-    new_low = downsample_to_working_resolution(
-        aligned_new_high, target_size=(max(1, work_width), max(1, work_height))
-    )
-    perf_after_resample = time.perf_counter()
-    write_log(
-        f"[Page {page_index + 1}] Downsampled to working resolution in {perf_after_resample - perf_after_align:.3f}s"
-    )
-
     _check_cancel()
     write_log(f"[Page {page_index + 1}] Diff mask creation")
-    blur_old = cv2.GaussianBlur(old_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
-    blur_new = cv2.GaussianBlur(new_low, (BLUR_KSIZE, BLUR_KSIZE), 0)
+    blur_old = cv2.GaussianBlur(old_high, (BLUR_KSIZE, BLUR_KSIZE), 0)
+    blur_new = cv2.GaussianBlur(aligned_new_high, (BLUR_KSIZE, BLUR_KSIZE), 0)
 
     diff = cv2.absdiff(blur_old, blur_new)
 
@@ -1466,13 +1450,13 @@ def process_page_pair(
         old_page,
         new_page,
         warp_matrix,
-        old_zoom_work,
+        old_zoom_high,
         (new_zoom_high_x, new_zoom_high_y),
-        scale_high_to_work,
+        1.0,
     )
-    words_old = words_to_pixel_boxes(old_page, old_zoom_work)
+    words_old = words_to_pixel_boxes(old_page, old_zoom_high)
     words_new_high = words_to_pixel_boxes(new_page, (new_zoom_high_x, new_zoom_high_y))
-    words_new = align_word_boxes(words_new_high, warp_matrix, scale_high_to_work)
+    words_new = align_word_boxes(words_new_high, warp_matrix, 1.0)
 
     detection_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     removed_detection = cv2.dilate(removed_mask, detection_kernel, iterations=1)
@@ -1481,10 +1465,17 @@ def process_page_pair(
     removed_regions = cv2.bitwise_and(change_mask, removed_detection)
     added_regions = cv2.bitwise_and(change_mask, added_detection)
 
-    old_filtered, old_raw = extract_regions(
+    line_diff_mask = cv2.bitwise_xor(edge_old, edge_new)
+    line_diff_mask = cv2.dilate(
+        line_diff_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1
+    )
+    line_removed_regions = cv2.bitwise_and(line_diff_mask, removed_detection)
+    line_added_regions = cv2.bitwise_and(line_diff_mask, added_detection)
+
+    old_filtered_main, old_kept_main, old_raw_components, old_after_noise = extract_regions(
         removed_regions,
         diff,
-        old_low,
+        old_high,
         old_ink,
         groups.old_groups,
         groups.new_groups,
@@ -1493,10 +1484,10 @@ def process_page_pair(
         line_boost,
         "old",
     )
-    new_filtered, new_raw = extract_regions(
+    new_filtered_main, new_kept_main, new_raw_components, new_after_noise = extract_regions(
         added_regions,
         diff,
-        new_low,
+        aligned_new_high,
         new_ink,
         groups.old_groups,
         groups.new_groups,
@@ -1505,11 +1496,47 @@ def process_page_pair(
         line_boost,
         "new",
     )
+
+    old_line_filtered, old_line_kept, old_line_raw, old_line_after_noise = extract_regions(
+        line_removed_regions,
+        diff,
+        old_high,
+        old_ink,
+        groups.old_groups,
+        groups.new_groups,
+        edge_old,
+        edge_new,
+        line_boost,
+        "old_line",
+    )
+    new_line_filtered, new_line_kept, new_line_raw, new_line_after_noise = extract_regions(
+        line_added_regions,
+        diff,
+        aligned_new_high,
+        new_ink,
+        groups.old_groups,
+        groups.new_groups,
+        edge_old,
+        edge_new,
+        line_boost,
+        "new_line",
+    )
+
+    old_filtered = old_filtered_main + old_line_filtered
+    new_filtered = new_filtered_main + new_line_filtered
     perf_after_regions = time.perf_counter()
-    write_log(f"[Page {page_index + 1}] Regions extracted in {perf_after_regions - perf_after_resample:.3f}s")
+    write_log(f"[Page {page_index + 1}] Regions extracted in {perf_after_regions - perf_after_align:.3f}s")
+    write_log(
+        f"[Page {page_index + 1}] OLD components raw={old_raw_components + old_line_raw} after_noise={old_after_noise + old_line_after_noise} kept={len(old_filtered)} (main {old_kept_main}, line {old_line_kept})"
+    )
+    write_log(
+        f"[Page {page_index + 1}] NEW components raw={new_raw_components + new_line_raw} after_noise={new_after_noise + new_line_after_noise} kept={len(new_filtered)} (main {new_kept_main}, line {new_line_kept})"
+    )
 
     _check_cancel()
     write_log(f"[Page {page_index + 1}] Rectangle merging")
+    old_raw = len(old_filtered)
+    new_raw = len(new_filtered)
     old_boxes = merge_close_rectangles(merge_rectangles(old_filtered))
     new_boxes = merge_close_rectangles(merge_rectangles(new_filtered))
 
@@ -1534,7 +1561,7 @@ def process_page_pair(
     old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
     write_log(f"[Page {page_index + 1}] Movement suppression (geometry/SSIM)")
     old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(
-        old_boxes, new_boxes, old_low, new_low
+        old_boxes, new_boxes, old_high, aligned_new_high
     )
     write_log(f"[Page {page_index + 1}] Movement suppression removed {movement_suppressed} pairs")
 
@@ -1564,13 +1591,12 @@ def process_page_pair(
 
     if DEBUG_PERFORMANCE:
         logger.info(
-            "performance page %d: render=%.3fs preview=%.3fs align=%.3fs resample=%.3fs regions=%.3fs",
+            "performance page %d: render=%.3fs preview=%.3fs align=%.3fs regions=%.3fs",
             getattr(old_page, "number", -1) + 1,
             perf_after_render - perf_start,
             perf_after_preview - perf_after_render,
             perf_after_align - perf_after_preview,
-            perf_after_resample - perf_after_align,
-            perf_after_regions - perf_after_resample,
+            perf_after_regions - perf_after_align,
         )
 
     _check_cancel()
@@ -1580,7 +1606,7 @@ def process_page_pair(
         new_boxes=new_boxes,
         old_raw=old_raw,
         new_raw=new_raw,
-        pixel_scale=old_zoom_work,
+        pixel_scale=old_zoom_high,
     )
 
 
@@ -1900,11 +1926,11 @@ def extract_regions(
     edge_new: np.ndarray,
     line_boost: np.ndarray,
     label: str,
-) -> Tuple[List[Rect], int]:
+) -> Tuple[List[Rect], int, int, int]:
     """Extract filtered bounding boxes from a binary mask."""
 
     if mask is None or not np.any(mask):
-        return [], 0
+        return [], 0, 0, 0
 
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     height, width = mask.shape
@@ -1912,16 +1938,10 @@ def extract_regions(
     pad = max(PADDING_PX, int(min(width, height) * PADDING_FRAC))
 
     kernel = np.ones((3, 3), np.uint8)
-    indices = list(range(1, num_labels))
-    if len(indices) > MAX_COMPONENTS_PER_PAGE:
-        indices.sort(key=lambda idx: stats[idx, cv2.CC_STAT_AREA], reverse=True)
-        kept = indices[:MAX_COMPONENTS_PER_PAGE]
-        logger.info(
-            "%s regions truncated: kept %d of %d components", label, len(kept), len(indices)
-        )
-        indices = kept
+    raw_components = list(range(1, num_labels))
+    filtered_indices: List[int] = []
 
-    for label_idx in indices:
+    for label_idx in raw_components:
         x = stats[label_idx, cv2.CC_STAT_LEFT]
         y = stats[label_idx, cv2.CC_STAT_TOP]
         w_box = stats[label_idx, cv2.CC_STAT_WIDTH]
@@ -1936,6 +1956,29 @@ def extract_regions(
 
         if (area < MIN_COMPONENT_AREA and longest_side < LINE_LENGTH_THRESHOLD) or w_box < MIN_DIM or h_box < MIN_DIM:
             continue
+
+        filtered_indices.append(label_idx)
+
+    logger.info(
+        "%s components raw=%d after_noise=%d", label, len(raw_components), len(filtered_indices)
+    )
+
+    if len(filtered_indices) > MAX_COMPONENTS_PER_PAGE:
+        filtered_indices.sort(key=lambda idx: stats[idx, cv2.CC_STAT_AREA], reverse=True)
+        kept = filtered_indices[:MAX_COMPONENTS_PER_PAGE]
+        logger.info(
+            "%s regions truncated: kept %d of %d components (after noise filter)",
+            label,
+            len(kept),
+            len(filtered_indices),
+        )
+        filtered_indices = kept
+
+    for label_idx in filtered_indices:
+        x = stats[label_idx, cv2.CC_STAT_LEFT]
+        y = stats[label_idx, cv2.CC_STAT_TOP]
+        w_box = stats[label_idx, cv2.CC_STAT_WIDTH]
+        h_box = stats[label_idx, cv2.CC_STAT_HEIGHT]
 
         component_mask = np.where(labels == label_idx, 255, 0).astype(np.uint8)
 
@@ -2003,7 +2046,7 @@ def extract_regions(
         )
         rectangles.append(apply_view_expand(padded_rect, width, height, ink_mask))
 
-    return rectangles, len(rectangles)
+    return rectangles, len(rectangles), len(raw_components), len(filtered_indices)
 
 
 def is_identical_text_region(
