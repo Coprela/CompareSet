@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Compare SET desktop application with enhanced diff suppression."""
+"""Compare SET desktop application with enhanced diff suppression.
+
+Main adjustments in this step:
+- Improve thin-line sensitivity by relaxing component thresholds and enhancing the
+  dedicated line-boost stage so technical cut/dimension lines are preserved.
+- Make unchanged-text suppression and movement pruning more conservative so
+  small string edits (e.g., ASTM A37 → ASTM A36) are not discarded while still
+  handling genuine shifts.
+- Strengthen false-positive filtering via refined stable-region pruning and
+  stricter overlap/mean-difference checks, while skipping expensive SSIM work
+  when it brings little value for large pages. These changes speed up heavy
+  drawings without sacrificing accuracy.
+"""
 
 from __future__ import annotations
 
@@ -40,10 +52,10 @@ ADAPTIVE_DIFF_MIN_INCREASE = 6.0
 MORPH_KERNEL = 3
 DILATE_ITERS = 1
 ERODE_ITERS = 0
-MIN_DIM = 2
+MIN_DIM = 1
 MIN_DIFF_AREA = 20
-MIN_LINE_LENGTH = 30
-MIN_LINE_ASPECT_RATIO = 5.0
+MIN_LINE_LENGTH = 18
+MIN_LINE_ASPECT_RATIO = 3.5
 MERGE_IOU_THRESHOLD = 0.10
 MERGE_CENTER_DIST_FACTOR = 0.5
 PADDING_PX = 2
@@ -51,15 +63,15 @@ PADDING_FRAC = 0.01
 VIEW_EXPAND = 1.04
 VIEW_MAX_GROW = 12
 MEAN_DIFF_MIN = 14.0
-MEAN_TEXT_DIFF_MIN = 11.0
+MEAN_TEXT_DIFF_MIN = 9.0
 MIN_FORE_FRACTION = 0.18
 MIN_FORE_FRACTION_LINE_BONUS = 0.12
-WORD_IOU_MIN = 0.50
+WORD_IOU_MIN = 0.52
 BASELINE_DELTA_MAX_PX = 4
-WORD_SHIFT_TOLERANCE_PX = 6
-ABSMEAN_MAX_UNCHANGED_TXT = 10.0
-EDGE_OVERLAP_MIN = 0.88
-LINE_MIN_LEN = 12
+WORD_SHIFT_TOLERANCE_PX = 5
+ABSMEAN_MAX_UNCHANGED_TXT = 8.0
+EDGE_OVERLAP_MIN = 0.92
+LINE_MIN_LEN = 10
 ECC_EPS = 1e-4
 ECC_ITERS = 300
 STROKE_WIDTH_PT = 1.1
@@ -69,9 +81,9 @@ GREEN = (0.0, 1.0, 0.0)
 DEBUG_DUMPS = False
 PREVIEW_DPI = 100
 MAX_CENTER_SHIFT_PX = 5.0
-SIZE_TOLERANCE = 0.30
-MIN_IOU_FOR_SAME = 0.45
-MIN_PATCH_SSIM_FOR_SAME = 0.97
+SIZE_TOLERANCE = 0.28
+MIN_IOU_FOR_SAME = 0.55
+MIN_PATCH_SSIM_FOR_SAME = 0.989
 DIMMING_ENABLED = True
 DIMMING_ALPHA = 0.4
 DIMMING_MODE = "dark"
@@ -79,12 +91,12 @@ DIMMING_FEATHER = 2
 PATCH_PAD = 2
 DEBUG_MOVEMENT_SUPPRESSION = False
 MAX_CANDIDATES_PER_REMOVED = 5
-MAX_BOXES_FOR_MOVEMENT_SUPPRESSION = 1500
-PATCH_SIM_SIZE = 64
+MAX_BOXES_FOR_MOVEMENT_SUPPRESSION = 1200
+PATCH_SIM_SIZE = 48
 
-MAX_COMPONENTS_PER_PAGE = 2000
-MIN_COMPONENT_AREA = 10
-LINE_LENGTH_THRESHOLD = 30
+MAX_COMPONENTS_PER_PAGE = 1600
+MIN_COMPONENT_AREA = 6
+LINE_LENGTH_THRESHOLD = 15
 
 
 SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
@@ -1038,7 +1050,8 @@ def process_page_pair(
     preview_diff = cv2.absdiff(preview_old, preview_new)
     _, preview_mask = cv2.threshold(preview_diff, 20, 255, cv2.THRESH_BINARY)
     nonzero_ratio = float(cv2.countNonZero(preview_mask)) / float(preview_mask.size or 1)
-    if nonzero_ratio < 0.0005:
+    preview_mean = float(preview_diff.mean()) if preview_diff.size else 0.0
+    if nonzero_ratio < 0.00035 and preview_mean < 3.5:
         logger.info("unchanged-text suppressed: 0 on OLD, 0 on NEW")
         write_log(f"[Page {page_index + 1}] Preview skip after {perf_after_preview - perf_after_render:.3f}s")
         return PageProcessingResult(
@@ -1231,10 +1244,10 @@ def process_page_pair(
     write_log(f"[Page {page_index + 1}] Text filter removed {identical_text_suppressed} regions")
 
     old_boxes, old_stable = drop_stable_regions(
-        old_boxes, diff, old_high, aligned_new_high, similarity_cutoff=0.988
+        old_boxes, diff, old_high, aligned_new_high, similarity_cutoff=0.995
     )
     new_boxes, new_stable = drop_stable_regions(
-        new_boxes, diff, aligned_new_high, old_high, similarity_cutoff=0.988
+        new_boxes, diff, aligned_new_high, old_high, similarity_cutoff=0.995
     )
     write_log(
         f"[Page {page_index + 1}] Stable-region pruning removed old={old_stable} new={new_stable}"
@@ -1450,13 +1463,16 @@ def compute_edge_mask(old_img: np.ndarray, new_img: np.ndarray) -> Tuple[np.ndar
 def compute_line_boost(diff_img: np.ndarray) -> np.ndarray:
     """Enhance thin-line differences using anisotropic closings."""
 
-    canny = cv2.Canny(diff_img, 30, 90)
-    kx = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1))
-    ky = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
+    # Use a lower Canny threshold to preserve faint strokes, then close in
+    # horizontal/vertical directions to reconnect dashed or very thin cuts.
+    canny = cv2.Canny(diff_img, 20, 70)
+    kx = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 1))
+    ky = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 7))
     close_x = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, kx)
     close_y = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, ky)
-    combined = cv2.bitwise_or(close_x, close_y)
-    dilated = cv2.dilate(combined, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)), iterations=1)
+    merged = cv2.max(close_x, close_y)
+    # A light dilation strengthens single-pixel traces without ballooning boxes.
+    dilated = cv2.dilate(merged, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)), iterations=1)
     return dilated
 
 
@@ -1465,9 +1481,13 @@ def compute_ssim_mask(old_img: np.ndarray, new_img: np.ndarray) -> Optional[np.n
 
     if structural_similarity is None:
         return None
+    # Skip SSIM when images are extremely large to avoid heavy CPU cost; the
+    # subsequent patch-similarity pruning will handle stability checks.
+    if old_img.size > 5_000_000 or new_img.size > 5_000_000:
+        return None
     try:
-        reduced_old = cv2.resize(old_img, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-        reduced_new = cv2.resize(new_img, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        reduced_old = cv2.resize(old_img, (0, 0), fx=0.45, fy=0.45, interpolation=cv2.INTER_AREA)
+        reduced_new = cv2.resize(new_img, (0, 0), fx=0.45, fy=0.45, interpolation=cv2.INTER_AREA)
         _, ssim_map = structural_similarity(reduced_old, reduced_new, full=True)
     except Exception:  # pragma: no cover - optional dependency runtime errors
         return None
@@ -1632,7 +1652,7 @@ def extract_regions(
             aspect_ratio >= MIN_LINE_ASPECT_RATIO and longest_side >= MIN_LINE_LENGTH
         )
 
-        if (area < MIN_COMPONENT_AREA and longest_side < LINE_LENGTH_THRESHOLD) or w_box < MIN_DIM or h_box < MIN_DIM:
+        if (area < MIN_COMPONENT_AREA and longest_side < LINE_LENGTH_THRESHOLD and not is_thin_line) or w_box < MIN_DIM or h_box < MIN_DIM:
             continue
 
         filtered_indices.append(label_idx)
@@ -1669,7 +1689,7 @@ def extract_regions(
             std_val = float(stddev[0][0])
 
         mean_val = cv2.mean(diff_img, mask=component_mask)[0]
-        mean_threshold = MEAN_DIFF_MIN * (0.7 if is_thin_line else 1.0)
+        mean_threshold = MEAN_DIFF_MIN * (0.6 if is_thin_line or line_boost is not None else 1.0)
         cx1 = max(0, x - pad * 2)
         cy1 = max(0, y - pad * 2)
         cx2 = min(width, x + w_box + pad * 2)
@@ -1678,7 +1698,7 @@ def extract_regions(
         context_mask[cy1:cy2, cx1:cx2] = 255
         context_mean = cv2.mean(diff_img, mask=context_mask)[0]
         adaptive_delta = mean_threshold - min(mean_threshold * 0.25, global_std * 0.6)
-        if std_val < 2.0 and mean_val < mean_threshold:
+        if std_val < 2.0 and mean_val < mean_threshold and not line_evidence:
             continue
 
         glyph_match = is_identical_text_region(
@@ -1910,7 +1930,7 @@ def drop_stable_regions(
     cmp_img: Optional[np.ndarray],
     *,
     mean_threshold: float = MEAN_DIFF_MIN,
-    similarity_cutoff: float = 0.985,
+    similarity_cutoff: float = 0.992,
 ) -> Tuple[List[Rect], int]:
     """Filter out boxes whose patches are nearly identical and low-energy.
 
@@ -1935,8 +1955,18 @@ def drop_stable_regions(
         mask = np.zeros((height, width), dtype=np.uint8)
         mask[y1:y2, x1:x2] = 255
         mean_val = cv2.mean(diff_img, mask=mask)[0]
+        if mean_val >= mean_threshold:
+            kept.append(box)
+            continue
+
+        # Tiny regions provide little SSIM signal; accept them when the mean
+        # difference is above noise, otherwise treat them as stable only with
+        # extremely high similarity.
         similarity = compute_patch_similarity(ref_img, cmp_img, box, box, PATCH_PAD)
-        if similarity >= similarity_cutoff and mean_val < mean_threshold * 0.85:
+        dynamic_cutoff = similarity_cutoff
+        if (x2 - x1) * (y2 - y1) < 36:
+            dynamic_cutoff = max(dynamic_cutoff, 0.995)
+        if similarity >= dynamic_cutoff and mean_val < mean_threshold * 0.9:
             suppressed += 1
             continue
         kept.append(box)
@@ -2320,6 +2350,12 @@ def suppress_unchanged_text(
 
         new_hits = [word for word in clipped_new if compute_iou(word[1], clipped) >= WORD_IOU_MIN]
         if not new_hits:
+            kept.append(rect)
+            continue
+
+        norm_old_full = _normalize_text(" ".join(sorted(word[0] for word in old_hits)))
+        norm_new_full = _normalize_text(" ".join(sorted(word[0] for word in new_hits)))
+        if norm_old_full != norm_new_full:
             kept.append(rect)
             continue
 
