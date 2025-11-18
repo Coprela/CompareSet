@@ -114,12 +114,54 @@ LINE_LENGTH_THRESHOLD = 30
 
 
 SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
-DATA_ROOT = os.path.join(SERVER_ROOT, "Data")
-RESULTS_ROOT = os.path.join(DATA_ROOT, "Results")
-LOGS_ROOT = os.path.join(DATA_ROOT, "Logs")
-ERROR_LOGS_ROOT = os.path.join(LOGS_ROOT, "Error")
-CONFIG_ROOT = os.path.join(DATA_ROOT, "Config")
-RELEASED_ROOT = os.path.join(DATA_ROOT, "Released")
+SERVER_DATA_ROOT = os.path.join(SERVER_ROOT, "Data")
+SERVER_RESULTS_ROOT = os.path.join(SERVER_DATA_ROOT, "Results")
+SERVER_LOGS_ROOT = os.path.join(SERVER_DATA_ROOT, "Logs")
+SERVER_ERROR_LOGS_ROOT = os.path.join(SERVER_LOGS_ROOT, "Error")
+SERVER_CONFIG_ROOT = os.path.join(SERVER_DATA_ROOT, "Config")
+SERVER_RELEASED_ROOT = os.path.join(SERVER_DATA_ROOT, "Released")
+
+LOCAL_APPDATA = os.getenv("LOCALAPPDATA") or os.path.join(
+    os.path.expanduser("~"), "AppData", "Local"
+)
+LOCAL_BASE_DIR = os.path.join(LOCAL_APPDATA, "CompareSet")
+LOCAL_HISTORY_DIR = os.path.join(LOCAL_BASE_DIR, "history")
+LOCAL_LOG_DIR = os.path.join(LOCAL_BASE_DIR, "logs")
+LOCAL_OUTPUT_DIR = os.path.join(LOCAL_BASE_DIR, "output")
+LOCAL_CONFIG_DIR = os.path.join(LOCAL_BASE_DIR, "config")
+LOCAL_RELEASED_DIR = os.path.join(LOCAL_BASE_DIR, "released")
+
+
+def is_server_available(server_root: str) -> bool:
+    """Return True when the UNC server root exists and is reachable."""
+
+    try:
+        if not server_root or not server_root.strip():
+            return False
+        return os.path.exists(server_root)
+    except Exception:
+        return False
+
+
+SERVER_ONLINE = is_server_available(SERVER_ROOT)
+OFFLINE_MODE = not SERVER_ONLINE
+
+DATA_ROOT = SERVER_DATA_ROOT if SERVER_ONLINE else os.path.join(LOCAL_BASE_DIR, "data")
+RESULTS_ROOT = SERVER_RESULTS_ROOT if SERVER_ONLINE else LOCAL_OUTPUT_DIR
+LOGS_ROOT = SERVER_LOGS_ROOT if SERVER_ONLINE else LOCAL_LOG_DIR
+ERROR_LOGS_ROOT = (
+    SERVER_ERROR_LOGS_ROOT if SERVER_ONLINE else os.path.join(LOCAL_LOG_DIR, "error")
+)
+CONFIG_ROOT = SERVER_CONFIG_ROOT if SERVER_ONLINE else LOCAL_CONFIG_DIR
+RELEASED_ROOT = SERVER_RELEASED_ROOT if SERVER_ONLINE else LOCAL_RELEASED_DIR
+
+SERVER_HISTORY_DIR = SERVER_RESULTS_ROOT
+SERVER_LOG_DIR = SERVER_LOGS_ROOT
+SERVER_OUTPUT_DIR = SERVER_RESULTS_ROOT
+
+HISTORY_DIR = SERVER_HISTORY_DIR if SERVER_ONLINE else LOCAL_HISTORY_DIR
+LOG_DIR = SERVER_LOG_DIR if SERVER_ONLINE else LOCAL_LOG_DIR
+OUTPUT_DIR = SERVER_OUTPUT_DIR if SERVER_ONLINE else LOCAL_OUTPUT_DIR
 
 USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
 USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
@@ -168,15 +210,34 @@ def get_current_username() -> str:
 def ensure_server_directories() -> None:
     """Ensure all shared directories exist."""
 
-    for path in (
-        DATA_ROOT,
-        RESULTS_ROOT,
-        LOGS_ROOT,
-        ERROR_LOGS_ROOT,
-        CONFIG_ROOT,
-        RELEASED_ROOT,
-    ):
-        os.makedirs(make_long_path(path), exist_ok=True)
+    if SERVER_ONLINE:
+        for path in (
+            DATA_ROOT,
+            RESULTS_ROOT,
+            LOGS_ROOT,
+            ERROR_LOGS_ROOT,
+            CONFIG_ROOT,
+            RELEASED_ROOT,
+        ):
+            if not path or not str(path).strip("\\/"):
+                continue
+            safe_path = make_long_path(path)
+            if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
+                continue
+            os.makedirs(safe_path, exist_ok=True)
+    else:
+        for path in (
+            LOCAL_BASE_DIR,
+            HISTORY_DIR,
+            LOG_DIR,
+            OUTPUT_DIR,
+            CONFIG_ROOT,
+            RELEASED_ROOT,
+            ERROR_LOGS_ROOT,
+        ):
+            if not path or not str(path).strip():
+                continue
+            os.makedirs(path, exist_ok=True)
 
 
 def ensure_users_db_initialized() -> None:
@@ -535,11 +596,15 @@ def init_log(base_name: str) -> str:
 
     ensure_server_directories()
     username = get_current_username()
-    user_logs_dir = os.path.join(LOGS_ROOT, username)
-    os.makedirs(make_long_path(user_logs_dir), exist_ok=True)
+    user_logs_dir = os.path.join(LOG_DIR, username)
+    if SERVER_ONLINE:
+        os.makedirs(make_long_path(user_logs_dir), exist_ok=True)
+    else:
+        os.makedirs(user_logs_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = f"ECR-{base_name}_{timestamp}_{username}.log"
-    safe_path = make_long_path(os.path.join(user_logs_dir, filename))
+    raw_path = os.path.join(user_logs_dir, filename)
+    safe_path = make_long_path(raw_path) if SERVER_ONLINE else raw_path
 
     global LOG_FILE
     LOG_FILE = safe_path
@@ -768,8 +833,8 @@ class HistoryDialog(QDialog):
     def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.username = username
-        self.user_results_dir = os.path.join(RESULTS_ROOT, username)
-        self.user_logs_dir = os.path.join(LOGS_ROOT, username)
+        self.user_results_dir = os.path.join(OUTPUT_DIR, username)
+        self.user_logs_dir = os.path.join(LOG_DIR, username)
         self.setWindowTitle("My History")
         self.entries: List[Dict[str, Union[str, datetime]]] = []
 
@@ -955,16 +1020,27 @@ class HistoryDialog(QDialog):
             return
 
         target_dir = os.path.join(RELEASED_ROOT, self.username)
-        os.makedirs(make_long_path(target_dir), exist_ok=True)
-        target_path = make_long_path(os.path.join(target_dir, target_filename))
+        if SERVER_ONLINE:
+            os.makedirs(make_long_path(target_dir), exist_ok=True)
+            target_path = make_long_path(os.path.join(target_dir, target_filename))
+        else:
+            os.makedirs(target_dir, exist_ok=True)
+            target_path = os.path.join(target_dir, target_filename)
 
         try:
             if existing and existing.get("created_by") == self.username:
                 if os.path.exists(existing.get("source_result", "")):
-                    os.remove(make_long_path(existing["source_result"]))
+                    source_result = existing["source_result"]
+                    if SERVER_ONLINE:
+                        os.remove(make_long_path(source_result))
+                    else:
+                        os.remove(source_result)
             if os.path.exists(target_path):
                 os.remove(target_path)
-            shutil.move(make_long_path(str(entry["path"])), target_path)
+            if SERVER_ONLINE:
+                shutil.move(make_long_path(str(entry["path"])), target_path)
+            else:
+                shutil.move(str(entry["path"]), target_path)
             record_released_entry(
                 filename=target_filename,
                 name_file_old=data["name_file_old"],
@@ -1412,6 +1488,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setTextVisible(False)
 
         self.status_label = QLabel(f"Ready (Language: {self.current_language})")
+        self.connection_label = QLabel()
+        self.connection_label.setWordWrap(True)
+        self.connection_label.setAlignment(Qt.AlignLeft)
+        self._offline_warning_shown = False
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
@@ -1442,6 +1522,7 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.compare_button)
         main_layout.addLayout(button_layout)
 
+        main_layout.addWidget(self.connection_label)
         main_layout.addWidget(self.progress_bar)
         main_layout.addWidget(self.status_label)
         if self.role == "admin":
@@ -1453,6 +1534,7 @@ class MainWindow(QMainWindow):
         self.apply_language_setting()
         self.setCentralWidget(central_widget)
         self.resize(720, 520)
+        self.show_offline_warning_once()
         self.prompt_for_email_if_missing()
 
     @Slot(str)
@@ -1521,7 +1603,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         logger.info("Comparison finished.")
         if result.server_result_path:
-            logger.info("Server result stored at %s", result.server_result_path)
+            logger.info("Result stored at %s", result.server_result_path)
         else:
             QMessageBox.warning(
                 self,
@@ -1533,7 +1615,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Compare SET",
-                f"Comparison stored on server:\n{result.server_result_path}",
+                (
+                    "Comparison stored on server:\n"
+                    if SERVER_ONLINE
+                    else "Comparison stored locally:\n"
+                )
+                + f"{result.server_result_path}",
             )
 
         self._worker = None
@@ -1575,6 +1662,45 @@ class MainWindow(QMainWindow):
 
     def apply_language_setting(self) -> None:
         self.status_label.setText(f"Ready (Language: {self.current_language})")
+        self.update_connection_banner()
+
+    def _connection_messages(self) -> Tuple[str, str]:
+        online_en = "Connected to corporate server."
+        offline_en = (
+            "OFFLINE MODE: No connection to corporate server.\n"
+            "Comparisons will work, but all history/logs/output will be saved locally only.\n"
+            "Synchronization to the server will resume when connectivity is restored."
+        )
+        online_pt = "Conectado ao servidor corporativo."
+        offline_pt = (
+            "MODO OFFLINE: Sem conexão com o servidor corporativo.\n"
+            "As comparações funcionarão, mas todo histórico/log/saída será salvo apenas localmente.\n"
+            "A sincronização com o servidor ocorrerá quando a conexão for restabelecida."
+        )
+        if self.current_language == "pt-BR":
+            return online_pt, offline_pt
+        return online_en, offline_en
+
+    def update_connection_banner(self) -> None:
+        online_message, offline_message = self._connection_messages()
+        if OFFLINE_MODE:
+            self.connection_label.setText(offline_message)
+            self.connection_label.setStyleSheet(
+                "color: #842029; background-color: #f8d7da; "
+                "border: 1px solid #f5c2c7; padding: 6px; border-radius: 4px;"
+            )
+        else:
+            self.connection_label.setText(online_message)
+            self.connection_label.setStyleSheet(
+                "color: #0f5132; background-color: #d1e7dd; "
+                "border: 1px solid #badbcc; padding: 6px; border-radius: 4px;"
+            )
+
+    def show_offline_warning_once(self) -> None:
+        if OFFLINE_MODE and not self._offline_warning_shown:
+            _, offline_message = self._connection_messages()
+            QMessageBox.warning(self, "Compare SET", offline_message)
+            self._offline_warning_shown = True
 
     def open_history(self) -> None:
         dialog = HistoryDialog(self.username, self)
@@ -1664,11 +1790,15 @@ def run_comparison(
         log_path = init_log(old_path.stem or old_path.name)
         configure_logging()
         username = get_current_username()
-        user_results_dir = os.path.join(RESULTS_ROOT, username)
-        os.makedirs(make_long_path(user_results_dir), exist_ok=True)
+        user_results_dir = os.path.join(OUTPUT_DIR, username)
+        if SERVER_ONLINE:
+            os.makedirs(make_long_path(user_results_dir), exist_ok=True)
+        else:
+            os.makedirs(user_results_dir, exist_ok=True)
         result_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output_name = f"ECR-{old_path.stem or old_path.name}_{result_timestamp}.pdf"
-        server_result_path = make_long_path(os.path.join(user_results_dir, output_name))
+        result_path = os.path.join(user_results_dir, output_name)
+        server_result_path = make_long_path(result_path) if SERVER_ONLINE else result_path
         write_log("=== CompareSet run started ===")
         write_log(f"User: {username}")
         write_log(f"Log file: {log_path}")
@@ -1841,12 +1971,16 @@ def run_comparison(
         write_log(exc_text)
 
         try:
-            os.makedirs(make_long_path(ERROR_LOGS_ROOT), exist_ok=True)
+            if SERVER_ONLINE:
+                os.makedirs(make_long_path(ERROR_LOGS_ROOT), exist_ok=True)
+            else:
+                os.makedirs(ERROR_LOGS_ROOT, exist_ok=True)
             base_name = old_path.stem or old_path.name
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             username = get_current_username()
             error_filename = f"ECR_ERROR-{base_name}_{timestamp}_{username}.txt"
-            error_path = make_long_path(os.path.join(ERROR_LOGS_ROOT, error_filename))
+            raw_error_path = os.path.join(ERROR_LOGS_ROOT, error_filename)
+            error_path = make_long_path(raw_error_path) if SERVER_ONLINE else raw_error_path
             if LOG_FILE and os.path.exists(LOG_FILE):
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as handle:
@@ -3431,6 +3565,9 @@ def main() -> None:
     write_log(f"User: {username}")
     write_log(f"Role: {role}")
     write_log(f"User settings file: {USER_SETTINGS_DB_PATH}")
+    write_log(f"Server online: {SERVER_ONLINE}")
+    if OFFLINE_MODE:
+        write_log(f"Offline mode enabled. Local base: {LOCAL_BASE_DIR}")
 
     window = MainWindow(username, role, user_settings)
     window.show()
