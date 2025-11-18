@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import getpass
 import logging
 import math
 import os
@@ -41,6 +42,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QProgressBar,
+    QStatusBar,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -131,6 +133,22 @@ LOCAL_OUTPUT_DIR = os.path.join(LOCAL_BASE_DIR, "output")
 LOCAL_CONFIG_DIR = os.path.join(LOCAL_BASE_DIR, "config")
 LOCAL_RELEASED_DIR = os.path.join(LOCAL_BASE_DIR, "released")
 
+OFFLINE_ALLOWED_USERS = {"doliveira12"}
+CURRENT_USER = getpass.getuser()
+
+
+SERVER_ONLINE = False
+OFFLINE_MODE = False
+DATA_ROOT = ""
+RESULTS_ROOT = ""
+LOGS_ROOT = ""
+ERROR_LOGS_ROOT = ""
+CONFIG_ROOT = ""
+RELEASED_ROOT = ""
+HISTORY_DIR = ""
+LOG_DIR = ""
+OUTPUT_DIR = ""
+
 
 def is_server_available(server_root: str) -> bool:
     """Return True when the UNC server root exists and is reachable."""
@@ -143,25 +161,37 @@ def is_server_available(server_root: str) -> bool:
         return False
 
 
-SERVER_ONLINE = is_server_available(SERVER_ROOT)
-OFFLINE_MODE = not SERVER_ONLINE
+def set_connection_state(server_online: bool) -> None:
+    """Update global flags and filesystem paths for the current connection state."""
 
-DATA_ROOT = SERVER_DATA_ROOT if SERVER_ONLINE else os.path.join(LOCAL_BASE_DIR, "data")
-RESULTS_ROOT = SERVER_RESULTS_ROOT if SERVER_ONLINE else LOCAL_OUTPUT_DIR
-LOGS_ROOT = SERVER_LOGS_ROOT if SERVER_ONLINE else LOCAL_LOG_DIR
-ERROR_LOGS_ROOT = (
-    SERVER_ERROR_LOGS_ROOT if SERVER_ONLINE else os.path.join(LOCAL_LOG_DIR, "error")
-)
-CONFIG_ROOT = SERVER_CONFIG_ROOT if SERVER_ONLINE else LOCAL_CONFIG_DIR
-RELEASED_ROOT = SERVER_RELEASED_ROOT if SERVER_ONLINE else LOCAL_RELEASED_DIR
+    global SERVER_ONLINE, OFFLINE_MODE
+    global DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, ERROR_LOGS_ROOT, CONFIG_ROOT, RELEASED_ROOT
+    global HISTORY_DIR, LOG_DIR, OUTPUT_DIR
 
-SERVER_HISTORY_DIR = SERVER_RESULTS_ROOT
-SERVER_LOG_DIR = SERVER_LOGS_ROOT
-SERVER_OUTPUT_DIR = SERVER_RESULTS_ROOT
+    SERVER_ONLINE = server_online
+    OFFLINE_MODE = not server_online
 
-HISTORY_DIR = SERVER_HISTORY_DIR if SERVER_ONLINE else LOCAL_HISTORY_DIR
-LOG_DIR = SERVER_LOG_DIR if SERVER_ONLINE else LOCAL_LOG_DIR
-OUTPUT_DIR = SERVER_OUTPUT_DIR if SERVER_ONLINE else LOCAL_OUTPUT_DIR
+    use_local_storage = OFFLINE_MODE and CURRENT_USER in OFFLINE_ALLOWED_USERS
+
+    DATA_ROOT = SERVER_DATA_ROOT if not use_local_storage else os.path.join(LOCAL_BASE_DIR, "data")
+    RESULTS_ROOT = SERVER_RESULTS_ROOT if not use_local_storage else LOCAL_OUTPUT_DIR
+    LOGS_ROOT = SERVER_LOGS_ROOT if not use_local_storage else LOCAL_LOG_DIR
+    ERROR_LOGS_ROOT = (
+        SERVER_ERROR_LOGS_ROOT if not use_local_storage else os.path.join(LOCAL_LOG_DIR, "error")
+    )
+    CONFIG_ROOT = SERVER_CONFIG_ROOT if not use_local_storage else LOCAL_CONFIG_DIR
+    RELEASED_ROOT = SERVER_RELEASED_ROOT if not use_local_storage else LOCAL_RELEASED_DIR
+
+    SERVER_HISTORY_DIR = SERVER_RESULTS_ROOT
+    SERVER_LOG_DIR = SERVER_LOGS_ROOT
+    SERVER_OUTPUT_DIR = SERVER_RESULTS_ROOT
+
+    HISTORY_DIR = SERVER_HISTORY_DIR if not use_local_storage else LOCAL_HISTORY_DIR
+    LOG_DIR = SERVER_LOG_DIR if not use_local_storage else LOCAL_LOG_DIR
+    OUTPUT_DIR = SERVER_OUTPUT_DIR if not use_local_storage else LOCAL_OUTPUT_DIR
+
+
+set_connection_state(is_server_available(SERVER_ROOT))
 
 USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
 USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
@@ -204,7 +234,7 @@ def make_long_path(path: str) -> str:
 def get_current_username() -> str:
     """Return the current Windows username for authentication."""
 
-    return os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
+    return CURRENT_USER or os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
 
 
 def ensure_server_directories() -> None:
@@ -225,7 +255,7 @@ def ensure_server_directories() -> None:
             if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
                 continue
             os.makedirs(safe_path, exist_ok=True)
-    else:
+    elif CURRENT_USER in OFFLINE_ALLOWED_USERS:
         for path in (
             LOCAL_BASE_DIR,
             HISTORY_DIR,
@@ -237,7 +267,10 @@ def ensure_server_directories() -> None:
         ):
             if not path or not str(path).strip():
                 continue
-            os.makedirs(path, exist_ok=True)
+            safe_path = make_long_path(path)
+            if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
+                continue
+            os.makedirs(safe_path, exist_ok=True)
 
 
 def ensure_users_db_initialized() -> None:
@@ -594,19 +627,28 @@ class ComparisonResult:
 def init_log(base_name: str) -> str:
     """Initialize a crash-proof log file for the current execution."""
 
+    global LOG_FILE
+
+    if OFFLINE_MODE and CURRENT_USER not in OFFLINE_ALLOWED_USERS:
+        LOG_FILE = None
+        return ""
+
     ensure_server_directories()
     username = get_current_username()
     user_logs_dir = os.path.join(LOG_DIR, username)
-    if SERVER_ONLINE:
-        os.makedirs(make_long_path(user_logs_dir), exist_ok=True)
-    else:
-        os.makedirs(user_logs_dir, exist_ok=True)
+    try:
+        if SERVER_ONLINE:
+            os.makedirs(make_long_path(user_logs_dir), exist_ok=True)
+        else:
+            os.makedirs(user_logs_dir, exist_ok=True)
+    except Exception:
+        LOG_FILE = None
+        return ""
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = f"ECR-{base_name}_{timestamp}_{username}.log"
     raw_path = os.path.join(user_logs_dir, filename)
     safe_path = make_long_path(raw_path) if SERVER_ONLINE else raw_path
 
-    global LOG_FILE
     LOG_FILE = safe_path
     return safe_path
 
@@ -1488,9 +1530,11 @@ class MainWindow(QMainWindow):
         self.progress_bar.setTextVisible(False)
 
         self.status_label = QLabel(f"Ready (Language: {self.current_language})")
-        self.connection_label = QLabel()
-        self.connection_label.setWordWrap(True)
-        self.connection_label.setAlignment(Qt.AlignLeft)
+        self.connection_status_label = QLabel()
+        self.connection_status_label.setAlignment(Qt.AlignLeft)
+        self.reload_button = QPushButton()
+        self.reload_button.setFixedHeight(22)
+        self.reload_button.clicked.connect(self.reload_server_status)
         self._offline_warning_shown = False
 
         self.log_view = QTextEdit()
@@ -1522,7 +1566,6 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.compare_button)
         main_layout.addLayout(button_layout)
 
-        main_layout.addWidget(self.connection_label)
         main_layout.addWidget(self.progress_bar)
         main_layout.addWidget(self.status_label)
         if self.role == "admin":
@@ -1531,6 +1574,12 @@ class MainWindow(QMainWindow):
             main_layout.addWidget(self.admin_button)
             main_layout.addWidget(self.log_view)
 
+        status_bar = QStatusBar()
+        status_bar.setSizeGripEnabled(False)
+        status_bar.addWidget(self.connection_status_label, 1)
+        status_bar.addPermanentWidget(self.reload_button)
+
+        self.setStatusBar(status_bar)
         self.apply_language_setting()
         self.setCentralWidget(central_widget)
         self.resize(720, 520)
@@ -1662,45 +1711,71 @@ class MainWindow(QMainWindow):
 
     def apply_language_setting(self) -> None:
         self.status_label.setText(f"Ready (Language: {self.current_language})")
+        translations = self._connection_texts()
+        self.reload_button.setText(translations["reload_label"])
         self.update_connection_banner()
 
-    def _connection_messages(self) -> Tuple[str, str]:
-        online_en = "Connected to corporate server."
-        offline_en = (
-            "OFFLINE MODE: No connection to corporate server.\n"
-            "Comparisons will work, but all history/logs/output will be saved locally only.\n"
-            "Synchronization to the server will resume when connectivity is restored."
-        )
-        online_pt = "Conectado ao servidor corporativo."
-        offline_pt = (
-            "MODO OFFLINE: Sem conexão com o servidor corporativo.\n"
-            "As comparações funcionarão, mas todo histórico/log/saída será salvo apenas localmente.\n"
-            "A sincronização com o servidor ocorrerá quando a conexão for restabelecida."
-        )
+    def _connection_texts(self) -> Dict[str, str]:
         if self.current_language == "pt-BR":
-            return online_pt, offline_pt
-        return online_en, offline_en
+            return {
+                "online_status": "Status: Conectado ao servidor",
+                "offline_status": "Status: Offline (sem conexão com o servidor)",
+                "offline_info": (
+                    "Modo offline: sem conexão com o servidor. As comparações funcionarão, "
+                    "mas o histórico, logs e arquivos de saída serão salvos apenas localmente."
+                ),
+                "reload_label": "Recarregar",
+                "still_offline": "Servidor ainda indisponível. Verifique sua VPN/conexão.",
+                "reconnected": "Reconectado ao servidor.",
+            }
+        return {
+            "online_status": "Status: Connected to server",
+            "offline_status": "Status: Offline (no connection to the server)",
+            "offline_info": (
+                "Offline mode: no connection to the server. Comparisons will work, but history, "
+                "logs and output files will be saved only locally."
+            ),
+            "reload_label": "Reload",
+            "still_offline": "Server still unavailable. Please check your VPN/connection.",
+            "reconnected": "Reconnected to server.",
+        }
 
     def update_connection_banner(self) -> None:
-        online_message, offline_message = self._connection_messages()
+        translations = self._connection_texts()
         if OFFLINE_MODE:
-            self.connection_label.setText(offline_message)
-            self.connection_label.setStyleSheet(
+            self.connection_status_label.setText(translations["offline_status"])
+            self.connection_status_label.setStyleSheet(
                 "color: #842029; background-color: #f8d7da; "
-                "border: 1px solid #f5c2c7; padding: 6px; border-radius: 4px;"
+                "border: 1px solid #f5c2c7; padding: 4px 8px; border-radius: 4px;"
             )
         else:
-            self.connection_label.setText(online_message)
-            self.connection_label.setStyleSheet(
+            self.connection_status_label.setText(translations["online_status"])
+            self.connection_status_label.setStyleSheet(
                 "color: #0f5132; background-color: #d1e7dd; "
-                "border: 1px solid #badbcc; padding: 6px; border-radius: 4px;"
+                "border: 1px solid #badbcc; padding: 4px 8px; border-radius: 4px;"
             )
 
     def show_offline_warning_once(self) -> None:
         if OFFLINE_MODE and not self._offline_warning_shown:
-            _, offline_message = self._connection_messages()
-            QMessageBox.warning(self, "Compare SET", offline_message)
+            translations = self._connection_texts()
+            QMessageBox.warning(self, "Compare SET", translations["offline_info"])
             self._offline_warning_shown = True
+
+    def reload_server_status(self) -> None:
+        was_offline = OFFLINE_MODE
+        set_connection_state(is_server_available(SERVER_ROOT))
+
+        if SERVER_ONLINE or CURRENT_USER in OFFLINE_ALLOWED_USERS:
+            ensure_server_directories()
+
+        self.update_connection_banner()
+
+        if was_offline and SERVER_ONLINE:
+            translations = self._connection_texts()
+            self.status_label.setText(translations["reconnected"])
+        elif OFFLINE_MODE:
+            translations = self._connection_texts()
+            QMessageBox.information(self, "Compare SET", translations["still_offline"])
 
     def open_history(self) -> None:
         dialog = HistoryDialog(self.username, self)
@@ -3541,11 +3616,26 @@ def main() -> None:
     """Entry point for the application."""
 
     app = QApplication(sys.argv)
+    username = get_current_username()
+
+    if OFFLINE_MODE and username not in OFFLINE_ALLOWED_USERS:
+        lang_hint = (os.getenv("LANG") or "").lower()
+        message = (
+            "Sem conexão com o servidor. Este usuário não está autorizado a usar o CompareSet em modo offline. "
+            "Feche o aplicativo e conecte-se ao servidor."
+        )
+        if not lang_hint.startswith("pt"):
+            message = (
+                "No connection to the server. This user is not allowed to use CompareSet in offline mode. "
+                "Please close the application and connect to the server."
+            )
+        QMessageBox.critical(None, "Compare SET", message)
+        sys.exit(0)
+
     ensure_server_directories()
     ensure_users_db_initialized()
     ensure_released_db_initialized()
 
-    username = get_current_username()
     role = get_user_role(username)
 
     if role is None:
