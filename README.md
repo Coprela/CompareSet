@@ -1,6 +1,6 @@
-# Compare SET
+# CompareSet
 
-Compare SET – Desktop tool for technical PDF revision comparison.
+CompareSet – Desktop tool for technical PDF revision comparison.
 
 ## Features
 

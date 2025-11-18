@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare SET desktop application with enhanced diff suppression."""
+"""CompareSet desktop application with enhanced diff suppression."""
 
 from __future__ import annotations
 
@@ -544,7 +544,7 @@ class QtLogHandler(logging.Handler):
         self.emitter.message.emit(message)
 
 
-class CompareWorker(QObject):
+class CompareSetWorker(QObject):
     """Worker object executing the comparison in a background thread."""
 
     finished = Signal(ComparisonResult)
@@ -718,21 +718,21 @@ class HistoryDialog(QDialog):
             shutil.copyfile(source_path, target_path)
             QMessageBox.information(
                 self,
-                "Compare SET",
+                "CompareSet",
                 f"File exported to:\n{target_path}",
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Compare SET", f"Unable to export file:\n{exc}")
+            QMessageBox.critical(self, "CompareSet", f"Unable to export file:\n{exc}")
 
     def view_log(self, log_path: str) -> None:
         if not log_path or not os.path.exists(log_path):
-            QMessageBox.information(self, "Compare SET", "Log file not found.")
+            QMessageBox.information(self, "CompareSet", "Log file not found.")
             return
         try:
             with open(log_path, "r", encoding="utf-8", errors="ignore") as handle:
                 content = handle.read()
         except Exception as exc:
-            QMessageBox.warning(self, "Compare SET", f"Unable to read log:\n{exc}")
+            QMessageBox.warning(self, "CompareSet", f"Unable to read log:\n{exc}")
             return
 
         dialog = QDialog(self)
@@ -877,7 +877,7 @@ class EmailPromptDialog(QDialog):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Compare SET")
+        self.setWindowTitle("CompareSet")
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -1204,7 +1204,7 @@ class MainWindow(QMainWindow):
         self.user_settings = user_settings
         self.current_language = user_settings.get("language", "pt-BR")
         self.last_browse_dir: Optional[str] = None
-        self.setWindowTitle("Compare SET")
+        self.setWindowTitle("CompareSet")
 
         self._log_emitter = LogEmitter()
         self._log_handler = QtLogHandler(self._log_emitter)
@@ -1213,7 +1213,7 @@ class MainWindow(QMainWindow):
         self._log_emitter.message.connect(self.append_log)
 
         self._thread: Optional[QThread] = None
-        self._worker: Optional[CompareWorker] = None
+        self._worker: Optional[CompareSetWorker] = None
 
         self.old_path_edit = QLineEdit()
         self.new_path_edit = QLineEdit()
@@ -1343,7 +1343,7 @@ class MainWindow(QMainWindow):
         self._last_old_path = old_path
 
         self._thread = QThread(self)
-        self._worker = CompareWorker(old_path, new_path)
+        self._worker = CompareSetWorker(old_path, new_path)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.finished.connect(self.on_comparison_finished)
@@ -1370,14 +1370,14 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(
                 self,
-                "Compare SET",
+                "CompareSet",
                 "Result could not be saved to the server. Please contact an administrator.",
             )
 
         if result.server_result_path:
             QMessageBox.information(
                 self,
-                "Compare SET",
+                "CompareSet",
                 (
                     "Comparison stored on server:\n"
                     if SERVER_ONLINE
@@ -1396,7 +1396,7 @@ class MainWindow(QMainWindow):
         self.toggle_controls(True)
         self.status_label.setText("Comparison failed.")
         self.cancel_button.setEnabled(False)
-        QMessageBox.critical(self, "Compare SET", f"Comparison failed:\n{message}")
+        QMessageBox.critical(self, "CompareSet", f"Comparison failed:\n{message}")
         self._worker = None
         self._thread = None
 
@@ -1407,7 +1407,7 @@ class MainWindow(QMainWindow):
         self.toggle_controls(True)
         self.status_label.setText("Comparison cancelled.")
         self.cancel_button.setEnabled(False)
-        QMessageBox.information(self, "Compare SET", "Comparison was cancelled.")
+        QMessageBox.information(self, "CompareSet", "Comparison was cancelled.")
         self._worker = None
         self._thread = None
 
@@ -1472,7 +1472,7 @@ class MainWindow(QMainWindow):
     def show_offline_warning_once(self) -> None:
         if OFFLINE_MODE and not self._offline_warning_shown:
             translations = self._connection_texts()
-            QMessageBox.warning(self, "Compare SET", translations["offline_info"])
+            QMessageBox.warning(self, "CompareSet", translations["offline_info"])
             self._offline_warning_shown = True
 
     def reload_server_status(self) -> None:
@@ -1489,7 +1489,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText(translations["reconnected"])
         elif OFFLINE_MODE:
             translations = self._connection_texts()
-            QMessageBox.information(self, "Compare SET", translations["still_offline"])
+            QMessageBox.information(self, "CompareSet", translations["still_offline"])
 
     def open_history(self) -> None:
         dialog = HistoryDialog(self.username, self)
@@ -1553,7 +1553,7 @@ def main() -> None:
                 "No connection to the server. This user is not allowed to use CompareSet in offline mode. "
                 "Please close the application and connect to the server."
             )
-        QMessageBox.critical(None, "Compare SET", message)
+        QMessageBox.critical(None, "CompareSet", message)
         sys.exit(0)
 
     ensure_server_directories()
@@ -1565,7 +1565,7 @@ def main() -> None:
     if role is None:
         QMessageBox.critical(
             None,
-            "Compare SET",
+            "CompareSet",
             "Your user is not authorized to use CompareSet. Please contact an administrator.",
         )
         sys.exit(1)
