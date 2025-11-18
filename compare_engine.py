@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare SET desktop application with enhanced diff suppression.
+"""CompareSet desktop application with enhanced diff suppression.
 
 Main adjustments in this step:
 - Improve thin-line sensitivity by relaxing component thresholds and enhancing the
