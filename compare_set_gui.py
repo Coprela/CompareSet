@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""CompareSet desktop application with enhanced diff suppression."""
+"""CompareSet desktop application with enhanced diff suppression (compareset_app)."""
 
 from __future__ import annotations
 
 import compare_engine
-import getpass
 import logging
 import os
 import shutil
@@ -50,51 +49,53 @@ from compare_engine import (
     run_comparison,
     write_log,
 )
-
-SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
-SERVER_DATA_ROOT = os.path.join(SERVER_ROOT, "Data")
-SERVER_RESULTS_ROOT = os.path.join(SERVER_DATA_ROOT, "Results")
-SERVER_LOGS_ROOT = os.path.join(SERVER_DATA_ROOT, "Logs")
-SERVER_ERROR_LOGS_ROOT = os.path.join(SERVER_LOGS_ROOT, "Error")
-SERVER_CONFIG_ROOT = os.path.join(SERVER_DATA_ROOT, "Config")
-SERVER_RELEASED_ROOT = os.path.join(SERVER_DATA_ROOT, "Released")
-
-LOCAL_APPDATA = os.getenv("LOCALAPPDATA") or os.path.join(
-    os.path.expanduser("~"), "AppData", "Local"
+import compareset_env as csenv
+from compareset_env import (
+    CURRENT_USER,
+    IS_TESTER,
+    OFFLINE_MODE,
+    SERVER_ONLINE,
+    RESULTS_ROOT,
+    HISTORY_DIR,
+    LOG_DIR,
+    OUTPUT_DIR,
+    get_output_directory_for_user,
 )
-LOCAL_BASE_DIR = os.path.join(LOCAL_APPDATA, "CompareSet")
-LOCAL_HISTORY_DIR = os.path.join(LOCAL_BASE_DIR, "history")
-LOCAL_LOG_DIR = os.path.join(LOCAL_BASE_DIR, "logs")
-LOCAL_OUTPUT_DIR = os.path.join(LOCAL_BASE_DIR, "output")
-LOCAL_CONFIG_DIR = os.path.join(LOCAL_BASE_DIR, "config")
-LOCAL_RELEASED_DIR = os.path.join(LOCAL_BASE_DIR, "released")
 
-OFFLINE_ALLOWED_USERS = {"doliveira12"}
-CURRENT_USER = getpass.getuser()
+SERVER_ROOT = csenv.SERVER_ROOT
+SERVER_DATA_ROOT = csenv.SERVER_DATA_ROOT
+SERVER_RESULTS_ROOT = csenv.SERVER_RESULTS_ROOT
+SERVER_LOGS_ROOT = csenv.SERVER_LOGS_ROOT
+SERVER_ERROR_LOGS_ROOT = csenv.SERVER_ERROR_LOGS_ROOT
+SERVER_CONFIG_ROOT = csenv.SERVER_CONFIG_ROOT
+SERVER_RELEASED_ROOT = csenv.SERVER_RELEASED_ROOT
 
+LOCAL_APPDATA = csenv.LOCAL_APPDATA
+LOCAL_BASE_DIR = csenv.LOCAL_BASE_DIR
+LOCAL_HISTORY_DIR = csenv.LOCAL_HISTORY_DIR
+LOCAL_LOG_DIR = csenv.LOCAL_LOG_DIR
+LOCAL_OUTPUT_DIR = csenv.LOCAL_OUTPUT_DIR
+LOCAL_CONFIG_DIR = csenv.LOCAL_CONFIG_DIR
+LOCAL_RELEASED_DIR = csenv.LOCAL_RELEASED_DIR
 
-SERVER_ONLINE = False
-OFFLINE_MODE = False
-DATA_ROOT = ""
-RESULTS_ROOT = ""
-LOGS_ROOT = ""
-ERROR_LOGS_ROOT = ""
-CONFIG_ROOT = ""
-RELEASED_ROOT = ""
-HISTORY_DIR = ""
-LOG_DIR = ""
-OUTPUT_DIR = ""
+OFFLINE_ALLOWED_USERS = csenv.OFFLINE_ALLOWED_USERS
+
+SERVER_ONLINE = csenv.SERVER_ONLINE
+OFFLINE_MODE = csenv.OFFLINE_MODE
+DATA_ROOT = csenv.DATA_ROOT
+RESULTS_ROOT = csenv.RESULTS_ROOT
+LOGS_ROOT = csenv.LOGS_ROOT
+ERROR_LOGS_ROOT = csenv.ERROR_LOGS_ROOT
+CONFIG_ROOT = csenv.CONFIG_ROOT
+RELEASED_ROOT = csenv.RELEASED_ROOT
+HISTORY_DIR = csenv.HISTORY_DIR
+LOG_DIR = csenv.LOG_DIR
 
 
 def is_server_available(server_root: str) -> bool:
     """Return True when the UNC server root exists and is reachable."""
 
-    try:
-        if not server_root or not server_root.strip():
-            return False
-        return os.path.exists(server_root)
-    except Exception:
-        return False
+    return csenv.is_server_available(server_root)
 
 
 def set_connection_state(server_online: bool) -> None:
@@ -102,37 +103,33 @@ def set_connection_state(server_online: bool) -> None:
 
     global SERVER_ONLINE, OFFLINE_MODE
     global DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, ERROR_LOGS_ROOT, CONFIG_ROOT, RELEASED_ROOT
-    global HISTORY_DIR, LOG_DIR, OUTPUT_DIR
+    global HISTORY_DIR, LOG_DIR, OUTPUT_DIR, USERS_DB_PATH, USER_SETTINGS_DB_PATH, RELEASED_DB_PATH
 
-    SERVER_ONLINE = server_online
-    OFFLINE_MODE = not server_online
-
-    use_local_storage = OFFLINE_MODE and CURRENT_USER in OFFLINE_ALLOWED_USERS
-
-    DATA_ROOT = SERVER_DATA_ROOT if not use_local_storage else os.path.join(LOCAL_BASE_DIR, "data")
-    RESULTS_ROOT = SERVER_RESULTS_ROOT if not use_local_storage else LOCAL_OUTPUT_DIR
-    LOGS_ROOT = SERVER_LOGS_ROOT if not use_local_storage else LOCAL_LOG_DIR
-    ERROR_LOGS_ROOT = (
-        SERVER_ERROR_LOGS_ROOT if not use_local_storage else os.path.join(LOCAL_LOG_DIR, "error")
-    )
-    CONFIG_ROOT = SERVER_CONFIG_ROOT if not use_local_storage else LOCAL_CONFIG_DIR
-    RELEASED_ROOT = SERVER_RELEASED_ROOT if not use_local_storage else LOCAL_RELEASED_DIR
-
-    SERVER_HISTORY_DIR = SERVER_RESULTS_ROOT
-    SERVER_LOG_DIR = SERVER_LOGS_ROOT
-    SERVER_OUTPUT_DIR = SERVER_RESULTS_ROOT
-
-    HISTORY_DIR = SERVER_HISTORY_DIR if not use_local_storage else LOCAL_HISTORY_DIR
-    LOG_DIR = SERVER_LOG_DIR if not use_local_storage else LOCAL_LOG_DIR
-    OUTPUT_DIR = SERVER_OUTPUT_DIR if not use_local_storage else LOCAL_OUTPUT_DIR
-
+    csenv.set_connection_state(server_online)
     try:
         compare_engine.set_connection_state(server_online)
     except Exception:
         pass
 
+    SERVER_ONLINE = csenv.SERVER_ONLINE
+    OFFLINE_MODE = csenv.OFFLINE_MODE
+    DATA_ROOT = csenv.DATA_ROOT
+    RESULTS_ROOT = csenv.RESULTS_ROOT
+    LOGS_ROOT = csenv.LOGS_ROOT
+    ERROR_LOGS_ROOT = csenv.ERROR_LOGS_ROOT
+    CONFIG_ROOT = csenv.CONFIG_ROOT
+    RELEASED_ROOT = csenv.RELEASED_ROOT
+    HISTORY_DIR = csenv.HISTORY_DIR
+    LOG_DIR = csenv.LOG_DIR
+    OUTPUT_DIR = str(get_output_directory_for_user(CURRENT_USER))
+    USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
+    USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
+    RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
+
 
 set_connection_state(is_server_available(SERVER_ROOT))
+
+OUTPUT_DIR = str(get_output_directory_for_user(CURRENT_USER))
 
 USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
 USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
@@ -142,62 +139,19 @@ RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
 def make_long_path(path: str) -> str:
     """Return a Windows long-path-safe absolute path."""
 
-    abs_path = os.path.abspath(path)
-    if abs_path.startswith("\\\\?\\"):
-        return abs_path
-
-    if abs_path.startswith("\\\\"):
-        # UNC paths must use the special ``\\\\?\\UNC`` prefix to remain valid.
-        # Simply pre-pending ``\\\\?\\`` would yield an invalid path such as
-        # ``\\\\?\\server`` which Windows rejects (manifesting as ``\\`` when
-        # ``os.makedirs`` recurses). By swapping the leading ``\\`` for
-        # ``\\\\?\\UNC`` the resulting path stays usable while keeping long-path
-        # support enabled. Example: ``\\\\server\\share`` -> ``\\\\?\\UNC\\server\\share``.
-        return "\\\\?\\UNC" + abs_path[1:]
-
-    return "\\\\?\\" + abs_path
+    return csenv.make_long_path(path)
 
 
 def get_current_username() -> str:
     """Return the current Windows username for authentication."""
 
-    return CURRENT_USER or os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
+    return csenv.get_current_username()
 
 
 def ensure_server_directories() -> None:
     """Ensure all shared directories exist."""
 
-    if SERVER_ONLINE:
-        for path in (
-            DATA_ROOT,
-            RESULTS_ROOT,
-            LOGS_ROOT,
-            ERROR_LOGS_ROOT,
-            CONFIG_ROOT,
-            RELEASED_ROOT,
-        ):
-            if not path or not str(path).strip("\\/"):
-                continue
-            safe_path = make_long_path(path)
-            if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
-                continue
-            os.makedirs(safe_path, exist_ok=True)
-    elif CURRENT_USER in OFFLINE_ALLOWED_USERS:
-        for path in (
-            LOCAL_BASE_DIR,
-            HISTORY_DIR,
-            LOG_DIR,
-            OUTPUT_DIR,
-            CONFIG_ROOT,
-            RELEASED_ROOT,
-            ERROR_LOGS_ROOT,
-        ):
-            if not path or not str(path).strip():
-                continue
-            safe_path = make_long_path(path)
-            if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
-                continue
-            os.makedirs(safe_path, exist_ok=True)
+    csenv.ensure_server_directories()
 
 
 def ensure_users_db_initialized() -> None:
@@ -589,7 +543,8 @@ class HistoryDialog(QDialog):
     def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.username = username
-        self.user_results_dir = os.path.join(OUTPUT_DIR, username)
+        base_output_dir = Path(get_output_directory_for_user(username))
+        self.user_results_dir = str(base_output_dir / username)
         self.user_logs_dir = os.path.join(LOG_DIR, username)
         self.setWindowTitle("My History")
         self.entries: List[Dict[str, Union[str, datetime]]] = []
@@ -1542,6 +1497,16 @@ def main() -> None:
     app = QApplication(sys.argv)
     username = get_current_username()
 
+    if not csenv.SERVER_ONLINE and not csenv.IS_TESTER:
+        QMessageBox.critical(
+            None,
+            "CompareSet",
+            "The CompareSet server is not available. The application will close.",
+        )
+        sys.exit(0)
+
+    window_title_suffix = " [TEST MODE - OFFLINE]" if not csenv.SERVER_ONLINE and csenv.IS_TESTER else ""
+
     if OFFLINE_MODE and username not in OFFLINE_ALLOWED_USERS:
         lang_hint = (os.getenv("LANG") or "").lower()
         message = (
@@ -1584,6 +1549,8 @@ def main() -> None:
         write_log(f"Offline mode enabled. Local base: {LOCAL_BASE_DIR}")
 
     window = MainWindow(username, role, user_settings)
+    if window_title_suffix:
+        window.setWindowTitle(f"CompareSet{window_title_suffix}")
     window.show()
     sys.exit(app.exec())
 
