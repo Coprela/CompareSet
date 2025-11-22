@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""CompareSet desktop application with enhanced diff suppression.
+"""CompareSet PDF comparison engine.
 
-Main adjustments in this step:
-- Improve thin-line sensitivity by relaxing component thresholds and enhancing the
-  dedicated line-boost stage so technical cut/dimension lines are preserved.
-- Make unchanged-text suppression and movement pruning more conservative so
-  small string edits (e.g., ASTM A37 → ASTM A36) are not discarded while still
-  handling genuine shifts.
-- Strengthen false-positive filtering via refined stable-region pruning and
-  stricter overlap/mean-difference checks, while skipping expensive SSIM work
-  when it brings little value for large pages. These changes speed up heavy
-  drawings without sacrificing accuracy.
+This module powers the CompareSet desktop application by rendering pairs of PDF
+drawings, aligning them, computing differences, and returning structured
+results for the GUI to highlight changes and generate output PDFs. The public
+API (e.g., :func:`run_comparison`) remains stable for integration with the
+existing interface while internal helpers are organized for clarity.
 """
 
 from __future__ import annotations
