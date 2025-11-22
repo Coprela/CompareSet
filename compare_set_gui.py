@@ -1260,6 +1260,7 @@ class MainWindow(QMainWindow):
         central_widget.setAttribute(Qt.WA_StyledBackground, True)
         self.layout_canvas = central_widget
         self.layout_mode_enabled = False
+        self._dev_features_active = is_dev_mode()
         self._layout_targets: Dict[str, QWidget] = {}
         self._layout_filters: Dict[str, LayoutEditFilter] = {}
         self._default_layouts: Dict[str, QRect] = {}
@@ -1348,8 +1349,8 @@ class MainWindow(QMainWindow):
             self._register_layout_target("admin_panel", self.admin_frame)
 
         self._apply_default_layout_geometry()
+        self._init_developer_menu()
         if is_dev_mode():
-            self._init_developer_menu()
             self.load_dev_layout()
         self.show_offline_warning_once()
         self.prompt_for_email_if_missing()
@@ -1828,27 +1829,48 @@ class MainWindow(QMainWindow):
         tools_action.triggered.connect(self.open_developer_tools)
         dev_menu.addAction(tools_action)
 
-        designer_action = QAction("Layout Designer…", self)
-        designer_action.triggered.connect(self.open_layout_designer)
-        dev_menu.addAction(designer_action)
+        self.layout_designer_action = QAction("Layout Designer…", self)
+        self.layout_designer_action.triggered.connect(self.open_layout_designer)
+        dev_menu.addAction(self.layout_designer_action)
 
         self.layout_mode_action = QAction("Layout Editor…", self)
         self.layout_mode_action.setCheckable(True)
         self.layout_mode_action.triggered.connect(self.toggle_layout_mode)
         dev_menu.addAction(self.layout_mode_action)
 
-        save_action = QAction("Save Layout", self)
-        save_action.triggered.connect(self.save_dev_layout)
-        dev_menu.addAction(save_action)
+        self.save_layout_action = QAction("Save Layout", self)
+        self.save_layout_action.triggered.connect(self.save_dev_layout)
+        dev_menu.addAction(self.save_layout_action)
 
-        reset_action = QAction("Reset Layout to Default", self)
-        reset_action.triggered.connect(self.reset_dev_layout)
-        dev_menu.addAction(reset_action)
+        self.reset_layout_action = QAction("Reset Layout to Default", self)
+        self.reset_layout_action.triggered.connect(self.reset_dev_layout)
+        dev_menu.addAction(self.reset_layout_action)
 
         self._developer_menu_initialized = True
+        self._update_developer_menu_state()
+
+    def _update_developer_menu_state(self) -> None:
+        dev_enabled = is_dev_mode()
+        for action in (
+            getattr(self, "layout_designer_action", None),
+            getattr(self, "layout_mode_action", None),
+            getattr(self, "save_layout_action", None),
+            getattr(self, "reset_layout_action", None),
+        ):
+            if action is not None:
+                action.setEnabled(dev_enabled)
+        if not dev_enabled and self.layout_mode_enabled:
+            self.layout_mode_enabled = False
+            if hasattr(self, "layout_mode_action"):
+                self.layout_mode_action.setChecked(False)
+            self._update_layout_mode_visuals()
+        if dev_enabled and not self._dev_features_active:
+            self.load_dev_layout()
+        self._dev_features_active = dev_enabled
 
     def open_developer_tools(self) -> None:
         dialog = DeveloperToolsDialog(self, get_dev_settings(), layout_mode_active=self.layout_mode_enabled)
+        dialog.settings_applied.connect(self._update_developer_menu_state)
         dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
         dialog.save_layout_requested.connect(self.save_dev_layout)
         dialog.reset_layout_requested.connect(self.reset_dev_layout)
