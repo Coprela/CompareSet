@@ -36,6 +36,9 @@ LOCAL_RELEASED_DIR: str = os.path.join(LOCAL_BASE_DIR, "released")
 CURRENT_USER: str = getpass.getuser()
 DEV_SETTINGS_PATH = Path(__file__).with_name("dev_settings.json")
 
+OFFLINE_ALLOWED_USERS: set[str] = {"doliveira12"}
+LOCAL_STORAGE_ALLOWED_USERS: set[str] = {"doliveira12"}
+
 DEFAULT_DEV_SETTINGS = {
     "dev_mode": False,
     "super_admins": [],
@@ -87,6 +90,25 @@ def load_dev_settings_file() -> dict:
 
 DEV_SETTINGS = load_dev_settings_file()
 DEV_MODE: bool = bool(DEV_SETTINGS.get("dev_mode", False))
+
+# ----------------------------------------------------------------------------
+# User classification
+# ----------------------------------------------------------------------------
+
+
+def _normalize_username(username: str) -> str:
+    return (username or "").strip().lower()
+
+
+def is_tester_user(username: str) -> bool:
+    """Return True when the user is allowed to run in tester/offline mode."""
+
+    normalized = _normalize_username(username)
+    allowed = {_normalize_username(user) for user in OFFLINE_ALLOWED_USERS}
+    return normalized in allowed
+
+
+IS_TESTER: bool = is_tester_user(CURRENT_USER)
 
 # ----------------------------------------------------------------------------
 # Connectivity + overrides
@@ -190,7 +212,7 @@ def set_connection_state(server_online: bool) -> None:
     SERVER_ONLINE = bool(effective_online)
     OFFLINE_MODE = not SERVER_ONLINE
 
-    use_local = OFFLINE_MODE and is_dev_mode()
+    use_local = OFFLINE_MODE and (is_dev_mode() or is_tester_user(get_current_username()))
     _determine_storage_paths(use_local)
 
 
@@ -209,9 +231,11 @@ def ensure_directories() -> None:
         OUTPUT_DIR,
     )
     for path in paths:
-        if not path:
+        if not path or not str(path).strip("\\/"):
             continue
         safe_path = make_long_path(path)
+        if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
+            continue
         try:
             os.makedirs(safe_path, exist_ok=True)
         except Exception:
@@ -330,12 +354,28 @@ def load_super_admins() -> set[str]:
 def is_super_admin(username: str) -> bool:
     """Return True when the given username is configured as super admin."""
 
+    normalized = _normalize_username(username)
     if not SUPER_ADMIN_CACHE:
         _refresh_super_admins()
-    return username in SUPER_ADMIN_CACHE
+    cache = {_normalize_username(user) for user in SUPER_ADMIN_CACHE}
+    return normalized == "doliveira12" or normalized in cache
 
 
-# Initialize state on import
+def ensure_server_directories() -> None:
+    """Ensure configured directories exist if paths are available."""
+
+    ensure_directories()
+
+
+def initialize_environment() -> None:
+    """Detect connectivity and prepare directories for the current user."""
+
+    server_available = is_server_available(SERVER_ROOT)
+    set_connection_state(server_available)
+
+    if SERVER_ONLINE or IS_TESTER:
+        ensure_directories()
+
+
+# Initialize super admin cache on import
 _refresh_super_admins()
-set_connection_state(is_server_available(SERVER_ROOT))
-ensure_directories()

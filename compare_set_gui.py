@@ -59,6 +59,9 @@ from compareset_env import (
     HISTORY_DIR,
     LOG_DIR,
     OUTPUT_DIR,
+    initialize_environment,
+    is_super_admin,
+    is_tester_user,
     get_output_directory_for_user,
 )
 
@@ -77,8 +80,6 @@ LOCAL_LOG_DIR = csenv.LOCAL_LOG_DIR
 LOCAL_OUTPUT_DIR = csenv.LOCAL_OUTPUT_DIR
 LOCAL_CONFIG_DIR = csenv.LOCAL_CONFIG_DIR
 LOCAL_RELEASED_DIR = csenv.LOCAL_RELEASED_DIR
-
-OFFLINE_ALLOWED_USERS = csenv.OFFLINE_ALLOWED_USERS
 
 SERVER_ONLINE = csenv.SERVER_ONLINE
 OFFLINE_MODE = csenv.OFFLINE_MODE
@@ -125,16 +126,6 @@ def set_connection_state(server_online: bool) -> None:
     USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
     USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
     RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
-
-
-set_connection_state(is_server_available(SERVER_ROOT))
-
-OUTPUT_DIR = str(get_output_directory_for_user(CURRENT_USER))
-
-USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
-USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
-RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
-
 
 def make_long_path(path: str) -> str:
     """Return a Windows long-path-safe absolute path."""
@@ -1434,7 +1425,7 @@ class MainWindow(QMainWindow):
         was_offline = OFFLINE_MODE
         set_connection_state(is_server_available(SERVER_ROOT))
 
-        if SERVER_ONLINE or CURRENT_USER in OFFLINE_ALLOWED_USERS:
+        if SERVER_ONLINE or is_tester_user(CURRENT_USER):
             ensure_server_directories()
 
         self.update_connection_banner()
@@ -1495,37 +1486,30 @@ def main() -> None:
     """Entry point for the application."""
 
     app = QApplication(sys.argv)
+    initialize_environment()
+    set_connection_state(csenv.SERVER_ONLINE)
+
     username = get_current_username()
 
     if not csenv.SERVER_ONLINE and not csenv.IS_TESTER:
         QMessageBox.critical(
             None,
             "CompareSet",
-            "The CompareSet server is not available. The application will close.",
+            "You are offline or the CompareSet server is not reachable.\n"
+            "Please connect to GlobalProtect/VPN and try again.",
         )
-        sys.exit(0)
+        sys.exit(1)
 
-    window_title_suffix = " [TEST MODE - OFFLINE]" if not csenv.SERVER_ONLINE and csenv.IS_TESTER else ""
-
-    if OFFLINE_MODE and username not in OFFLINE_ALLOWED_USERS:
-        lang_hint = (os.getenv("LANG") or "").lower()
-        message = (
-            "Sem conexão com o servidor. Este usuário não está autorizado a usar o CompareSet em modo offline. "
-            "Feche o aplicativo e conecte-se ao servidor."
-        )
-        if not lang_hint.startswith("pt"):
-            message = (
-                "No connection to the server. This user is not allowed to use CompareSet in offline mode. "
-                "Please close the application and connect to the server."
-            )
-        QMessageBox.critical(None, "CompareSet", message)
-        sys.exit(0)
+    window_title_suffix = " [TEST MODE - OFFLINE]" if OFFLINE_MODE and csenv.IS_TESTER else ""
 
     ensure_server_directories()
     ensure_users_db_initialized()
     ensure_released_db_initialized()
 
     role = get_user_role(username)
+
+    if is_super_admin(username):
+        role = "admin"
 
     if role is None:
         QMessageBox.critical(
