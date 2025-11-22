@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""CompareSet desktop application with enhanced diff suppression (compareset_app)."""
+"""CompareSet desktop application with Developer Layout Mode for draggable panels."""
 
 from __future__ import annotations
 
 import compareset_engine as compare_engine
+import json
 import logging
 import os
 import shutil
@@ -13,7 +14,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QPoint, QRect, QSize
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -29,6 +31,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
+    QMenuBar,
     QMessageBox,
     QPushButton,
     QProgressBar,
@@ -38,6 +42,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QFrame,
 )
 
 from compareset_engine import (
@@ -50,6 +55,7 @@ from compareset_engine import (
     write_log,
 )
 import compareset_env as csenv
+from developer_tools_dialog import DeveloperToolsDialog
 from compareset_env import (
     CURRENT_USER,
     IS_TESTER,
@@ -62,6 +68,9 @@ from compareset_env import (
     initialize_environment,
     is_super_admin,
     is_tester_user,
+    is_dev_mode,
+    get_dev_settings,
+    DEV_SETTINGS_PATH,
     get_output_directory_for_user,
 )
 
@@ -123,9 +132,10 @@ def set_connection_state(server_online: bool) -> None:
     HISTORY_DIR = csenv.HISTORY_DIR
     LOG_DIR = csenv.LOG_DIR
     OUTPUT_DIR = str(get_output_directory_for_user(CURRENT_USER))
-    USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
-    USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
-    RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
+USERS_DB_PATH = os.path.join(CONFIG_ROOT, "users.sqlite")
+USER_SETTINGS_DB_PATH = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
+RELEASED_DB_PATH = os.path.join(CONFIG_ROOT, "released.sqlite")
+DEV_LAYOUT_PATH = Path(DEV_SETTINGS_PATH).with_name("dev_layout.json")
 
 def make_long_path(path: str) -> str:
     """Return a Windows long-path-safe absolute path."""
@@ -487,6 +497,39 @@ class QtLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         message = self.format(record)
         self.emitter.message.emit(message)
+
+
+class LayoutEditFilter(QObject):
+    """Lightweight event filter enabling drag moves for target widgets."""
+
+    def __init__(self, window: QMainWindow, key: str):
+        super().__init__(window)
+        self.window = window
+        self.key = key
+        self._dragging = False
+        self._offset = QPoint()
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+        if not getattr(self.window, "layout_mode_enabled", False):
+            return False
+
+        if event.type() == QEvent.MouseButtonPress and getattr(event, "button", lambda: None)() == Qt.LeftButton:
+            parent_origin = obj.parent().mapToGlobal(QPoint(0, 0)) if obj.parent() else QPoint(0, 0)
+            self._offset = event.globalPosition().toPoint() - parent_origin - obj.pos()
+            self._dragging = True
+            obj.setCursor(Qt.SizeAllCursor)
+            return True
+        if event.type() == QEvent.MouseMove and self._dragging:
+            parent_origin = obj.parent().mapToGlobal(QPoint(0, 0)) if obj.parent() else QPoint(0, 0)
+            new_pos = event.globalPosition().toPoint() - parent_origin - self._offset
+            obj.move(new_pos)
+            return True
+        if event.type() == QEvent.MouseButtonRelease:
+            if self._dragging:
+                obj.setCursor(Qt.ArrowCursor)
+            self._dragging = False
+            return False
+        return False
 
 
 class CompareSetWorker(QObject):
@@ -1203,8 +1246,25 @@ class MainWindow(QMainWindow):
 
         self._last_old_path: Optional[Path] = None
 
+        self.resize(900, 620)
         central_widget = QWidget()
-        main_layout = QVBoxLayout(central_widget)
+        central_widget.setObjectName("layout_canvas")
+        central_widget.setLayout(None)
+        central_widget.setMinimumSize(720, 520)
+        central_widget.setAttribute(Qt.WA_StyledBackground, True)
+        self.layout_canvas = central_widget
+        self.layout_mode_enabled = False
+        self._layout_targets: Dict[str, QWidget] = {}
+        self._layout_filters: Dict[str, LayoutEditFilter] = {}
+        self._default_layouts: Dict[str, QRect] = {}
+        self._original_styles: Dict[str, str] = {}
+
+        self.layout_indicator = QLabel("Layout Mode ON", central_widget)
+        self.layout_indicator.setStyleSheet(
+            "background-color: #fff4ce; color: #664d03; border: 1px dashed #f0ad4e; "
+            "padding: 4px 8px; border-radius: 4px;"
+        )
+        self.layout_indicator.hide()
 
         file_layout = QGridLayout()
         file_layout.addWidget(QLabel("Old revision (PDF)"), 0, 0)
@@ -1214,9 +1274,6 @@ class MainWindow(QMainWindow):
         file_layout.addWidget(self.new_path_edit, 1, 1)
         file_layout.addWidget(self.new_browse_button, 1, 2)
 
-        main_layout.addLayout(file_layout)
-        main_layout.addSpacing(8)
-
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.history_button)
         button_layout.addWidget(self.released_button)
@@ -1224,15 +1281,33 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()
         button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.compare_button)
-        main_layout.addLayout(button_layout)
 
-        main_layout.addWidget(self.progress_bar)
-        main_layout.addWidget(self.status_label)
+        self.top_toolbar_frame = QFrame(central_widget)
+        self.top_toolbar_frame.setObjectName("top_toolbar")
+        top_layout = QVBoxLayout(self.top_toolbar_frame)
+        top_layout.setContentsMargins(8, 8, 8, 8)
+        top_layout.addLayout(file_layout)
+        top_layout.addSpacing(8)
+        top_layout.addLayout(button_layout)
+
+        self.progress_frame = QFrame(central_widget)
+        self.progress_frame.setObjectName("progress_panel")
+        progress_layout = QVBoxLayout(self.progress_frame)
+        progress_layout.setContentsMargins(8, 8, 8, 8)
+        progress_layout.addWidget(self.progress_bar)
+        progress_layout.addWidget(self.status_label)
+
+        self.admin_frame = QFrame(central_widget)
+        self.admin_frame.setObjectName("admin_panel")
         if self.role == "admin":
             self.admin_button = QPushButton("Administração")
             self.admin_button.clicked.connect(self.open_admin_dialog)
-            main_layout.addWidget(self.admin_button)
-            main_layout.addWidget(self.log_view)
+            admin_layout = QVBoxLayout(self.admin_frame)
+            admin_layout.setContentsMargins(8, 8, 8, 8)
+            admin_layout.addWidget(self.admin_button)
+            admin_layout.addWidget(self.log_view)
+        else:
+            self.admin_frame.setVisible(False)
 
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(False)
@@ -1242,7 +1317,15 @@ class MainWindow(QMainWindow):
         self.setStatusBar(status_bar)
         self.apply_language_setting()
         self.setCentralWidget(central_widget)
-        self.resize(720, 520)
+        self._register_layout_target("top_toolbar", self.top_toolbar_frame)
+        self._register_layout_target("progress_panel", self.progress_frame)
+        if self.admin_frame.isVisible():
+            self._register_layout_target("admin_panel", self.admin_frame)
+
+        self._apply_default_layout_geometry()
+        if is_dev_mode():
+            self._init_developer_menu()
+            self.load_dev_layout()
         self.show_offline_warning_once()
         self.prompt_for_email_if_missing()
 
@@ -1481,6 +1564,147 @@ class MainWindow(QMainWindow):
         ):
             widget.setEnabled(enabled)
         self.cancel_button.setEnabled(not enabled and self._worker is not None)
+
+    def _register_layout_target(self, key: str, widget: QWidget) -> None:
+        widget.setAttribute(Qt.WA_StyledBackground, True)
+        self._layout_targets[key] = widget
+        self._original_styles[key] = widget.styleSheet()
+        handler = LayoutEditFilter(self, key)
+        widget.installEventFilter(handler)
+        self._layout_filters[key] = handler
+
+    def _apply_default_layout_geometry(self) -> None:
+        canvas_size: QSize = self.layout_canvas.size() or QSize(900, 620)
+        width = max(640, canvas_size.width() - 20)
+        y = 10
+        for key in ("top_toolbar", "progress_panel", "admin_panel"):
+            widget = self._layout_targets.get(key)
+            if widget is None or not widget.isVisible():
+                continue
+            hint = widget.sizeHint() or QSize(width, 120)
+            height = max(100 if key != "admin_panel" else 200, hint.height() + 16)
+            widget.setGeometry(10, y, width, height)
+            self._default_layouts[key] = widget.geometry()
+            y += height + 10
+        self.layout_indicator.move(16, 10)
+
+    def _apply_saved_layout(self, layout_data: Dict[str, Dict[str, int]]) -> None:
+        for key, geom in layout_data.items():
+            widget = self._layout_targets.get(key)
+            if widget is None:
+                continue
+            try:
+                x = int(geom.get("x", widget.x()))
+                y = int(geom.get("y", widget.y()))
+                w = int(geom.get("width", widget.width()))
+                h = int(geom.get("height", widget.height()))
+            except Exception:
+                continue
+            widget.setGeometry(QRect(x, y, w, h))
+
+    def save_dev_layout(self) -> None:
+        if not is_dev_mode():
+            return
+        layout_data: Dict[str, Dict[str, int]] = {}
+        for key, widget in self._layout_targets.items():
+            geom = widget.geometry()
+            layout_data[key] = {
+                "x": geom.x(),
+                "y": geom.y(),
+                "width": geom.width(),
+                "height": geom.height(),
+            }
+        DEV_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(DEV_LAYOUT_PATH, "w", encoding="utf-8") as handle:
+            json.dump(layout_data, handle, indent=2)
+        QMessageBox.information(self, "Layout", "Developer layout saved.")
+
+    def load_dev_layout(self) -> None:
+        if not is_dev_mode():
+            return
+        if not DEV_LAYOUT_PATH.exists():
+            return
+        try:
+            with open(DEV_LAYOUT_PATH, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if isinstance(data, dict):
+                self._apply_saved_layout({k: v for k, v in data.items() if isinstance(v, dict)})
+        except Exception:
+            QMessageBox.warning(
+                self,
+                "Layout",
+                "Unable to load developer layout file. Using default positions.",
+            )
+            self._apply_default_layout_geometry()
+
+    def reset_dev_layout(self) -> None:
+        if DEV_LAYOUT_PATH.exists():
+            try:
+                DEV_LAYOUT_PATH.unlink()
+            except Exception:
+                pass
+        self._apply_default_layout_geometry()
+        QMessageBox.information(self, "Layout", "Layout reset to defaults.")
+
+    def toggle_layout_mode(self, checked: Optional[bool] = None) -> None:
+        if not is_dev_mode():
+            QMessageBox.information(
+                self,
+                "Layout",
+                "Developer Layout Mode is only available when developer mode is enabled.",
+            )
+            return
+        new_state = bool(checked) if checked is not None else not self.layout_mode_enabled
+        self.layout_mode_enabled = new_state
+        if hasattr(self, "layout_mode_action"):
+            self.layout_mode_action.setChecked(new_state)
+        self._update_layout_mode_visuals()
+
+    def _update_layout_mode_visuals(self) -> None:
+        self.layout_indicator.setVisible(self.layout_mode_enabled)
+        for key, widget in self._layout_targets.items():
+            base_style = self._original_styles.get(key, "")
+            if self.layout_mode_enabled:
+                border = "border: 1px dashed #0078d4;"
+                widget.setStyleSheet(f"{base_style}\n{border}" if base_style else border)
+                widget.raise_()
+            else:
+                widget.setStyleSheet(base_style)
+        if self.layout_mode_enabled:
+            self.layout_indicator.raise_()
+
+    def _init_developer_menu(self) -> None:
+        if getattr(self, "_developer_menu_initialized", False):
+            return
+        menu_bar: QMenuBar = self.menuBar() or QMenuBar(self)
+        dev_menu = QMenu("Developer", self)
+        menu_bar.addMenu(dev_menu)
+
+        tools_action = QAction("Developer Tools…", self)
+        tools_action.triggered.connect(self.open_developer_tools)
+        dev_menu.addAction(tools_action)
+
+        self.layout_mode_action = QAction("Layout Editor…", self)
+        self.layout_mode_action.setCheckable(True)
+        self.layout_mode_action.triggered.connect(self.toggle_layout_mode)
+        dev_menu.addAction(self.layout_mode_action)
+
+        save_action = QAction("Save Layout", self)
+        save_action.triggered.connect(self.save_dev_layout)
+        dev_menu.addAction(save_action)
+
+        reset_action = QAction("Reset Layout to Default", self)
+        reset_action.triggered.connect(self.reset_dev_layout)
+        dev_menu.addAction(reset_action)
+
+        self._developer_menu_initialized = True
+
+    def open_developer_tools(self) -> None:
+        dialog = DeveloperToolsDialog(self, get_dev_settings(), layout_mode_active=self.layout_mode_enabled)
+        dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
+        dialog.save_layout_requested.connect(self.save_dev_layout)
+        dialog.reset_layout_requested.connect(self.reset_dev_layout)
+        dialog.exec()
 
 def main() -> None:
     """Entry point for the application."""
