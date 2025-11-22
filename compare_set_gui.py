@@ -13,9 +13,9 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QPoint, QRect, QSize
-from PySide6.QtGui import QAction
+from typing import Any, Dict, List, Optional, Union
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QPoint, QRect, QSize, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -1209,6 +1209,10 @@ class MainWindow(QMainWindow):
         self._editable_widgets: Dict[str, Dict[str, Union[QWidget, str, bool]]] = {}
         self._widget_defaults: Dict[str, Dict[str, Optional[str]]] = {}
         self._widget_overrides: Dict[str, Dict[str, str]] = {}
+        self._geometry_overrides: Dict[str, Dict[str, int]] = {}
+        self._widget_actions: Dict[str, Dict[str, str]] = {}
+        self._dynamic_button_defs: Dict[str, Dict[str, Any]] = {}
+        self._dynamic_buttons: Dict[str, QPushButton] = {}
 
         self.old_path_edit = QLineEdit()
         self.new_path_edit = QLineEdit()
@@ -1298,6 +1302,11 @@ class MainWindow(QMainWindow):
         top_layout.addLayout(file_layout)
         top_layout.addSpacing(8)
         top_layout.addLayout(button_layout)
+        self.toolbar_dynamic_layout = QHBoxLayout()
+        self.toolbar_dynamic_layout.setContentsMargins(0, 0, 0, 0)
+        self.toolbar_dynamic_layout.addStretch()
+        top_layout.addSpacing(4)
+        top_layout.addLayout(self.toolbar_dynamic_layout)
 
         self.progress_frame = QFrame(central_widget)
         self.progress_frame.setObjectName("progress_panel")
@@ -1305,6 +1314,11 @@ class MainWindow(QMainWindow):
         progress_layout.setContentsMargins(8, 8, 8, 8)
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.status_label)
+        self.progress_dynamic_layout = QHBoxLayout()
+        self.progress_dynamic_layout.setContentsMargins(0, 0, 0, 0)
+        self.progress_dynamic_layout.addStretch()
+        progress_layout.addSpacing(4)
+        progress_layout.addLayout(self.progress_dynamic_layout)
 
         self.admin_frame = QFrame(central_widget)
         self.admin_frame.setObjectName("admin_panel")
@@ -1315,6 +1329,8 @@ class MainWindow(QMainWindow):
             admin_layout.setContentsMargins(8, 8, 8, 8)
             admin_layout.addWidget(self.admin_button)
             admin_layout.addWidget(self.log_view)
+            self.admin_dynamic_layout = QVBoxLayout()
+            admin_layout.addLayout(self.admin_dynamic_layout)
         else:
             self.admin_frame.setVisible(False)
 
@@ -1325,28 +1341,135 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(status_bar)
         self.apply_language_setting()
-        self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label")
-        self._register_editable_widget("new_label", self.new_label, display_name="New PDF label")
-        self._register_editable_widget("old_browse_button", self.old_browse_button, display_name="Old Browse button")
-        self._register_editable_widget("new_browse_button", self.new_browse_button, display_name="New Browse button")
-        self._register_editable_widget("compare_button", self.compare_button, display_name="Compare button")
-        self._register_editable_widget("cancel_button", self.cancel_button, display_name="Cancel button")
-        self._register_editable_widget("history_button", self.history_button, display_name="History button")
-        self._register_editable_widget("released_button", self.released_button, display_name="Released button")
-        self._register_editable_widget("settings_button", self.settings_button, display_name="Settings button")
+        self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label", allow_geometry=True)
+        self._register_editable_widget("new_label", self.new_label, display_name="New PDF label", allow_geometry=True)
+        self._register_editable_widget(
+            "old_path_edit", self.old_path_edit, display_name="Old path input", allow_style=True, allow_geometry=True, allow_text=True
+        )
+        self._register_editable_widget(
+            "new_path_edit", self.new_path_edit, display_name="New path input", allow_style=True, allow_geometry=True, allow_text=True
+        )
+        self._register_editable_widget(
+            "old_browse_button",
+            self.old_browse_button,
+            display_name="Old Browse button",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "new_browse_button",
+            self.new_browse_button,
+            display_name="New Browse button",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "compare_button",
+            self.compare_button,
+            display_name="Compare button",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "cancel_button",
+            self.cancel_button,
+            display_name="Cancel button",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "history_button",
+            self.history_button,
+            display_name="History button",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "released_button",
+            self.released_button,
+            display_name="Released button",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "settings_button",
+            self.settings_button,
+            display_name="Settings button",
+            allow_icon=True,
+            allow_action=True,
+        )
         self._register_editable_widget(
             "status_label", self.status_label, display_name="Status message", allow_style=True, allow_text=True
         )
         self._register_editable_widget(
             "connection_status", self.connection_status_label, display_name="Connection banner", allow_style=True
         )
+        self._register_editable_widget(
+            "progress_bar",
+            self.progress_bar,
+            display_name="Progress bar",
+            allow_text=False,
+            allow_style=True,
+            allow_geometry=True,
+        )
+        self._register_editable_widget(
+            "reload_button",
+            self.reload_button,
+            display_name="Reload connection",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_editable_widget(
+            "log_view",
+            self.log_view,
+            display_name="Admin log",
+            allow_text=False,
+            allow_style=True,
+            allow_geometry=True,
+        )
         if self.admin_button is not None:
-            self._register_editable_widget("admin_button", self.admin_button, display_name="Admin button")
+            self._register_editable_widget(
+                "admin_button",
+                self.admin_button,
+                display_name="Admin button",
+                allow_icon=True,
+                allow_action=True,
+            )
         self.setCentralWidget(central_widget)
         self._register_layout_target("top_toolbar", self.top_toolbar_frame)
         self._register_layout_target("progress_panel", self.progress_frame)
         if self.admin_frame.isVisible():
             self._register_layout_target("admin_panel", self.admin_frame)
+        self._dynamic_parent_layouts = {
+            "top_toolbar": self.toolbar_dynamic_layout,
+            "progress_panel": self.progress_dynamic_layout,
+            "admin_panel": getattr(self, "admin_dynamic_layout", None),
+        }
+        self._register_editable_widget(
+            "top_toolbar",
+            self.top_toolbar_frame,
+            display_name="Toolbar panel",
+            allow_text=False,
+            allow_style=True,
+            allow_geometry=True,
+        )
+        self._register_editable_widget(
+            "progress_panel",
+            self.progress_frame,
+            display_name="Progress panel",
+            allow_text=False,
+            allow_style=True,
+            allow_geometry=True,
+        )
+        if self.admin_frame.isVisible():
+            self._register_editable_widget(
+                "admin_panel",
+                self.admin_frame,
+                display_name="Admin panel",
+                allow_text=False,
+                allow_style=True,
+                allow_geometry=True,
+            )
 
         self._apply_default_layout_geometry()
         self._init_developer_menu()
@@ -1622,6 +1745,9 @@ class MainWindow(QMainWindow):
         display_name: Optional[str] = None,
         allow_text: bool = True,
         allow_style: bool = True,
+        allow_geometry: bool = True,
+        allow_icon: bool = False,
+        allow_action: bool = False,
     ) -> None:
         """Mark a widget as editable inside the no-code layout designer."""
 
@@ -1630,12 +1756,19 @@ class MainWindow(QMainWindow):
             "display_name": display_name or key,
             "allow_text": allow_text,
             "allow_style": allow_style,
+            "allow_geometry": allow_geometry,
+            "allow_icon": allow_icon,
+            "allow_action": allow_action,
         }
         default_text = widget.text() if hasattr(widget, "text") else None
         self._widget_defaults[key] = {
             "text": default_text,
             "style": widget.styleSheet() or "",
+            "icon": None,
+            "action": None,
         }
+        if allow_action and isinstance(widget, QPushButton):
+            widget.clicked.connect(lambda checked=False, k=key: self._invoke_custom_action(k))
 
     def _refresh_widget_defaults_for_language(self) -> None:
         """Refresh baseline texts when the UI language changes."""
@@ -1659,9 +1792,14 @@ class MainWindow(QMainWindow):
         defaults = self._widget_defaults.get(key, {"text": None, "style": ""})
         allow_text = bool(info.get("allow_text", True))
         allow_style = bool(info.get("allow_style", True))
+        allow_icon = bool(info.get("allow_icon", False))
+        allow_action = bool(info.get("allow_action", False))
 
         text_override = overrides.get("text") if allow_text else None
         style_override = overrides.get("style") if allow_style else None
+        icon_override = overrides.get("icon") if allow_icon else None
+        geometry_override = overrides.get("geometry") if info.get("allow_geometry", True) else None
+        action_override = overrides.get("action") if allow_action else None
 
         text_value = text_override if text_override is not None else defaults.get("text")
         if allow_text and text_value is not None and hasattr(widget, "setText"):
@@ -1671,25 +1809,183 @@ class MainWindow(QMainWindow):
         if allow_style:
             widget.setStyleSheet(style_value or "")
 
+        if allow_icon and isinstance(widget, QPushButton):
+            if isinstance(icon_override, str) and icon_override:
+                widget.setIcon(QIcon(icon_override))
+            elif icon_override == "":
+                widget.setIcon(QIcon())
+            elif isinstance(defaults.get("icon"), str) and defaults.get("icon"):
+                widget.setIcon(QIcon(str(defaults.get("icon"))))
+
+        if geometry_override:
+            self.apply_geometry_override(key, geometry_override)
+
+        if allow_action:
+            if isinstance(action_override, dict) and action_override.get("type"):
+                self._widget_actions[key] = action_override
+            elif action_override == {}:
+                self._widget_actions.pop(key, None)
+
         cleaned: Dict[str, str] = {}
         if text_override is not None and text_override != defaults.get("text"):
             cleaned["text"] = str(text_override)
         if style_override is not None and style_override.strip() != (defaults.get("style") or "").strip():
             cleaned["style"] = str(style_override)
+        if allow_icon and icon_override is not None:
+            cleaned["icon"] = str(icon_override)
+        if allow_action and isinstance(action_override, dict):
+            cleaned["action"] = action_override
+        if geometry_override:
+            cleaned["geometry"] = geometry_override
 
         if cleaned:
             self._widget_overrides[key] = cleaned
         elif key in self._widget_overrides:
             del self._widget_overrides[key]
 
+        if key in self._dynamic_button_defs:
+            if allow_text and hasattr(widget, "text"):
+                self._dynamic_button_defs[key]["text"] = widget.text()
+            if allow_icon:
+                self._dynamic_button_defs[key]["icon"] = str(icon_override or "")
+            if allow_action and isinstance(action_override, dict):
+                self._dynamic_button_defs[key]["action"] = action_override
+
     def _reapply_widget_overrides(self) -> None:
         for key, overrides in list(self._widget_overrides.items()):
             self.apply_widget_overrides(key, overrides)
+
+    def _normalize_geometry(self, widget: QWidget, geometry_data: Dict[str, Any]) -> Optional[QRect]:
+        try:
+            x = int(geometry_data.get("x", widget.x()))
+            y = int(geometry_data.get("y", widget.y()))
+            w = int(geometry_data.get("width", widget.width()))
+            h = int(geometry_data.get("height", widget.height()))
+            rect = QRect(x, y, max(1, w), max(1, h))
+        except Exception:
+            return None
+        if not self._is_reasonable_geometry(rect):
+            return None
+        return rect
+
+    def apply_geometry_override(self, key: str, geometry_data: Dict[str, Any]) -> None:
+        widget = self._editable_widgets.get(key, {}).get("widget") or self._layout_targets.get(key)
+        if widget is None:
+            return
+        rect = self._normalize_geometry(widget, geometry_data)
+        if rect is None:
+            return
+        widget.setGeometry(rect)
+        widget.setMinimumSize(rect.width(), rect.height())
+        self._geometry_overrides[key] = {
+            "x": rect.x(),
+            "y": rect.y(),
+            "width": rect.width(),
+            "height": rect.height(),
+        }
+        if key in self._widget_overrides:
+            self._widget_overrides[key]["geometry"] = self._geometry_overrides[key]
+        else:
+            self._widget_overrides[key] = {"geometry": self._geometry_overrides[key]}
+
+        if key in self._dynamic_button_defs:
+            self._dynamic_button_defs[key]["geometry"] = self._geometry_overrides[key]
+
+    def _add_widget_to_layout(self, layout, widget: QWidget) -> None:
+        if hasattr(layout, "insertWidget"):
+            insert_at = max(layout.count() - 1, 0)
+            layout.insertWidget(insert_at, widget)
+        elif hasattr(layout, "addWidget"):
+            layout.addWidget(widget)
+
+    def _create_dynamic_button(self, definition: Dict[str, Any]) -> Optional[QPushButton]:
+        parent_key = definition.get("parent", "top_toolbar")
+        layout = self._dynamic_parent_layouts.get(parent_key)
+        if layout is None:
+            return None
+        button_id = definition.get("id") or f"dynamic_{len(self._dynamic_button_defs) + 1}"
+        button = QPushButton(definition.get("text") or "Novo botão")
+        button.setObjectName(button_id)
+        if definition.get("icon"):
+            button.setIcon(QIcon(str(definition.get("icon"))))
+        self._add_widget_to_layout(layout, button)
+        definition["id"] = button_id
+        definition.setdefault("display_name", definition.get("text") or button_id)
+        self._dynamic_button_defs[button_id] = definition
+        self._dynamic_buttons[button_id] = button
+        self._register_editable_widget(
+            button_id,
+            button,
+            display_name=definition.get("display_name", button_id),
+            allow_icon=True,
+            allow_action=True,
+        )
+        action_cfg = definition.get("action") if isinstance(definition.get("action"), dict) else None
+        if action_cfg:
+            self._widget_actions[button_id] = action_cfg
+        if definition.get("geometry"):
+            self.apply_geometry_override(button_id, definition.get("geometry", {}))
+        return button
+
+    def _clear_dynamic_buttons(self) -> None:
+        for button in self._dynamic_buttons.values():
+            button.setParent(None)
+        self._dynamic_buttons.clear()
+        for key in list(self._widget_overrides.keys()):
+            if key.startswith("dynamic_") or key in self._dynamic_button_defs:
+                self._widget_overrides.pop(key, None)
+        self._dynamic_button_defs.clear()
+
+    def _rebuild_dynamic_buttons(self, definitions: List[Dict[str, Any]]) -> None:
+        self._clear_dynamic_buttons()
+        for definition in definitions:
+            if isinstance(definition, dict):
+                self._create_dynamic_button(definition)
+
+    def create_dynamic_button(self, definition: Dict[str, Any]) -> Optional[str]:
+        button = self._create_dynamic_button(definition)
+        return button.objectName() if button else None
+
+    def get_dynamic_button_definitions(self) -> List[Dict[str, Any]]:
+        return list(self._dynamic_button_defs.values())
+
+    def get_dynamic_parents(self) -> List[str]:
+        return [key for key, layout in self._dynamic_parent_layouts.items() if layout is not None]
+
+    def _invoke_custom_action(self, key: str) -> None:
+        action = self._widget_actions.get(key)
+        if not action:
+            return
+        action_type = action.get("type")
+        target = action.get("value") or action.get("target")
+        try:
+            if action_type == "url" and target:
+                QDesktopServices.openUrl(QUrl(str(target)))
+            elif action_type == "file" and target:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+            elif action_type in {"method", "dialog"} and target:
+                func = getattr(self, str(target), None)
+                if callable(func):
+                    func()
+            else:
+                logger.info("Custom action ignored for %s", key)
+        except Exception:
+            logger.exception("Failed to execute custom action for %s", key)
 
     def get_editable_widget_catalog(self) -> Dict[str, Dict[str, Union[QWidget, str, bool]]]:
         """Expose editable widget metadata to the layout designer dialog."""
 
         return self._editable_widgets
+
+    def get_widget_state(self, key: str) -> Dict[str, Any]:
+        widget = self._editable_widgets.get(key, {}).get("widget") or self._layout_targets.get(key)
+        return {
+            "widget": widget,
+            "defaults": self._widget_defaults.get(key, {}),
+            "overrides": self._widget_overrides.get(key, {}),
+            "geometry": self._geometry_overrides.get(key, {}),
+            "action": self._widget_actions.get(key, {}),
+        }
 
     def _register_layout_target(self, key: str, widget: QWidget) -> None:
         widget.setAttribute(Qt.WA_StyledBackground, True)
@@ -1714,22 +2010,29 @@ class MainWindow(QMainWindow):
             y += height + 10
         self.layout_indicator.move(16, 10)
 
+    def _is_reasonable_geometry(self, rect: QRect) -> bool:
+        canvas = self.layout_canvas.geometry()
+        if rect.width() < 20 or rect.height() < 20:
+            return False
+        if rect.x() > canvas.width() * 2 or rect.y() > canvas.height() * 2:
+            return False
+        if rect.x() + rect.width() < -canvas.width() or rect.y() + rect.height() < -canvas.height():
+            return False
+        return True
+
     def _apply_saved_layout(self, layout_data: Dict[str, Dict[str, int]]) -> None:
         for key, geom in layout_data.items():
             widget = self._layout_targets.get(key)
             if widget is None:
                 continue
-            try:
-                x = int(geom.get("x", widget.x()))
-                y = int(geom.get("y", widget.y()))
-                w = int(geom.get("width", widget.width()))
-                h = int(geom.get("height", widget.height()))
-            except Exception:
+            rect = self._normalize_geometry(widget, geom)
+            if rect is None:
                 continue
-            widget.setGeometry(QRect(x, y, w, h))
+            widget.setGeometry(rect)
 
     def _apply_saved_widget_overrides(self, widget_data: Dict[str, Dict[str, str]]) -> None:
         self._widget_overrides = {}
+        self._geometry_overrides = {}
         for key, overrides in widget_data.items():
             if not isinstance(overrides, dict):
                 continue
@@ -1737,13 +2040,15 @@ class MainWindow(QMainWindow):
 
     def reset_widget_overrides(self) -> None:
         self._widget_overrides = {}
+        self._geometry_overrides = {}
+        self._widget_actions = {}
         for key in self._editable_widgets:
             self.apply_widget_overrides(key, {})
 
     def save_dev_layout(self) -> None:
         if not is_dev_mode():
             return
-        layout_data: Dict[str, Dict[str, Dict[str, Union[int, str]]]] = {"frames": {}, "widgets": {}}
+        layout_data: Dict[str, Any] = {"frames": {}, "widgets": {}, "dynamic_buttons": []}
         for key, widget in self._layout_targets.items():
             geom = widget.geometry()
             layout_data["frames"][key] = {
@@ -1752,7 +2057,14 @@ class MainWindow(QMainWindow):
                 "width": geom.width(),
                 "height": geom.height(),
             }
-        layout_data["widgets"] = self._widget_overrides  # type: ignore[assignment]
+        for key in self._editable_widgets:
+            overrides = dict(self._widget_overrides.get(key, {}))
+            if key in self._geometry_overrides:
+                overrides.setdefault("geometry", self._geometry_overrides[key])
+            if overrides:
+                layout_data["widgets"][key] = overrides
+        if self._dynamic_button_defs:
+            layout_data["dynamic_buttons"] = list(self._dynamic_button_defs.values())
         DEV_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(DEV_LAYOUT_PATH, "w", encoding="utf-8") as handle:
             json.dump(layout_data, handle, indent=2)
@@ -1766,19 +2078,25 @@ class MainWindow(QMainWindow):
         try:
             with open(DEV_LAYOUT_PATH, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
-            if isinstance(data, dict):
-                frame_data = data.get("frames") if "frames" in data else data
-                widget_data = data.get("widgets", {}) if isinstance(data.get("widgets", {}), dict) else {}
-                if isinstance(frame_data, dict):
-                    self._apply_saved_layout({k: v for k, v in frame_data.items() if isinstance(v, dict)})
-                if widget_data:
-                    self._apply_saved_widget_overrides(widget_data)
+            if not isinstance(data, dict):
+                raise ValueError("Layout file corrupted")
+            frame_data = data.get("frames") if "frames" in data else data
+            widget_data = data.get("widgets", {}) if isinstance(data.get("widgets", {}), dict) else {}
+            geometry_data = data.get("widget_geometries", {}) if isinstance(data.get("widget_geometries", {}), dict) else {}
+            dynamic_defs = data.get("dynamic_buttons", []) if isinstance(data.get("dynamic_buttons", []), list) else []
+            self._clear_dynamic_buttons()
+            if dynamic_defs:
+                self._rebuild_dynamic_buttons(dynamic_defs)
+            if isinstance(frame_data, dict):
+                self._apply_saved_layout({k: v for k, v in frame_data.items() if isinstance(v, dict)})
+            if widget_data:
+                self._apply_saved_widget_overrides(widget_data)
+            for key, geom in geometry_data.items():
+                if isinstance(geom, dict):
+                    self.apply_geometry_override(key, geom)
         except Exception:
-            QMessageBox.warning(
-                self,
-                "Layout",
-                "Unable to load developer layout file. Using default positions.",
-            )
+            logger.warning("Unable to load developer layout file. Reverting to defaults.", exc_info=True)
+            self.status_label.setText("Developer layout inválido. Usando padrão.")
             self._apply_default_layout_geometry()
 
     def reset_dev_layout(self) -> None:
@@ -1787,6 +2105,7 @@ class MainWindow(QMainWindow):
                 DEV_LAYOUT_PATH.unlink()
             except Exception:
                 pass
+        self._clear_dynamic_buttons()
         self._apply_default_layout_geometry()
         self.reset_widget_overrides()
         QMessageBox.information(self, "Layout", "Layout reset to defaults.")
