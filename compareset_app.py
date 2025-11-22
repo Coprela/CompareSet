@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -22,7 +23,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -39,15 +39,20 @@ import compareset_env as csenv
 from compareset_env import (
     CONFIG_ROOT,
     CURRENT_USER,
-    DEV_MODE,
     get_current_username,
+    get_dev_settings,
     get_output_directory_for_user,
     is_server_available,
     is_super_admin,
     make_long_path,
     set_connection_state,
-    set_dev_server_override,
+    get_forced_language,
+    get_forced_role,
+    get_forced_theme,
+    is_dev_mode,
+    reload_dev_settings,
 )
+from developer_tools_dialog import DeveloperToolsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -278,14 +283,11 @@ def apply_theme(app: QApplication, theme: str) -> None:
 # Settings dialog
 # ----------------------------------------------------------------------------
 class SettingsDialog(QDialog):
-    def __init__(self, translator: Translator, language: str, theme: str, parent: QWidget | None = None, *, dev_visible: bool, server_override: Optional[bool], role_override: Optional[str]):
+    def __init__(self, translator: Translator, language: str, theme: str, parent: QWidget | None = None):
         super().__init__(parent)
         self.translator = translator
         self.language = language
         self.theme = theme
-        self.server_override = server_override
-        self.role_override = role_override
-        self.dev_visible = dev_visible
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -309,29 +311,6 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(form)
 
-        if self.dev_visible:
-            dev_group = QGroupBox(self.translator.tr("dev_options"))
-            dev_layout = QFormLayout(dev_group)
-
-            self.server_combo = QComboBox()
-            self.server_combo.addItem(self.translator.tr("server_auto"), None)
-            self.server_combo.addItem(self.translator.tr("server_force_on"), True)
-            self.server_combo.addItem(self.translator.tr("server_force_off"), False)
-            idx = self.server_combo.findData(self.server_override)
-            self.server_combo.setCurrentIndex(max(idx, 0))
-            dev_layout.addRow(self.translator.tr("server_override"), self.server_combo)
-
-            self.role_combo = QComboBox()
-            self.role_combo.addItem(self.translator.tr("role_none"), None)
-            self.role_combo.addItem(self.translator.tr("role_viewer"), "viewer")
-            self.role_combo.addItem(self.translator.tr("role_user"), "user")
-            self.role_combo.addItem(self.translator.tr("role_admin"), "admin")
-            idx = self.role_combo.findData(self.role_override)
-            self.role_combo.setCurrentIndex(max(idx, 0))
-            dev_layout.addRow(self.translator.tr("role_override"), self.role_combo)
-
-            layout.addWidget(dev_group)
-
         buttons = QHBoxLayout()
         self.save_btn = QPushButton(self.translator.tr("save"))
         self.cancel_btn = QPushButton(self.translator.tr("cancel"))
@@ -342,12 +321,10 @@ class SettingsDialog(QDialog):
         self.save_btn.clicked.connect(self.accept)
         self.cancel_btn.clicked.connect(self.reject)
 
-    def get_values(self) -> tuple[str, str, Optional[bool], Optional[str]]:
+    def get_values(self) -> tuple[str, str]:
         language = self.language_combo.currentData()
         theme = self.theme_combo.currentData()
-        server_override = self.server_combo.currentData() if self.dev_visible else None
-        role_override = self.role_combo.currentData() if self.dev_visible else None
-        return str(language), str(theme), server_override, role_override
+        return str(language), str(theme)
 
 
 # ----------------------------------------------------------------------------
@@ -360,20 +337,35 @@ class MainWindow(QMainWindow):
         self.translator = translator
         self.language = settings.get("language", "en-US")
         self.theme = settings.get("theme", "light")
-        self.server_override: Optional[bool] = None
-        self.role_override: Optional[str] = None
         self.old_path: Optional[Path] = None
         self.new_path: Optional[Path] = None
         self.output_dir = get_output_directory_for_user(CURRENT_USER)
 
-        apply_theme(self.app, self.theme)
+        self.apply_current_theme_and_language()
         self._build_ui()
         self.refresh_texts()
 
     # Role logic -------------------------------------------------------------
+    def effective_language(self) -> str:
+        forced_language = get_forced_language()
+        if is_dev_mode() and forced_language != "auto":
+            return forced_language
+        return self.language
+
+    def effective_theme(self) -> str:
+        forced_theme = get_forced_theme()
+        if is_dev_mode() and forced_theme != "auto":
+            return forced_theme
+        return self.theme
+
+    def apply_current_theme_and_language(self) -> None:
+        self.translator.set_language(self.effective_language())
+        apply_theme(self.app, self.effective_theme())
+
     def effective_role(self) -> str:
-        if self.role_override:
-            return self.role_override
+        forced_role = get_forced_role()
+        if is_dev_mode() and forced_role != "none":
+            return forced_role
         username = get_current_username()
         if is_super_admin(username):
             return "admin"
@@ -381,6 +373,12 @@ class MainWindow(QMainWindow):
 
     # UI builders ------------------------------------------------------------
     def _build_ui(self) -> None:
+        if is_dev_mode():
+            tools_menu = self.menuBar().addMenu("Developer Tools")
+            action = QAction("Developer Tools", self)
+            action.triggered.connect(self.open_developer_tools)
+            tools_menu.addAction(action)
+
         central = QWidget(self)
         layout = QVBoxLayout(central)
 
@@ -428,7 +426,7 @@ class MainWindow(QMainWindow):
         self.new_btn.setText(self.translator.tr("browse"))
         self.run_btn.setText(self.translator.tr("run"))
         self.settings_btn.setText(self.translator.tr("settings"))
-        if csenv.OFFLINE_MODE and not DEV_MODE:
+        if csenv.OFFLINE_MODE and not is_dev_mode():
             self.status.showMessage(self.translator.tr("status_offline"))
         else:
             self.status.showMessage(self.translator.tr("status_ready"))
@@ -472,29 +470,37 @@ class MainWindow(QMainWindow):
             self.language,
             self.theme,
             self,
-            dev_visible=DEV_MODE,
-            server_override=self.server_override,
-            role_override=self.role_override,
         )
         if dialog.exec() == QDialog.Accepted:
-            language, theme, server_override, role_override = dialog.get_values()
+            language, theme = dialog.get_values()
             self.language = language
             self.theme = theme
-            self.server_override = server_override
-            self.role_override = role_override
-            self.translator.set_language(language)
             update_user_settings(CURRENT_USER, language=language, theme=theme)
-            set_dev_server_override(server_override)
-            set_connection_state(is_server_available(csenv.SERVER_ROOT))
-            apply_theme(self.app, theme)
+            self.apply_current_theme_and_language()
             self.refresh_texts()
+
+    def open_developer_tools(self) -> None:
+        dialog = DeveloperToolsDialog(self, get_dev_settings())
+        dialog.settings_applied.connect(self.reload_from_dev_settings)
+        dialog.exec()
+
+    def reload_from_dev_settings(self) -> None:
+        reload_dev_settings()
+        set_connection_state(is_server_available(csenv.SERVER_ROOT))
+        settings = get_user_settings(get_current_username())
+        self.language = settings.get("language", "en-US")
+        self.theme = settings.get("theme", "light")
+        self.apply_current_theme_and_language()
+        if not is_dev_mode():
+            self.menuBar().clear()
+        self.refresh_texts()
 
 
 # ----------------------------------------------------------------------------
 # Startup helpers
 # ----------------------------------------------------------------------------
 def require_server_or_exit(app: QApplication, translator: Translator) -> None:
-    if not DEV_MODE and csenv.OFFLINE_MODE:
+    if not is_dev_mode() and csenv.OFFLINE_MODE:
         QMessageBox.critical(None, translator.tr("title"), translator.tr("offline_block"))
         sys.exit(1)
 
@@ -504,10 +510,22 @@ def main() -> None:
     app = QApplication(sys.argv)
     username = get_current_username()
     settings = get_user_settings(username)
-    translator = Translator(settings.get("language", "en-US"))
-    apply_theme(app, settings.get("theme", "light"))
+    language = settings.get("language", "en-US")
+    theme = settings.get("theme", "light")
+
+    if is_dev_mode() and get_forced_language() != "auto":
+        language = get_forced_language()
+    if is_dev_mode() and get_forced_theme() != "auto":
+        theme = get_forced_theme()
+
+    translator = Translator(language)
+    apply_theme(app, theme)
+    set_connection_state(is_server_available(csenv.SERVER_ROOT))
 
     require_server_or_exit(app, translator)
+
+    settings["language"] = language
+    settings["theme"] = theme
 
     window = MainWindow(app, translator, settings)
     window.show()

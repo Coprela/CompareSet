@@ -5,6 +5,7 @@ super-admin detection. It intentionally contains no GUI code.
 """
 from __future__ import annotations
 
+import json
 import getpass
 import os
 import sqlite3
@@ -33,7 +34,59 @@ LOCAL_CONFIG_DIR: str = os.path.join(LOCAL_BASE_DIR, "config")
 LOCAL_RELEASED_DIR: str = os.path.join(LOCAL_BASE_DIR, "released")
 
 CURRENT_USER: str = getpass.getuser()
-DEV_MODE: bool = os.getenv("COMPARESET_DEV_MODE", "0") == "1"
+DEV_SETTINGS_PATH = Path(__file__).with_name("dev_settings.json")
+
+DEFAULT_DEV_SETTINGS = {
+    "dev_mode": False,
+    "super_admins": [],
+    "force_server_state": "auto",
+    "force_role": "none",
+    "force_theme": "auto",
+    "force_language": "auto",
+}
+
+
+def _validated_choice(value: str, allowed: set[str], default: str) -> str:
+    return value if value in allowed else default
+
+
+def load_dev_settings_file() -> dict:
+    """Load development settings from :data:`DEV_SETTINGS_PATH`."""
+
+    settings = DEFAULT_DEV_SETTINGS.copy()
+    try:
+        with open(DEV_SETTINGS_PATH, "r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+            if isinstance(loaded, dict):
+                settings.update(loaded)
+    except FileNotFoundError:
+        return settings
+    except Exception:
+        return settings
+
+    settings["force_server_state"] = _validated_choice(
+        str(settings.get("force_server_state", "auto")), {"auto", "online", "offline"}, "auto"
+    )
+    settings["force_role"] = _validated_choice(
+        str(settings.get("force_role", "none")), {"none", "viewer", "user", "admin"}, "none"
+    )
+    settings["force_theme"] = _validated_choice(
+        str(settings.get("force_theme", "auto")), {"auto", "light", "dark"}, "auto"
+    )
+    settings["force_language"] = _validated_choice(
+        str(settings.get("force_language", "auto")), {"auto", "pt-BR", "en-US"}, "auto"
+    )
+
+    super_admins = settings.get("super_admins", [])
+    if not isinstance(super_admins, list):
+        super_admins = []
+    settings["super_admins"] = [str(user) for user in super_admins]
+    settings["dev_mode"] = bool(settings.get("dev_mode", False))
+    return settings
+
+
+DEV_SETTINGS = load_dev_settings_file()
+DEV_MODE: bool = bool(DEV_SETTINGS.get("dev_mode", False))
 
 # ----------------------------------------------------------------------------
 # Connectivity + overrides
@@ -89,7 +142,7 @@ def set_dev_server_override(state: Optional[bool]) -> None:
     """Set a developer override for server connectivity (dev mode only)."""
 
     global DEV_SERVER_OVERRIDE
-    DEV_SERVER_OVERRIDE = state if DEV_MODE else None
+    DEV_SERVER_OVERRIDE = state if is_dev_mode() else None
 
 
 def _determine_storage_paths(use_local: bool) -> None:
@@ -127,11 +180,17 @@ def set_connection_state(server_online: bool) -> None:
 
     global SERVER_ONLINE, OFFLINE_MODE
 
-    effective_online = DEV_SERVER_OVERRIDE if DEV_SERVER_OVERRIDE is not None else server_online
+    forced_state = get_forced_server_state()
+    if is_dev_mode() and forced_state != "auto":
+        effective_online = forced_state == "online"
+    elif DEV_SERVER_OVERRIDE is not None:
+        effective_online = DEV_SERVER_OVERRIDE
+    else:
+        effective_online = server_online
     SERVER_ONLINE = bool(effective_online)
     OFFLINE_MODE = not SERVER_ONLINE
 
-    use_local = OFFLINE_MODE and DEV_MODE
+    use_local = OFFLINE_MODE and is_dev_mode()
     _determine_storage_paths(use_local)
 
 
@@ -156,7 +215,7 @@ def ensure_directories() -> None:
         try:
             os.makedirs(safe_path, exist_ok=True)
         except Exception:
-            if not DEV_MODE:
+            if not is_dev_mode():
                 raise
 
 
@@ -195,7 +254,7 @@ def get_user_setting(username: str, key: str) -> Optional[str]:
 def get_output_directory_for_user(username: str) -> Path:
     """Return an appropriate output directory for the user."""
 
-    if DEV_MODE:
+    if is_dev_mode():
         custom_dir = get_user_setting(username, "local_output_dir")
         if custom_dir:
             path = Path(custom_dir)
@@ -208,39 +267,75 @@ def get_output_directory_for_user(username: str) -> Path:
     return Path(RESULTS_ROOT)
 
 
-def load_super_admins() -> set[str]:
-    """Load super admin usernames from configuration files."""
-
+def _refresh_super_admins() -> None:
     global SUPER_ADMIN_CACHE
-    candidates = [
-        os.path.join(CONFIG_ROOT, "super_admins.txt"),
-        os.path.join(LOCAL_CONFIG_DIR, "super_admins.txt"),
-    ]
-    admins: set[str] = set()
-    for path in candidates:
-        try:
-            with open(path, "r", encoding="utf-8") as handle:
-                for line in handle:
-                    username = line.strip()
-                    if username:
-                        admins.add(username)
-        except FileNotFoundError:
-            continue
-        except Exception:
-            if not DEV_MODE:
-                raise
-    SUPER_ADMIN_CACHE = admins
-    return admins
+    SUPER_ADMIN_CACHE = set(DEV_SETTINGS.get("super_admins", []))
+
+
+def get_dev_settings() -> dict:
+    """Return a copy of the current developer settings."""
+
+    return DEV_SETTINGS.copy()
+
+
+def save_dev_settings(settings: dict) -> None:
+    """Persist developer settings to disk and refresh cached values."""
+
+    merged = DEFAULT_DEV_SETTINGS.copy()
+    merged.update(settings)
+    DEV_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(DEV_SETTINGS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(merged, handle, indent=2)
+    reload_dev_settings()
+
+
+def reload_dev_settings() -> None:
+    """Reload developer settings from disk."""
+
+    global DEV_SETTINGS, DEV_MODE
+    DEV_SETTINGS = load_dev_settings_file()
+    DEV_MODE = bool(DEV_SETTINGS.get("dev_mode", False))
+    _refresh_super_admins()
+
+
+def is_dev_mode() -> bool:
+    """Return True when developer mode is enabled."""
+
+    return bool(DEV_SETTINGS.get("dev_mode", False))
+
+
+def get_forced_server_state() -> str:
+    return str(DEV_SETTINGS.get("force_server_state", "auto"))
+
+
+def get_forced_role() -> str:
+    return str(DEV_SETTINGS.get("force_role", "none"))
+
+
+def get_forced_theme() -> str:
+    return str(DEV_SETTINGS.get("force_theme", "auto"))
+
+
+def get_forced_language() -> str:
+    return str(DEV_SETTINGS.get("force_language", "auto"))
+
+
+def load_super_admins() -> set[str]:
+    """Load super admin usernames from developer settings."""
+
+    _refresh_super_admins()
+    return SUPER_ADMIN_CACHE
 
 
 def is_super_admin(username: str) -> bool:
     """Return True when the given username is configured as super admin."""
 
     if not SUPER_ADMIN_CACHE:
-        load_super_admins()
+        _refresh_super_admins()
     return username in SUPER_ADMIN_CACHE
 
 
 # Initialize state on import
+_refresh_super_admins()
 set_connection_state(is_server_available(SERVER_ROOT))
 ensure_directories()

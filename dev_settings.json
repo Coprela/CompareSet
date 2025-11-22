@@ -1,0 +1,8 @@
+{
+  "dev_mode": true,
+  "super_admins": ["doliveira12"],
+  "force_server_state": "auto",
+  "force_role": "none",
+  "force_theme": "auto",
+  "force_language": "auto"
+}
