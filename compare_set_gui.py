@@ -73,6 +73,7 @@ from compareset_env import (
     DEV_SETTINGS_PATH,
     get_output_directory_for_user,
 )
+from developer_layout_designer import LayoutDesignerDialog
 
 SERVER_ROOT = csenv.SERVER_ROOT
 SERVER_DATA_ROOT = csenv.SERVER_DATA_ROOT
@@ -1204,6 +1205,11 @@ class MainWindow(QMainWindow):
         self._thread: Optional[QThread] = None
         self._worker: Optional[CompareSetWorker] = None
 
+        # Mapping of widgets that can be styled or text-edited without touching code.
+        self._editable_widgets: Dict[str, Dict[str, Union[QWidget, str, bool]]] = {}
+        self._widget_defaults: Dict[str, Dict[str, Optional[str]]] = {}
+        self._widget_overrides: Dict[str, Dict[str, str]] = {}
+
         self.old_path_edit = QLineEdit()
         self.new_path_edit = QLineEdit()
         for line_edit in (self.old_path_edit, self.new_path_edit):
@@ -1267,10 +1273,12 @@ class MainWindow(QMainWindow):
         self.layout_indicator.hide()
 
         file_layout = QGridLayout()
-        file_layout.addWidget(QLabel("Old revision (PDF)"), 0, 0)
+        self.old_label = QLabel("Old revision (PDF)")
+        self.new_label = QLabel("New revision (PDF)")
+        file_layout.addWidget(self.old_label, 0, 0)
         file_layout.addWidget(self.old_path_edit, 0, 1)
         file_layout.addWidget(self.old_browse_button, 0, 2)
-        file_layout.addWidget(QLabel("New revision (PDF)"), 1, 0)
+        file_layout.addWidget(self.new_label, 1, 0)
         file_layout.addWidget(self.new_path_edit, 1, 1)
         file_layout.addWidget(self.new_browse_button, 1, 2)
 
@@ -1316,6 +1324,23 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(status_bar)
         self.apply_language_setting()
+        self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label")
+        self._register_editable_widget("new_label", self.new_label, display_name="New PDF label")
+        self._register_editable_widget("old_browse_button", self.old_browse_button, display_name="Old Browse button")
+        self._register_editable_widget("new_browse_button", self.new_browse_button, display_name="New Browse button")
+        self._register_editable_widget("compare_button", self.compare_button, display_name="Compare button")
+        self._register_editable_widget("cancel_button", self.cancel_button, display_name="Cancel button")
+        self._register_editable_widget("history_button", self.history_button, display_name="History button")
+        self._register_editable_widget("released_button", self.released_button, display_name="Released button")
+        self._register_editable_widget("settings_button", self.settings_button, display_name="Settings button")
+        self._register_editable_widget(
+            "status_label", self.status_label, display_name="Status message", allow_style=True, allow_text=True
+        )
+        self._register_editable_widget(
+            "connection_status", self.connection_status_label, display_name="Connection banner", allow_style=True
+        )
+        if self.admin_button is not None:
+            self._register_editable_widget("admin_button", self.admin_button, display_name="Admin button")
         self.setCentralWidget(central_widget)
         self._register_layout_target("top_toolbar", self.top_toolbar_frame)
         self._register_layout_target("progress_panel", self.progress_frame)
@@ -1454,12 +1479,32 @@ class MainWindow(QMainWindow):
 
     def apply_language_setting(self) -> None:
         if self.current_language == "pt-BR":
+            self.old_label.setText("Revisão antiga (PDF)")
+            self.new_label.setText("Nova revisão (PDF)")
+            self.old_browse_button.setText("Procurar…")
+            self.new_browse_button.setText("Procurar…")
+            self.compare_button.setText("Comparar")
+            self.cancel_button.setText("Cancelar")
+            self.history_button.setText("Meu histórico")
+            self.released_button.setText("Liberados")
+            self.settings_button.setText("Configurações")
             self.status_label.setText("Pronto")
         else:
+            self.old_label.setText("Old revision (PDF)")
+            self.new_label.setText("New revision (PDF)")
+            self.old_browse_button.setText("Browse…")
+            self.new_browse_button.setText("Browse…")
+            self.compare_button.setText("Compare")
+            self.cancel_button.setText("Cancel")
+            self.history_button.setText("My History")
+            self.released_button.setText("Released")
+            self.settings_button.setText("Settings")
             self.status_label.setText("Ready")
         translations = self._connection_texts()
         self.reload_button.setText(translations["reload_label"])
         self.update_connection_banner()
+        self._refresh_widget_defaults_for_language()
+        self._reapply_widget_overrides()
 
     def _connection_texts(self) -> Dict[str, str]:
         if self.current_language == "pt-BR":
@@ -1568,6 +1613,83 @@ class MainWindow(QMainWindow):
             widget.setEnabled(enabled)
         self.cancel_button.setEnabled(not enabled and self._worker is not None)
 
+    def _register_editable_widget(
+        self,
+        key: str,
+        widget: QWidget,
+        *,
+        display_name: Optional[str] = None,
+        allow_text: bool = True,
+        allow_style: bool = True,
+    ) -> None:
+        """Mark a widget as editable inside the no-code layout designer."""
+
+        self._editable_widgets[key] = {
+            "widget": widget,
+            "display_name": display_name or key,
+            "allow_text": allow_text,
+            "allow_style": allow_style,
+        }
+        default_text = widget.text() if hasattr(widget, "text") else None
+        self._widget_defaults[key] = {
+            "text": default_text,
+            "style": widget.styleSheet() or "",
+        }
+
+    def _refresh_widget_defaults_for_language(self) -> None:
+        """Refresh baseline texts when the UI language changes."""
+
+        for key, defaults in self._widget_defaults.items():
+            if key in self._widget_overrides and self._widget_overrides[key].get("text"):
+                continue
+            widget = self._editable_widgets.get(key, {}).get("widget")
+            if widget is None:
+                continue
+            if hasattr(widget, "text"):
+                defaults["text"] = widget.text()
+
+    def apply_widget_overrides(self, key: str, overrides: Dict[str, str]) -> None:
+        """Apply persisted or in-flight overrides to a registered widget."""
+
+        info = self._editable_widgets.get(key)
+        if not info:
+            return
+        widget: QWidget = info.get("widget")  # type: ignore[assignment]
+        defaults = self._widget_defaults.get(key, {"text": None, "style": ""})
+        allow_text = bool(info.get("allow_text", True))
+        allow_style = bool(info.get("allow_style", True))
+
+        text_override = overrides.get("text") if allow_text else None
+        style_override = overrides.get("style") if allow_style else None
+
+        text_value = text_override if text_override is not None else defaults.get("text")
+        if allow_text and text_value is not None and hasattr(widget, "setText"):
+            widget.setText(str(text_value))
+
+        style_value = style_override if style_override is not None else defaults.get("style", "")
+        if allow_style:
+            widget.setStyleSheet(style_value or "")
+
+        cleaned: Dict[str, str] = {}
+        if text_override is not None and text_override != defaults.get("text"):
+            cleaned["text"] = str(text_override)
+        if style_override is not None and style_override.strip() != (defaults.get("style") or "").strip():
+            cleaned["style"] = str(style_override)
+
+        if cleaned:
+            self._widget_overrides[key] = cleaned
+        elif key in self._widget_overrides:
+            del self._widget_overrides[key]
+
+    def _reapply_widget_overrides(self) -> None:
+        for key, overrides in list(self._widget_overrides.items()):
+            self.apply_widget_overrides(key, overrides)
+
+    def get_editable_widget_catalog(self) -> Dict[str, Dict[str, Union[QWidget, str, bool]]]:
+        """Expose editable widget metadata to the layout designer dialog."""
+
+        return self._editable_widgets
+
     def _register_layout_target(self, key: str, widget: QWidget) -> None:
         widget.setAttribute(Qt.WA_StyledBackground, True)
         self._layout_targets[key] = widget
@@ -1605,18 +1727,31 @@ class MainWindow(QMainWindow):
                 continue
             widget.setGeometry(QRect(x, y, w, h))
 
+    def _apply_saved_widget_overrides(self, widget_data: Dict[str, Dict[str, str]]) -> None:
+        self._widget_overrides = {}
+        for key, overrides in widget_data.items():
+            if not isinstance(overrides, dict):
+                continue
+            self.apply_widget_overrides(key, overrides)
+
+    def reset_widget_overrides(self) -> None:
+        self._widget_overrides = {}
+        for key in self._editable_widgets:
+            self.apply_widget_overrides(key, {})
+
     def save_dev_layout(self) -> None:
         if not is_dev_mode():
             return
-        layout_data: Dict[str, Dict[str, int]] = {}
+        layout_data: Dict[str, Dict[str, Dict[str, Union[int, str]]]] = {"frames": {}, "widgets": {}}
         for key, widget in self._layout_targets.items():
             geom = widget.geometry()
-            layout_data[key] = {
+            layout_data["frames"][key] = {
                 "x": geom.x(),
                 "y": geom.y(),
                 "width": geom.width(),
                 "height": geom.height(),
             }
+        layout_data["widgets"] = self._widget_overrides  # type: ignore[assignment]
         DEV_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(DEV_LAYOUT_PATH, "w", encoding="utf-8") as handle:
             json.dump(layout_data, handle, indent=2)
@@ -1631,7 +1766,12 @@ class MainWindow(QMainWindow):
             with open(DEV_LAYOUT_PATH, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
             if isinstance(data, dict):
-                self._apply_saved_layout({k: v for k, v in data.items() if isinstance(v, dict)})
+                frame_data = data.get("frames") if "frames" in data else data
+                widget_data = data.get("widgets", {}) if isinstance(data.get("widgets", {}), dict) else {}
+                if isinstance(frame_data, dict):
+                    self._apply_saved_layout({k: v for k, v in frame_data.items() if isinstance(v, dict)})
+                if widget_data:
+                    self._apply_saved_widget_overrides(widget_data)
         except Exception:
             QMessageBox.warning(
                 self,
@@ -1647,6 +1787,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._apply_default_layout_geometry()
+        self.reset_widget_overrides()
         QMessageBox.information(self, "Layout", "Layout reset to defaults.")
 
     def toggle_layout_mode(self, checked: Optional[bool] = None) -> None:
@@ -1687,6 +1828,10 @@ class MainWindow(QMainWindow):
         tools_action.triggered.connect(self.open_developer_tools)
         dev_menu.addAction(tools_action)
 
+        designer_action = QAction("Layout Designer…", self)
+        designer_action.triggered.connect(self.open_layout_designer)
+        dev_menu.addAction(designer_action)
+
         self.layout_mode_action = QAction("Layout Editor…", self)
         self.layout_mode_action.setCheckable(True)
         self.layout_mode_action.triggered.connect(self.toggle_layout_mode)
@@ -1707,6 +1852,17 @@ class MainWindow(QMainWindow):
         dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
         dialog.save_layout_requested.connect(self.save_dev_layout)
         dialog.reset_layout_requested.connect(self.reset_dev_layout)
+        dialog.exec()
+
+    def open_layout_designer(self) -> None:
+        if not is_dev_mode():
+            QMessageBox.information(
+                self,
+                "Layout Designer",
+                "O Designer de Layout só fica disponível quando o modo desenvolvedor está ativo.",
+            )
+            return
+        dialog = LayoutDesignerDialog(self)
         dialog.exec()
 
 def main() -> None:
