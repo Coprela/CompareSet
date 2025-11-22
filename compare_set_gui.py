@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import compare_engine
+import compareset_engine as compare_engine
 import logging
 import os
 import shutil
@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from compare_engine import (
+from compareset_engine import (
     ComparisonResult,
     PageDiffSummary,
     configure_logging,
