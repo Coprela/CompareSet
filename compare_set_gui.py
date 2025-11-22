@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QPoint, QRect, QSize, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QIcon
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMenuBar,
     QMessageBox,
+    QInputDialog,
     QPushButton,
     QProgressBar,
     QStatusBar,
@@ -1265,10 +1266,15 @@ class MainWindow(QMainWindow):
         self.layout_canvas = central_widget
         self.layout_mode_enabled = False
         self._dev_features_active = is_dev_mode()
+        self._dev_unlocked = False
+        self._developer_menu_initialized = False
         self._layout_targets: Dict[str, QWidget] = {}
         self._layout_filters: Dict[str, LayoutEditFilter] = {}
         self._default_layouts: Dict[str, QRect] = {}
         self._original_styles: Dict[str, str] = {}
+
+        secret_shortcut = QShortcut(QKeySequence("Ctrl+Alt+Shift+D"), self)
+        secret_shortcut.activated.connect(self._prompt_dev_password)
 
         self.layout_indicator = QLabel("Layout Mode ON", central_widget)
         self.layout_indicator.setStyleSheet(
@@ -1472,7 +1478,8 @@ class MainWindow(QMainWindow):
             )
 
         self._apply_default_layout_geometry()
-        self._init_developer_menu()
+        if self._is_developer_enabled():
+            self._init_developer_menu()
         if is_dev_mode():
             self.load_dev_layout()
         self.show_offline_warning_once()
@@ -2045,8 +2052,11 @@ class MainWindow(QMainWindow):
         for key in self._editable_widgets:
             self.apply_widget_overrides(key, {})
 
+    def _is_developer_enabled(self) -> bool:
+        return is_dev_mode() or self._dev_unlocked
+
     def save_dev_layout(self) -> None:
-        if not is_dev_mode():
+        if not self._is_developer_enabled():
             return
         layout_data: Dict[str, Any] = {"frames": {}, "widgets": {}, "dynamic_buttons": []}
         for key, widget in self._layout_targets.items():
@@ -2071,7 +2081,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Layout", "Developer layout saved.")
 
     def load_dev_layout(self) -> None:
-        if not is_dev_mode():
+        if not self._is_developer_enabled():
             return
         if not DEV_LAYOUT_PATH.exists():
             return
@@ -2111,7 +2121,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Layout", "Layout reset to defaults.")
 
     def toggle_layout_mode(self, checked: Optional[bool] = None) -> None:
-        if not is_dev_mode():
+        if not self._is_developer_enabled():
             QMessageBox.information(
                 self,
                 "Layout",
@@ -2136,6 +2146,34 @@ class MainWindow(QMainWindow):
                 widget.setStyleSheet(base_style)
         if self.layout_mode_enabled:
             self.layout_indicator.raise_()
+
+    def _prompt_dev_password(self) -> None:
+        if self._dev_unlocked:
+            return
+        password, ok = QInputDialog.getText(
+            self,
+            "Developer mode",
+            "Enter developer password:",
+            QLineEdit.Password,
+        )
+        if not ok:
+            return
+        if password != "doliveira12@CompareSet2025":
+            QMessageBox.warning(self, "Developer mode", "Invalid password.")
+            return
+        self._dev_unlocked = True
+        self._unlock_developer_mode()
+
+    def _unlock_developer_mode(self) -> None:
+        if not getattr(self, "_developer_menu_initialized", False):
+            self._init_developer_menu()
+        else:
+            self._update_developer_menu_state()
+        QMessageBox.information(
+            self,
+            "Developer mode",
+            "Developer mode unlocked for this session.",
+        )
 
     def _init_developer_menu(self) -> None:
         if getattr(self, "_developer_menu_initialized", False):
@@ -2169,7 +2207,7 @@ class MainWindow(QMainWindow):
         self._update_developer_menu_state()
 
     def _update_developer_menu_state(self) -> None:
-        dev_enabled = is_dev_mode()
+        dev_enabled = self._is_developer_enabled()
         for action in (
             getattr(self, "layout_designer_action", None),
             getattr(self, "layout_mode_action", None),
@@ -2196,7 +2234,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_layout_designer(self) -> None:
-        if not is_dev_mode():
+        if not self._is_developer_enabled():
             QMessageBox.information(
                 self,
                 "Layout Designer",
