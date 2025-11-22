@@ -1,11 +1,13 @@
 """Environment and configuration helpers for CompareSet.
 
-This module centralizes paths, connectivity state, developer mode toggles, and
-super-admin detection. It intentionally contains no GUI code.
+This module centralizes paths, connectivity state, developer/test mode
+overrides, and super-admin/offline tester detection. It intentionally contains
+no GUI code.
 """
 from __future__ import annotations
 
 import json
+import logging
 import getpass
 import os
 import sqlite3
@@ -36,16 +38,19 @@ LOCAL_RELEASED_DIR: str = os.path.join(LOCAL_BASE_DIR, "released")
 CURRENT_USER: str = getpass.getuser()
 DEV_SETTINGS_PATH = Path(__file__).with_name("dev_settings.json")
 
-OFFLINE_ALLOWED_USERS: set[str] = {"doliveira12"}
-LOCAL_STORAGE_ALLOWED_USERS: set[str] = {"doliveira12"}
+OFFLINE_ALLOWED_USERS: set[str] = set()
+LOCAL_STORAGE_ALLOWED_USERS: set[str] = set()
 
+# Developer/test configuration defaults. The JSON file can override any of
+# these values and is treated as the single source of truth for dev mode.
 DEFAULT_DEV_SETTINGS = {
     "dev_mode": False,
+    "force_server_state": "auto",  # "online", "offline", "auto"
+    "force_role": "none",  # "none", "viewer", "user", "admin"
+    "override_theme": None,  # "light", "dark", None
+    "override_language": None,  # "pt-BR", "en-US", None
     "super_admins": [],
-    "force_server_state": "auto",
-    "force_role": "none",
-    "force_theme": "auto",
-    "force_language": "auto",
+    "local_storage_testers": [],
 }
 
 
@@ -53,8 +58,18 @@ def _validated_choice(value: str, allowed: set[str], default: str) -> str:
     return value if value in allowed else default
 
 
+def _normalize_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return []
+
+
 def load_dev_settings_file() -> dict:
-    """Load development settings from :data:`DEV_SETTINGS_PATH`."""
+    """Load development settings from :data:`DEV_SETTINGS_PATH`.
+
+    The resulting dictionary always matches :data:`DEFAULT_DEV_SETTINGS` keys and
+    performs basic validation of options.
+    """
 
     settings = DEFAULT_DEV_SETTINGS.copy()
     try:
@@ -67,23 +82,31 @@ def load_dev_settings_file() -> dict:
     except Exception:
         return settings
 
+    # Legacy key support
+    if settings.get("force_language") and not settings.get("override_language"):
+        settings["override_language"] = settings.get("force_language")
+    if settings.get("force_theme") and not settings.get("override_theme"):
+        settings["override_theme"] = settings.get("force_theme")
+
     settings["force_server_state"] = _validated_choice(
         str(settings.get("force_server_state", "auto")), {"auto", "online", "offline"}, "auto"
     )
     settings["force_role"] = _validated_choice(
         str(settings.get("force_role", "none")), {"none", "viewer", "user", "admin"}, "none"
     )
-    settings["force_theme"] = _validated_choice(
-        str(settings.get("force_theme", "auto")), {"auto", "light", "dark"}, "auto"
-    )
-    settings["force_language"] = _validated_choice(
-        str(settings.get("force_language", "auto")), {"auto", "pt-BR", "en-US"}, "auto"
-    )
 
-    super_admins = settings.get("super_admins", [])
-    if not isinstance(super_admins, list):
-        super_admins = []
-    settings["super_admins"] = [str(user) for user in super_admins]
+    language = settings.get("override_language")
+    if language is not None:
+        language = _validated_choice(str(language), {"pt-BR", "en-US"}, "auto")
+    settings["override_language"] = None if language in {None, "auto"} else language
+
+    theme = settings.get("override_theme")
+    if theme is not None:
+        theme = _validated_choice(str(theme), {"light", "dark"}, "auto")
+    settings["override_theme"] = None if theme in {None, "auto"} else theme
+
+    settings["super_admins"] = _normalize_list(settings.get("super_admins"))
+    settings["local_storage_testers"] = _normalize_list(settings.get("local_storage_testers"))
     settings["dev_mode"] = bool(settings.get("dev_mode", False))
     return settings
 
@@ -100,15 +123,31 @@ def _normalize_username(username: str) -> str:
     return (username or "").strip().lower()
 
 
-def is_tester_user(username: str) -> bool:
-    """Return True when the user is allowed to run in tester/offline mode."""
+def is_offline_tester(username: str) -> bool:
+    """Return True when the user is allowed to run offline using local storage."""
 
     normalized = _normalize_username(username)
-    allowed = {_normalize_username(user) for user in OFFLINE_ALLOWED_USERS}
-    return normalized in allowed
+    allowed_defaults = {_normalize_username(user) for user in OFFLINE_ALLOWED_USERS}
+    allowed_dev = {_normalize_username(user) for user in DEV_SETTINGS.get("local_storage_testers", [])}
+    return normalized in allowed_defaults or normalized in allowed_dev
 
 
-IS_TESTER: bool = is_tester_user(CURRENT_USER)
+def is_local_storage_user(username: str) -> bool:
+    """Return True when the user can write results to local storage."""
+
+    normalized = _normalize_username(username)
+    allowed_defaults = {_normalize_username(user) for user in LOCAL_STORAGE_ALLOWED_USERS}
+    allowed_dev = {_normalize_username(user) for user in DEV_SETTINGS.get("local_storage_testers", [])}
+    allowed_offline = {_normalize_username(user) for user in OFFLINE_ALLOWED_USERS}
+    return (
+        normalized in allowed_defaults
+        or normalized in allowed_dev
+        or normalized in allowed_offline
+        or is_dev_mode()
+    )
+
+
+IS_TESTER: bool = is_offline_tester(CURRENT_USER)
 
 # ----------------------------------------------------------------------------
 # Connectivity + overrides
@@ -198,7 +237,12 @@ def _determine_storage_paths(use_local: bool) -> None:
 
 
 def set_connection_state(server_online: bool) -> None:
-    """Update connectivity flags and active storage roots."""
+    """Update connectivity flags and active storage roots.
+
+    ``server_online`` should reflect the real connectivity check. Developer
+    overrides (force online/offline) are applied here so callers can always pass
+    the real state and let this function decide the effective mode.
+    """
 
     global SERVER_ONLINE, OFFLINE_MODE
 
@@ -209,15 +253,21 @@ def set_connection_state(server_online: bool) -> None:
         effective_online = DEV_SERVER_OVERRIDE
     else:
         effective_online = server_online
+
     SERVER_ONLINE = bool(effective_online)
     OFFLINE_MODE = not SERVER_ONLINE
 
-    use_local = OFFLINE_MODE and (is_dev_mode() or is_tester_user(get_current_username()))
+    use_local = OFFLINE_MODE and is_local_storage_user(get_current_username())
     _determine_storage_paths(use_local)
 
 
 def ensure_directories() -> None:
-    """Create required directories based on current connection state."""
+    """Create required directories based on current connection state.
+
+    The function is intentionally defensive: when offline it silently skips
+    paths that cannot be created (for example, unreachable UNC roots) instead of
+    surfacing a traceback to the user.
+    """
 
     paths = (
         DATA_ROOT,
@@ -238,9 +288,14 @@ def ensure_directories() -> None:
             continue
         try:
             os.makedirs(safe_path, exist_ok=True)
-        except Exception:
-            if not is_dev_mode():
-                raise
+        except Exception as exc:
+            if OFFLINE_MODE:
+                logging.debug("Skipping directory creation while offline: %s (%s)", safe_path, exc)
+                continue
+            if is_dev_mode():
+                logging.debug("Skipping directory creation in dev mode: %s (%s)", safe_path, exc)
+                continue
+            raise
 
 
 def get_user_setting(username: str, key: str) -> Optional[str]:
@@ -316,9 +371,10 @@ def save_dev_settings(settings: dict) -> None:
 def reload_dev_settings() -> None:
     """Reload developer settings from disk."""
 
-    global DEV_SETTINGS, DEV_MODE
+    global DEV_SETTINGS, DEV_MODE, IS_TESTER
     DEV_SETTINGS = load_dev_settings_file()
     DEV_MODE = bool(DEV_SETTINGS.get("dev_mode", False))
+    IS_TESTER = is_offline_tester(CURRENT_USER)
     _refresh_super_admins()
 
 
@@ -337,11 +393,17 @@ def get_forced_role() -> str:
 
 
 def get_forced_theme() -> str:
-    return str(DEV_SETTINGS.get("force_theme", "auto"))
+    theme = DEV_SETTINGS.get("override_theme")
+    if theme is None:
+        return "auto"
+    return str(theme)
 
 
 def get_forced_language() -> str:
-    return str(DEV_SETTINGS.get("force_language", "auto"))
+    language = DEV_SETTINGS.get("override_language")
+    if language is None:
+        return "auto"
+    return str(language)
 
 
 def load_super_admins() -> set[str]:
@@ -358,7 +420,7 @@ def is_super_admin(username: str) -> bool:
     if not SUPER_ADMIN_CACHE:
         _refresh_super_admins()
     cache = {_normalize_username(user) for user in SUPER_ADMIN_CACHE}
-    return normalized == "doliveira12" or normalized in cache
+    return normalized in cache
 
 
 def ensure_server_directories() -> None:
