@@ -1,8 +1,7 @@
-"""Environment and path helpers for CompareSet (compareset_env.py).
+"""Environment and configuration helpers for CompareSet.
 
-This module centralizes server/local directory configuration, connection
-state management, and helper utilities for determining user-specific paths.
-It is intentionally independent from any GUI framework.
+This module centralizes paths, connectivity state, developer mode toggles, and
+super-admin detection. It intentionally contains no GUI code.
 """
 from __future__ import annotations
 
@@ -12,7 +11,9 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-# Server directory configuration
+# ----------------------------------------------------------------------------
+# Core configuration
+# ----------------------------------------------------------------------------
 SERVER_ROOT: str = r"\\SV10351\Drawing Center\Apps\CompareSet"
 SERVER_DATA_ROOT: str = os.path.join(SERVER_ROOT, "Data")
 SERVER_RESULTS_ROOT: str = os.path.join(SERVER_DATA_ROOT, "Results")
@@ -21,7 +22,6 @@ SERVER_ERROR_LOGS_ROOT: str = os.path.join(SERVER_LOGS_ROOT, "Error")
 SERVER_CONFIG_ROOT: str = os.path.join(SERVER_DATA_ROOT, "Config")
 SERVER_RELEASED_ROOT: str = os.path.join(SERVER_DATA_ROOT, "Released")
 
-# Local directory configuration
 LOCAL_APPDATA: str = os.getenv("LOCALAPPDATA") or os.path.join(
     os.path.expanduser("~"), "AppData", "Local"
 )
@@ -32,57 +32,40 @@ LOCAL_OUTPUT_DIR: str = os.path.join(LOCAL_BASE_DIR, "output")
 LOCAL_CONFIG_DIR: str = os.path.join(LOCAL_BASE_DIR, "config")
 LOCAL_RELEASED_DIR: str = os.path.join(LOCAL_BASE_DIR, "released")
 
-# User permissions
-OFFLINE_ALLOWED_USERS: set[str] = {"doliveira12"}
-LOCAL_STORAGE_ALLOWED_USERS: set[str] = {"doliveira12"}
-
-# User information
 CURRENT_USER: str = getpass.getuser()
-IS_TESTER: bool = False
+DEV_MODE: bool = os.getenv("COMPARESET_DEV_MODE", "0") == "1"
 
-# Connection state
+# ----------------------------------------------------------------------------
+# Connectivity + overrides
+# ----------------------------------------------------------------------------
 SERVER_ONLINE: bool = False
 OFFLINE_MODE: bool = False
+DEV_SERVER_OVERRIDE: Optional[bool] = None
 
-# Active roots (resolved via connection state)
 DATA_ROOT: str = ""
 RESULTS_ROOT: str = ""
 LOGS_ROOT: str = ""
 ERROR_LOGS_ROOT: str = ""
 CONFIG_ROOT: str = ""
 RELEASED_ROOT: str = ""
-
-# Local/session directories
 HISTORY_DIR: str = ""
 LOG_DIR: str = ""
 OUTPUT_DIR: str = ""
 
-
-def is_tester_user(username: str) -> bool:
-    """Return True if the username is considered a tester."""
-
-    return username in LOCAL_STORAGE_ALLOWED_USERS
-
-
-def get_current_username() -> str:
-    """Return the current username using common environment fallbacks."""
-
-    return CURRENT_USER or os.getenv("USERNAME") or os.path.basename(os.path.expanduser("~"))
+SUPER_ADMIN_CACHE: set[str] = set()
 
 
 def is_server_available(server_root: str) -> bool:
-    """Check if the given server root path is reachable."""
+    """Return True if the server root is reachable."""
 
     try:
-        if not server_root or not server_root.strip():
-            return False
-        return os.path.exists(server_root)
+        return bool(server_root and os.path.exists(server_root))
     except Exception:
         return False
 
 
 def make_long_path(path: str) -> str:
-    """Return a Windows long-path compatible string for the given path."""
+    """Return a Windows long-path compatible absolute path."""
 
     if not path:
         return ""
@@ -94,35 +77,28 @@ def make_long_path(path: str) -> str:
     return "\\\\?\\" + abs_path
 
 
-def set_connection_state(server_online: bool) -> None:
-    """Update global paths based on whether the server is reachable."""
+def get_current_username() -> str:
+    """Return the current OS username."""
 
-    global SERVER_ONLINE, OFFLINE_MODE
+    return CURRENT_USER or os.getenv("USERNAME") or os.path.basename(
+        os.path.expanduser("~")
+    )
+
+
+def set_dev_server_override(state: Optional[bool]) -> None:
+    """Set a developer override for server connectivity (dev mode only)."""
+
+    global DEV_SERVER_OVERRIDE
+    DEV_SERVER_OVERRIDE = state if DEV_MODE else None
+
+
+def _determine_storage_paths(use_local: bool) -> None:
+    """Populate global directory variables based on storage location."""
+
     global DATA_ROOT, RESULTS_ROOT, LOGS_ROOT, ERROR_LOGS_ROOT, CONFIG_ROOT, RELEASED_ROOT
     global HISTORY_DIR, LOG_DIR, OUTPUT_DIR
 
-    SERVER_ONLINE = bool(server_online)
-    OFFLINE_MODE = not SERVER_ONLINE
-
-    use_local_storage = OFFLINE_MODE and (
-        CURRENT_USER in OFFLINE_ALLOWED_USERS or CURRENT_USER in LOCAL_STORAGE_ALLOWED_USERS
-    )
-
-    if SERVER_ONLINE:
-        DATA_ROOT = SERVER_DATA_ROOT
-        RESULTS_ROOT = SERVER_RESULTS_ROOT
-        LOGS_ROOT = SERVER_LOGS_ROOT
-        ERROR_LOGS_ROOT = SERVER_ERROR_LOGS_ROOT
-        CONFIG_ROOT = SERVER_CONFIG_ROOT
-        RELEASED_ROOT = SERVER_RELEASED_ROOT
-
-        HISTORY_DIR = SERVER_RESULTS_ROOT
-        LOG_DIR = SERVER_LOGS_ROOT
-        OUTPUT_DIR = SERVER_RESULTS_ROOT
-        return
-
-    # Server offline
-    if use_local_storage:
+    if use_local:
         DATA_ROOT = os.path.join(LOCAL_BASE_DIR, "data")
         RESULTS_ROOT = LOCAL_OUTPUT_DIR
         LOGS_ROOT = LOCAL_LOG_DIR
@@ -146,48 +122,46 @@ def set_connection_state(server_online: bool) -> None:
         OUTPUT_DIR = SERVER_RESULTS_ROOT
 
 
-def ensure_server_directories() -> None:
-    """Create required directories based on the current connection state."""
+def set_connection_state(server_online: bool) -> None:
+    """Update connectivity flags and active storage roots."""
 
-    def _create_paths(paths: tuple[str, ...]) -> None:
-        for path in paths:
-            if not path or not str(path).strip():
-                continue
-            safe_path = make_long_path(path)
-            if safe_path in {"\\\\?\\UNC\\", "\\\\?\\"}:
-                continue
+    global SERVER_ONLINE, OFFLINE_MODE
+
+    effective_online = DEV_SERVER_OVERRIDE if DEV_SERVER_OVERRIDE is not None else server_online
+    SERVER_ONLINE = bool(effective_online)
+    OFFLINE_MODE = not SERVER_ONLINE
+
+    use_local = OFFLINE_MODE and DEV_MODE
+    _determine_storage_paths(use_local)
+
+
+def ensure_directories() -> None:
+    """Create required directories based on current connection state."""
+
+    paths = (
+        DATA_ROOT,
+        RESULTS_ROOT,
+        LOGS_ROOT,
+        ERROR_LOGS_ROOT,
+        CONFIG_ROOT,
+        RELEASED_ROOT,
+        HISTORY_DIR,
+        LOG_DIR,
+        OUTPUT_DIR,
+    )
+    for path in paths:
+        if not path:
+            continue
+        safe_path = make_long_path(path)
+        try:
             os.makedirs(safe_path, exist_ok=True)
-
-    if SERVER_ONLINE:
-        _create_paths(
-            (
-                DATA_ROOT,
-                RESULTS_ROOT,
-                LOGS_ROOT,
-                ERROR_LOGS_ROOT,
-                CONFIG_ROOT,
-                RELEASED_ROOT,
-                HISTORY_DIR,
-                LOG_DIR,
-                OUTPUT_DIR,
-            )
-        )
-    elif CURRENT_USER in OFFLINE_ALLOWED_USERS:
-        _create_paths(
-            (
-                LOCAL_BASE_DIR,
-                LOCAL_HISTORY_DIR,
-                LOCAL_LOG_DIR,
-                LOCAL_OUTPUT_DIR,
-                LOCAL_CONFIG_DIR,
-                LOCAL_RELEASED_DIR,
-                os.path.join(LOCAL_LOG_DIR, "error"),
-            )
-        )
+        except Exception:
+            if not DEV_MODE:
+                raise
 
 
 def get_user_setting(username: str, key: str) -> Optional[str]:
-    """Retrieve a specific user setting from the local SQLite database."""
+    """Retrieve a user setting from the local SQLite database."""
 
     settings_db = os.path.join(CONFIG_ROOT, "user_settings.sqlite")
     if not os.path.exists(settings_db):
@@ -198,7 +172,7 @@ def get_user_setting(username: str, key: str) -> Optional[str]:
         conn = sqlite3.connect(make_long_path(settings_db))
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
-            "SELECT username, language, email, local_output_dir FROM UserSettings WHERE username = ?",
+            "SELECT username, language, email, local_output_dir, theme FROM UserSettings WHERE username = ?",
             (username,),
         )
         row = cursor.fetchone()
@@ -219,9 +193,9 @@ def get_user_setting(username: str, key: str) -> Optional[str]:
 
 
 def get_output_directory_for_user(username: str) -> Path:
-    """Return the output directory for the given user, creating it if needed."""
+    """Return an appropriate output directory for the user."""
 
-    if is_tester_user(username):
+    if DEV_MODE:
         custom_dir = get_user_setting(username, "local_output_dir")
         if custom_dir:
             path = Path(custom_dir)
@@ -234,7 +208,39 @@ def get_output_directory_for_user(username: str) -> Path:
     return Path(RESULTS_ROOT)
 
 
-# Initialize state
-IS_TESTER = is_tester_user(CURRENT_USER)
+def load_super_admins() -> set[str]:
+    """Load super admin usernames from configuration files."""
+
+    global SUPER_ADMIN_CACHE
+    candidates = [
+        os.path.join(CONFIG_ROOT, "super_admins.txt"),
+        os.path.join(LOCAL_CONFIG_DIR, "super_admins.txt"),
+    ]
+    admins: set[str] = set()
+    for path in candidates:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    username = line.strip()
+                    if username:
+                        admins.add(username)
+        except FileNotFoundError:
+            continue
+        except Exception:
+            if not DEV_MODE:
+                raise
+    SUPER_ADMIN_CACHE = admins
+    return admins
+
+
+def is_super_admin(username: str) -> bool:
+    """Return True when the given username is configured as super admin."""
+
+    if not SUPER_ADMIN_CACHE:
+        load_super_admins()
+    return username in SUPER_ADMIN_CACHE
+
+
+# Initialize state on import
 set_connection_state(is_server_available(SERVER_ROOT))
-ensure_server_directories()
+ensure_directories()
