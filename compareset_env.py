@@ -34,6 +34,8 @@ LOCAL_RELEASED_DIR: str = os.path.join(LOCAL_BASE_DIR, "released")
 
 CURRENT_USER: str = getpass.getuser()
 DEV_MODE: bool = os.getenv("COMPARESET_DEV_MODE", "0") == "1"
+OFFLINE_ALLOWED_USERS: set[str] = {"doliveira12"}
+IS_TESTER: bool = CURRENT_USER in OFFLINE_ALLOWED_USERS
 
 # ----------------------------------------------------------------------------
 # Connectivity + overrides
@@ -131,12 +133,15 @@ def set_connection_state(server_online: bool) -> None:
     SERVER_ONLINE = bool(effective_online)
     OFFLINE_MODE = not SERVER_ONLINE
 
-    use_local = OFFLINE_MODE and DEV_MODE
+    use_local = OFFLINE_MODE and (DEV_MODE or CURRENT_USER in OFFLINE_ALLOWED_USERS)
     _determine_storage_paths(use_local)
 
 
 def ensure_directories() -> None:
     """Create required directories based on current connection state."""
+
+    if OFFLINE_MODE and not DEV_MODE:
+        return
 
     paths = (
         DATA_ROOT,
