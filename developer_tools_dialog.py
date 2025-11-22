@@ -1,4 +1,4 @@
-"""Developer tools dialog for configuring CompareSet dev mode."""
+"""Developer tools dialog for configuring CompareSet dev mode and layout editor."""
 from __future__ import annotations
 
 from typing import Dict
@@ -9,6 +9,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -19,10 +21,14 @@ class DeveloperToolsDialog(QDialog):
     """Modal dialog exposing developer simulation toggles."""
 
     settings_applied = Signal()
+    layout_mode_toggled = Signal(bool)
+    save_layout_requested = Signal()
+    reset_layout_requested = Signal()
 
-    def __init__(self, parent=None, settings: Dict | None = None):
+    def __init__(self, parent=None, settings: Dict | None = None, *, layout_mode_active: bool = False):
         super().__init__(parent)
         self.settings = settings or csenv.get_dev_settings()
+        self.layout_mode_active = layout_mode_active
         self.setWindowTitle("Developer Tools")
         self._build_ui()
 
@@ -61,6 +67,24 @@ class DeveloperToolsDialog(QDialog):
 
         layout.addLayout(form)
 
+        layout_controls = QHBoxLayout()
+        self.layout_toggle_btn = QPushButton()
+        self.layout_toggle_btn.setCheckable(True)
+        self.layout_toggle_btn.setChecked(self.layout_mode_active)
+        self._update_layout_button_label()
+        self.layout_toggle_btn.clicked.connect(self._emit_layout_toggle)
+        self.save_layout_btn = QPushButton("Save Layout")
+        self.reset_layout_btn = QPushButton("Reset Layout")
+        self.save_layout_btn.clicked.connect(self.save_layout_requested)
+        self.reset_layout_btn.clicked.connect(self.reset_layout_requested)
+
+        enabled = csenv.is_dev_mode()
+        for control in (self.layout_toggle_btn, self.save_layout_btn, self.reset_layout_btn):
+            control.setEnabled(enabled)
+            layout_controls.addWidget(control)
+
+        layout.addLayout(layout_controls)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.apply_changes)
         buttons.rejected.connect(self.reject)
@@ -70,6 +94,17 @@ class DeveloperToolsDialog(QDialog):
     def _set_combo_value(combo: QComboBox, value: str) -> None:
         index = combo.findData(value)
         combo.setCurrentIndex(max(index, 0))
+
+    def _emit_layout_toggle(self) -> None:
+        self.layout_mode_active = self.layout_toggle_btn.isChecked()
+        self._update_layout_button_label()
+        self.layout_mode_toggled.emit(self.layout_mode_active)
+
+    def _update_layout_button_label(self) -> None:
+        if self.layout_mode_active:
+            self.layout_toggle_btn.setText("Exit Layout Mode")
+        else:
+            self.layout_toggle_btn.setText("Enter Layout Mode")
 
     def apply_changes(self) -> None:
         updated = csenv.get_dev_settings()
