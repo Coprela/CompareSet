@@ -67,7 +67,7 @@ from compareset_env import (
     OUTPUT_DIR,
     initialize_environment,
     is_super_admin,
-    is_tester_user,
+    is_offline_tester,
     is_dev_mode,
     get_dev_settings,
     DEV_SETTINGS_PATH,
@@ -1232,7 +1232,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)
 
-        self.status_label = QLabel(f"Ready (Language: {self.current_language})")
+        self.status_label = QLabel("Ready")
         self.connection_status_label = QLabel()
         self.connection_status_label.setAlignment(Qt.AlignLeft)
         self.reload_button = QPushButton()
@@ -1453,7 +1453,10 @@ class MainWindow(QMainWindow):
         self.apply_language_setting()
 
     def apply_language_setting(self) -> None:
-        self.status_label.setText(f"Ready (Language: {self.current_language})")
+        if self.current_language == "pt-BR":
+            self.status_label.setText("Pronto")
+        else:
+            self.status_label.setText("Ready")
         translations = self._connection_texts()
         self.reload_button.setText(translations["reload_label"])
         self.update_connection_banner()
@@ -1508,7 +1511,7 @@ class MainWindow(QMainWindow):
         was_offline = OFFLINE_MODE
         set_connection_state(is_server_available(SERVER_ROOT))
 
-        if SERVER_ONLINE or is_tester_user(CURRENT_USER):
+        if SERVER_ONLINE or is_offline_tester(CURRENT_USER):
             ensure_server_directories()
 
         self.update_connection_banner()

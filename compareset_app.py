@@ -90,6 +90,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "role_user": "User",
         "role_admin": "Admin",
         "offline_block": "The server is not reachable. Contact IT or use the dev launcher for offline testing.",
+        "offline_required": "You are offline. Please connect to GlobalProtect/VPN to use CompareSet.",
         "open_old": "Select the old PDF",
         "open_new": "Select the new PDF",
     },
@@ -123,6 +124,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "role_user": "Usuário",
         "role_admin": "Administrador",
         "offline_block": "O servidor não está acessível. Contate o suporte ou use o launcher de teste.",
+        "offline_required": "Você está offline. Conecte-se ao GlobalProtect/VPN para usar o CompareSet.",
         "open_old": "Selecionar PDF antigo",
         "open_new": "Selecionar PDF novo",
     },
@@ -500,29 +502,39 @@ class MainWindow(QMainWindow):
 # Startup helpers
 # ----------------------------------------------------------------------------
 def require_server_or_exit(app: QApplication, translator: Translator) -> None:
-    if not is_dev_mode() and csenv.OFFLINE_MODE:
-        QMessageBox.critical(None, translator.tr("title"), translator.tr("offline_block"))
+    if csenv.OFFLINE_MODE and not csenv.is_offline_tester(get_current_username()):
+        QMessageBox.critical(None, translator.tr("title"), translator.tr("offline_required"))
+        app.quit()
         sys.exit(1)
 
 
 def main() -> None:
-    csenv.ensure_directories()
     app = QApplication(sys.argv)
+    csenv.reload_dev_settings()
+    csenv.set_connection_state(is_server_available(csenv.SERVER_ROOT))
+
+    # Early translator so that offline messages respect language overrides
+    language_override = get_forced_language()
+    initial_language = language_override if language_override != "auto" else "en-US"
+    translator = Translator(initial_language)
+
+    require_server_or_exit(app, translator)
+
+    csenv.ensure_directories()
     username = get_current_username()
     settings = get_user_settings(username)
     language = settings.get("language", "en-US")
     theme = settings.get("theme", "light")
 
-    if is_dev_mode() and get_forced_language() != "auto":
-        language = get_forced_language()
-    if is_dev_mode() and get_forced_theme() != "auto":
-        theme = get_forced_theme()
+    forced_language = get_forced_language()
+    if forced_language != "auto":
+        language = forced_language
+    forced_theme = get_forced_theme()
+    if forced_theme != "auto":
+        theme = forced_theme
 
-    translator = Translator(language)
+    translator.set_language(language)
     apply_theme(app, theme)
-    set_connection_state(is_server_available(csenv.SERVER_ROOT))
-
-    require_server_or_exit(app, translator)
 
     settings["language"] = language
     settings["theme"] = theme

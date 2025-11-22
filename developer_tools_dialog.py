@@ -1,7 +1,7 @@
 """Developer tools dialog for configuring CompareSet dev mode and layout editor."""
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, List
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
@@ -10,7 +10,11 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
+    QCheckBox,
     QVBoxLayout,
 )
 
@@ -36,6 +40,10 @@ class DeveloperToolsDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
+        self.dev_mode_checkbox = QCheckBox("Enable developer mode")
+        self.dev_mode_checkbox.setChecked(bool(self.settings.get("dev_mode", False)))
+        form.addRow(self.dev_mode_checkbox)
+
         self.server_combo = QComboBox()
         self.server_combo.addItem("Auto", "auto")
         self.server_combo.addItem("Online", "online")
@@ -52,18 +60,28 @@ class DeveloperToolsDialog(QDialog):
         form.addRow("User Role Override", self.role_combo)
 
         self.theme_combo = QComboBox()
-        self.theme_combo.addItem("Auto", "auto")
+        self.theme_combo.addItem("Auto", None)
         self.theme_combo.addItem("Light", "light")
         self.theme_combo.addItem("Dark", "dark")
-        self._set_combo_value(self.theme_combo, self.settings.get("force_theme", "auto"))
+        self._set_combo_value(self.theme_combo, self.settings.get("override_theme"))
         form.addRow("Theme", self.theme_combo)
 
         self.language_combo = QComboBox()
-        self.language_combo.addItem("Auto", "auto")
+        self.language_combo.addItem("Auto", None)
         self.language_combo.addItem("Português (pt-BR)", "pt-BR")
         self.language_combo.addItem("English (en-US)", "en-US")
-        self._set_combo_value(self.language_combo, self.settings.get("force_language", "auto"))
+        self._set_combo_value(self.language_combo, self.settings.get("override_language"))
         form.addRow("Language", self.language_combo)
+
+        self.super_admins_edit = QLineEdit(
+            ", ".join(self._string_list(self.settings.get("super_admins", [])))
+        )
+        form.addRow(QLabel("Super admins (comma separated)"), self.super_admins_edit)
+
+        self.local_testers_edit = QLineEdit(
+            ", ".join(self._string_list(self.settings.get("local_storage_testers", [])))
+        )
+        form.addRow(QLabel("Local storage testers"), self.local_testers_edit)
 
         layout.addLayout(form)
 
@@ -95,6 +113,16 @@ class DeveloperToolsDialog(QDialog):
         index = combo.findData(value)
         combo.setCurrentIndex(max(index, 0))
 
+    @staticmethod
+    def _string_list(value) -> List[str]:
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return []
+
+    @staticmethod
+    def _parse_list(text: str) -> list[str]:
+        return [entry.strip() for entry in text.split(",") if entry.strip()]
+
     def _emit_layout_toggle(self) -> None:
         self.layout_mode_active = self.layout_toggle_btn.isChecked()
         self._update_layout_button_label()
@@ -108,10 +136,19 @@ class DeveloperToolsDialog(QDialog):
 
     def apply_changes(self) -> None:
         updated = csenv.get_dev_settings()
+        updated["dev_mode"] = self.dev_mode_checkbox.isChecked()
         updated["force_server_state"] = self.server_combo.currentData()
         updated["force_role"] = self.role_combo.currentData()
-        updated["force_theme"] = self.theme_combo.currentData()
-        updated["force_language"] = self.language_combo.currentData()
+        updated["override_theme"] = self.theme_combo.currentData()
+        updated["override_language"] = self.language_combo.currentData()
+        updated["super_admins"] = self._parse_list(self.super_admins_edit.text())
+        updated["local_storage_testers"] = self._parse_list(self.local_testers_edit.text())
         csenv.save_dev_settings(updated)
+        csenv.reload_dev_settings()
         self.settings_applied.emit()
+        QMessageBox.information(
+            self,
+            "Developer Tools",
+            "Developer settings saved. Some changes may require restarting CompareSet.",
+        )
         self.accept()
