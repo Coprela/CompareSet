@@ -34,6 +34,25 @@ import cv2
 import fitz
 import numpy as np
 
+
+class Timer:
+    """Lightweight context manager for logging elapsed milliseconds."""
+
+    def __init__(self, label: str):
+        self.label = label
+        self.start: Optional[float] = None
+
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.start is None:
+            return False
+        elapsed_ms = (time.perf_counter() - self.start) * 1000.0
+        logger.info("[PERF] %s: %.1f ms", self.label, elapsed_ms)
+        return False
+
 # =============================================================================
 # Pipeline configuration (internal constants)
 # =============================================================================
@@ -97,6 +116,13 @@ PATCH_SIM_SIZE = 48
 MAX_COMPONENTS_PER_PAGE = 1600
 MIN_COMPONENT_AREA = 6
 LINE_LENGTH_THRESHOLD = 15
+
+# Pre-computed structuring elements to avoid per-call allocations.
+KERNEL_RECT_3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+KERNEL_RECT_2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+KERNEL_RECT_7X1 = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 1))
+KERNEL_RECT_1X7 = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 7))
+KERNEL_RECT_2X2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
 
 
 SERVER_ROOT = r"\\SV10351\Drawing Center\Apps\CompareSet"
@@ -851,12 +877,13 @@ def run_comparison(
                 page_start = time.perf_counter()
                 old_page = old_doc.load_page(index)
                 new_page = new_doc.load_page(index)
-                result = process_page_pair(
-                    old_page,
-                    new_page,
-                    index,
-                    is_cancel_requested=is_cancel_requested,
-                )
+                with Timer(f"page {index + 1} total"):
+                    result = process_page_pair(
+                        old_page,
+                        new_page,
+                        index,
+                        is_cancel_requested=is_cancel_requested,
+                    )
                 write_log(
                     f"[Page {index + 1}] Rasterization complete in {time.perf_counter() - page_start:.3f}s"
                 )
@@ -1034,18 +1061,20 @@ def process_page_pair(
 
     _check_cancel()
     write_log(f"[Page {page_index + 1}] High-DPI render start")
-    old_high, new_high, old_zoom_high, new_zoom_high_x, new_zoom_high_y = render_normalized_pages(
-        old_page, new_page, DPI_HIGH
-    )
+    with Timer(f"page {page_index + 1} render_highdpi"):
+        old_high, new_high, old_zoom_high, new_zoom_high_x, new_zoom_high_y = render_normalized_pages(
+            old_page, new_page, DPI_HIGH
+        )
     perf_after_render = time.perf_counter()
     write_log(
         f"[Page {page_index + 1}] High-DPI render complete in {perf_after_render - perf_start:.3f}s"
     )
 
-    preview_zoom = compute_zoom(old_page.rect, PREVIEW_DPI)
-    preview_scale = preview_zoom / old_zoom_high if old_zoom_high else 1.0
-    preview_old = downsample_to_working_resolution(old_high, scale_factor=preview_scale)
-    preview_new = downsample_to_working_resolution(new_high, scale_factor=preview_scale)
+    with Timer(f"page {page_index + 1} preview"):
+        preview_zoom = compute_zoom(old_page.rect, PREVIEW_DPI)
+        preview_scale = preview_zoom / old_zoom_high if old_zoom_high else 1.0
+        preview_old = downsample_to_working_resolution(old_high, scale_factor=preview_scale)
+        preview_new = downsample_to_working_resolution(new_high, scale_factor=preview_scale)
     perf_after_preview = time.perf_counter()
     preview_diff = cv2.absdiff(preview_old, preview_new)
     _, preview_mask = cv2.threshold(preview_diff, 20, 255, cv2.THRESH_BINARY)
@@ -1065,7 +1094,8 @@ def process_page_pair(
         )
 
     _check_cancel()
-    aligned_new_high, alignment_method, warp_matrix = align_images(old_high, new_high)
+    with Timer(f"page {page_index + 1} alignment"):
+        aligned_new_high, alignment_method, warp_matrix = align_images(old_high, new_high)
     perf_after_align = time.perf_counter()
     write_log(
         f"[Page {page_index + 1}] Alignment ({alignment_method}) completed in {perf_after_align - perf_after_preview:.3f}s"
@@ -1073,122 +1103,119 @@ def process_page_pair(
 
     _check_cancel()
     write_log(f"[Page {page_index + 1}] Diff mask creation")
-    blur_old = cv2.GaussianBlur(old_high, (BLUR_KSIZE, BLUR_KSIZE), 0)
-    blur_new = cv2.GaussianBlur(aligned_new_high, (BLUR_KSIZE, BLUR_KSIZE), 0)
+    with Timer(f"page {page_index + 1} masks"):
+        blur_old = cv2.GaussianBlur(old_high, (BLUR_KSIZE, BLUR_KSIZE), 0)
+        blur_new = cv2.GaussianBlur(aligned_new_high, (BLUR_KSIZE, BLUR_KSIZE), 0)
 
-    diff = cv2.absdiff(blur_old, blur_new)
+        diff = cv2.absdiff(blur_old, blur_new)
 
-    intensity_mask = compute_intensity_mask(diff)
-    edge_old, edge_new, edge_mask = compute_edge_mask(blur_old, blur_new)
-    line_boost = compute_line_boost(diff)
-    line_emphasis = cv2.dilate(
-        line_boost, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1
-    )
+        intensity_mask = compute_intensity_mask(diff)
+        edge_old, edge_new, edge_mask = compute_edge_mask(blur_old, blur_new)
+        line_boost = compute_line_boost(diff)
+        line_emphasis = cv2.dilate(line_boost, KERNEL_RECT_3, iterations=1)
 
-    change_mask = cv2.bitwise_and(intensity_mask, cv2.bitwise_or(edge_mask, line_emphasis))
+        change_mask = cv2.bitwise_and(intensity_mask, cv2.bitwise_or(edge_mask, line_emphasis))
 
-    ssim_mask = compute_ssim_mask(blur_old, blur_new)
-    if ssim_mask is not None:
-        change_mask = cv2.bitwise_and(change_mask, ssim_mask)
+        ssim_mask = compute_ssim_mask(blur_old, blur_new)
+        if ssim_mask is not None:
+            change_mask = cv2.bitwise_and(change_mask, ssim_mask)
 
-    _, old_ink = cv2.threshold(blur_old, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    _, new_ink = cv2.threshold(blur_new, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        _, old_ink = cv2.threshold(blur_old, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        _, new_ink = cv2.threshold(blur_new, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    old_bin = (old_ink > 0).astype(np.uint8)
-    new_bin = (new_ink > 0).astype(np.uint8)
+        old_bin = (old_ink > 0).astype(np.uint8)
+        new_bin = (new_ink > 0).astype(np.uint8)
 
-    removed_mask = np.where(np.logical_and(old_bin == 1, new_bin == 0), 255, 0).astype(np.uint8)
-    added_mask = np.where(np.logical_and(new_bin == 1, old_bin == 0), 255, 0).astype(np.uint8)
+        removed_mask = np.where(np.logical_and(old_bin == 1, new_bin == 0), 255, 0).astype(np.uint8)
+        added_mask = np.where(np.logical_and(new_bin == 1, old_bin == 0), 255, 0).astype(np.uint8)
 
-    ink_union = cv2.bitwise_or(old_ink, new_ink)
-    change_mask = cv2.bitwise_and(change_mask, ink_union)
+        ink_union = cv2.bitwise_or(old_ink, new_ink)
+        change_mask = cv2.bitwise_and(change_mask, ink_union)
 
-    # Ensure thin line work is not suppressed by intensity gating and preserve added / removed ink explicitly.
-    change_mask = cv2.bitwise_or(
-        change_mask,
-        cv2.bitwise_or(removed_mask, added_mask),
-    )
-    change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
+        # Ensure thin line work is not suppressed by intensity gating and preserve added / removed ink explicitly.
+        change_mask = cv2.bitwise_or(
+            change_mask,
+            cv2.bitwise_or(removed_mask, added_mask),
+        )
+        change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
 
     _check_cancel()
     write_log(f"[Page {page_index + 1}] Bounding box extraction")
-    groups = prepare_page_text_groups(
-        old_page,
-        new_page,
-        warp_matrix,
-        old_zoom_high,
-        (new_zoom_high_x, new_zoom_high_y),
-        1.0,
-    )
-    words_old = words_to_pixel_boxes(old_page, old_zoom_high)
-    words_new_high = words_to_pixel_boxes(new_page, (new_zoom_high_x, new_zoom_high_y))
-    words_new = align_word_boxes(words_new_high, warp_matrix, 1.0)
+    with Timer(f"page {page_index + 1} text_extraction"):
+        groups = prepare_page_text_groups(
+            old_page,
+            new_page,
+            warp_matrix,
+            old_zoom_high,
+            (new_zoom_high_x, new_zoom_high_y),
+            1.0,
+        )
+        words_old = words_to_pixel_boxes(old_page, old_zoom_high)
+        words_new_high = words_to_pixel_boxes(new_page, (new_zoom_high_x, new_zoom_high_y))
+        words_new = align_word_boxes(words_new_high, warp_matrix, 1.0)
 
-    detection_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    removed_detection = cv2.dilate(removed_mask, detection_kernel, iterations=1)
-    added_detection = cv2.dilate(added_mask, detection_kernel, iterations=1)
+    removed_detection = cv2.dilate(removed_mask, KERNEL_RECT_3, iterations=1)
+    added_detection = cv2.dilate(added_mask, KERNEL_RECT_3, iterations=1)
 
     removed_regions = cv2.bitwise_and(change_mask, removed_detection)
     added_regions = cv2.bitwise_and(change_mask, added_detection)
 
     line_diff_mask = cv2.bitwise_xor(edge_old, edge_new)
-    line_diff_mask = cv2.dilate(
-        line_diff_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1
-    )
-    bridge_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    change_mask = cv2.morphologyEx(change_mask, cv2.MORPH_CLOSE, bridge_kernel, iterations=1)
+    line_diff_mask = cv2.dilate(line_diff_mask, KERNEL_RECT_3, iterations=1)
+    change_mask = cv2.morphologyEx(change_mask, cv2.MORPH_CLOSE, KERNEL_RECT_3, iterations=1)
     line_removed_regions = cv2.bitwise_and(line_diff_mask, removed_detection)
     line_added_regions = cv2.bitwise_and(line_diff_mask, added_detection)
 
-    old_filtered_main, old_kept_main, old_raw_components, old_after_noise = extract_regions(
-        removed_regions,
-        diff,
-        old_high,
-        old_ink,
-        groups.old_groups,
-        groups.new_groups,
-        edge_old,
-        edge_new,
-        line_boost,
-        "old",
-    )
-    new_filtered_main, new_kept_main, new_raw_components, new_after_noise = extract_regions(
-        added_regions,
-        diff,
-        aligned_new_high,
-        new_ink,
-        groups.old_groups,
-        groups.new_groups,
-        edge_old,
-        edge_new,
-        line_boost,
-        "new",
-    )
+    with Timer(f"page {page_index + 1} region_extraction"):
+        old_filtered_main, old_kept_main, old_raw_components, old_after_noise = extract_regions(
+            removed_regions,
+            diff,
+            old_high,
+            old_ink,
+            groups.old_groups,
+            groups.new_groups,
+            edge_old,
+            edge_new,
+            line_boost,
+            "old",
+        )
+        new_filtered_main, new_kept_main, new_raw_components, new_after_noise = extract_regions(
+            added_regions,
+            diff,
+            aligned_new_high,
+            new_ink,
+            groups.old_groups,
+            groups.new_groups,
+            edge_old,
+            edge_new,
+            line_boost,
+            "new",
+        )
 
-    old_line_filtered, old_line_kept, old_line_raw, old_line_after_noise = extract_regions(
-        line_removed_regions,
-        diff,
-        old_high,
-        old_ink,
-        groups.old_groups,
-        groups.new_groups,
-        edge_old,
-        edge_new,
-        line_boost,
-        "old_line",
-    )
-    new_line_filtered, new_line_kept, new_line_raw, new_line_after_noise = extract_regions(
-        line_added_regions,
-        diff,
-        aligned_new_high,
-        new_ink,
-        groups.old_groups,
-        groups.new_groups,
-        edge_old,
-        edge_new,
-        line_boost,
-        "new_line",
-    )
+        old_line_filtered, old_line_kept, old_line_raw, old_line_after_noise = extract_regions(
+            line_removed_regions,
+            diff,
+            old_high,
+            old_ink,
+            groups.old_groups,
+            groups.new_groups,
+            edge_old,
+            edge_new,
+            line_boost,
+            "old_line",
+        )
+        new_line_filtered, new_line_kept, new_line_raw, new_line_after_noise = extract_regions(
+            line_added_regions,
+            diff,
+            aligned_new_high,
+            new_ink,
+            groups.old_groups,
+            groups.new_groups,
+            edge_old,
+            edge_new,
+            line_boost,
+            "new_line",
+        )
 
     old_filtered = old_filtered_main + old_line_filtered
     new_filtered = new_filtered_main + new_line_filtered
@@ -1203,55 +1230,58 @@ def process_page_pair(
 
     _check_cancel()
     write_log(f"[Page {page_index + 1}] Rectangle merging")
-    old_raw = len(old_filtered)
-    new_raw = len(new_filtered)
-    old_boxes = merge_close_rectangles(merge_rectangles(old_filtered))
-    new_boxes = merge_close_rectangles(merge_rectangles(new_filtered))
+    with Timer(f"page {page_index + 1} merging_filtering"):
+        old_raw = len(old_filtered)
+        new_raw = len(new_filtered)
+        old_boxes = merge_close_rectangles(merge_rectangles(old_filtered))
+        new_boxes = merge_close_rectangles(merge_rectangles(new_filtered))
 
-    write_log(f"[Page {page_index + 1}] Unchanged text suppression")
-    old_boxes, suppressed_old = suppress_unchanged_text(
-        old_boxes,
-        diff,
-        edge_old,
-        edge_new,
-        words_old,
-        words_new,
-    )
-    new_boxes, suppressed_new = suppress_unchanged_text(
-        new_boxes,
-        diff,
-        edge_old,
-        edge_new,
-        words_old,
-        words_new,
-    )
+        write_log(f"[Page {page_index + 1}] Unchanged text suppression")
+        old_boxes, suppressed_old = suppress_unchanged_text(
+            old_boxes,
+            diff,
+            edge_old,
+            edge_new,
+            words_old,
+            words_new,
+        )
+        new_boxes, suppressed_new = suppress_unchanged_text(
+            new_boxes,
+            diff,
+            edge_old,
+            edge_new,
+            words_old,
+            words_new,
+        )
 
-    old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
-    write_log(f"[Page {page_index + 1}] Movement suppression (geometry/SSIM)")
-    old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(
-        old_boxes, new_boxes, old_high, aligned_new_high
-    )
-    write_log(f"[Page {page_index + 1}] Movement suppression removed {movement_suppressed} pairs")
+        old_boxes, overlap_suppressed = drop_overlapping_removals(old_boxes, new_boxes)
+        write_log(f"[Page {page_index + 1}] Movement suppression (geometry/SSIM)")
+        old_boxes, new_boxes, movement_suppressed = suppress_moved_pairs(
+            old_boxes, new_boxes, old_high, aligned_new_high
+        )
+        write_log(f"[Page {page_index + 1}] Movement suppression removed {movement_suppressed} pairs")
 
-    old_boxes, new_boxes, text_shift_suppressed = suppress_identical_text_pairs(
-        old_boxes, new_boxes, words_old, words_new
-    )
-    write_log(f"[Page {page_index + 1}] Text-based movement suppression removed {text_shift_suppressed} pairs")
+        old_boxes, new_boxes, text_shift_suppressed = suppress_identical_text_pairs(
+            old_boxes, new_boxes, words_old, words_new
+        )
+        write_log(
+            f"[Page {page_index + 1}] Text-based movement suppression removed {text_shift_suppressed} pairs"
+        )
 
-    old_boxes, new_boxes, identical_text_suppressed = filter_identical_text_regions(
-        old_boxes, new_boxes, words_old, words_new
-    )
-    write_log(f"[Page {page_index + 1}] Text filter removed {identical_text_suppressed} regions")
+        old_boxes, new_boxes, identical_text_suppressed = filter_identical_text_regions(
+            old_boxes, new_boxes, words_old, words_new
+        )
+        write_log(f"[Page {page_index + 1}] Text filter removed {identical_text_suppressed} regions")
 
-    old_boxes, old_stable = drop_stable_regions(
-        old_boxes, diff, old_high, aligned_new_high, similarity_cutoff=0.995
-    )
-    new_boxes, new_stable = drop_stable_regions(
-        new_boxes, diff, aligned_new_high, old_high, similarity_cutoff=0.995
-    )
-    write_log(
-        f"[Page {page_index + 1}] Stable-region pruning removed old={old_stable} new={new_stable}"
-    )
+        old_boxes, old_stable = drop_stable_regions(
+            old_boxes, diff, old_high, aligned_new_high, similarity_cutoff=0.995
+        )
+        new_boxes, new_stable = drop_stable_regions(
+            new_boxes, diff, aligned_new_high, old_high, similarity_cutoff=0.995
+        )
+        write_log(
+            f"[Page {page_index + 1}] Stable-region pruning removed old={old_stable} new={new_stable}"
+        )
 
     logger.info(
         "unchanged-text suppressed: %d on OLD, %d on NEW",
@@ -1426,14 +1456,16 @@ def compute_intensity_mask(diff: np.ndarray) -> np.ndarray:
     adaptive = mean_val + std_val * ADAPTIVE_DIFF_STD_FACTOR + ADAPTIVE_DIFF_MIN_INCREASE
     threshold_value = max(THRESH, adaptive)
     _, coarse = cv2.threshold(diff, threshold_value, 255, cv2.THRESH_BINARY)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_KERNEL, MORPH_KERNEL))
+    kernel = KERNEL_RECT_3 if MORPH_KERNEL == 3 else cv2.getStructuringElement(
+        cv2.MORPH_RECT, (MORPH_KERNEL, MORPH_KERNEL)
+    )
     coarse = cv2.morphologyEx(coarse, cv2.MORPH_CLOSE, kernel)
     if DILATE_ITERS:
         coarse = cv2.dilate(coarse, kernel, iterations=DILATE_ITERS)
     if ERODE_ITERS:
         coarse = cv2.erode(coarse, kernel, iterations=ERODE_ITERS)
     if std_val < 4.0:
-        cleaner = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        cleaner = KERNEL_RECT_2
         coarse = cv2.morphologyEx(coarse, cv2.MORPH_OPEN, cleaner)
     return coarse
 
@@ -1466,13 +1498,11 @@ def compute_line_boost(diff_img: np.ndarray) -> np.ndarray:
     # Use a lower Canny threshold to preserve faint strokes, then close in
     # horizontal/vertical directions to reconnect dashed or very thin cuts.
     canny = cv2.Canny(diff_img, 20, 70)
-    kx = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 1))
-    ky = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 7))
-    close_x = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, kx)
-    close_y = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, ky)
+    close_x = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, KERNEL_RECT_7X1)
+    close_y = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, KERNEL_RECT_1X7)
     merged = cv2.max(close_x, close_y)
     # A light dilation strengthens single-pixel traces without ballooning boxes.
-    dilated = cv2.dilate(merged, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)), iterations=1)
+    dilated = cv2.dilate(merged, KERNEL_RECT_2X2, iterations=1)
     return dilated
 
 
