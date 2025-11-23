@@ -441,3 +441,6 @@ def initialize_environment() -> None:
 
 # Initialize super admin cache on import
 _refresh_super_admins()
+APP_VERSION: str = "1.0.0"
+# Path where the remote TXT with the latest version is published.
+VERSION_INFO_PATH: str = os.path.join(SERVER_CONFIG_ROOT, "CompareSetVersion.txt")
