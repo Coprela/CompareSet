@@ -1528,7 +1528,7 @@ class MainWindow(QMainWindow):
         self.new_path_edit = QLineEdit()
         for line_edit in (self.old_path_edit, self.new_path_edit):
             line_edit.setPlaceholderText("Select a PDF file")
-            line_edit.setMinimumHeight(32)
+            line_edit.setMinimumHeight(28)
 
         self.old_browse_button = QPushButton("Browse…")
         self.new_browse_button = QPushButton("Browse…")
@@ -1562,7 +1562,7 @@ class MainWindow(QMainWindow):
             self.released_button,
             self.settings_button,
         ):
-            button.setMinimumHeight(36)
+            button.setMinimumHeight(32)
             button.setCursor(Qt.PointingHandCursor)
 
         self.progress_bar = QProgressBar()
@@ -1592,9 +1592,11 @@ class MainWindow(QMainWindow):
 
         self._last_old_path: Optional[Path] = None
 
-        self.resize(1000, 650)
-        self.setMinimumSize(850, 540)
-        self.setMaximumSize(1200, 800)
+        self.adjustSize()
+        initial_size = self.sizeHint().expandedTo(QSize(880, 540))
+        self.setMinimumSize(initial_size)
+        self.resize(initial_size)
+        self.setMaximumSize(initial_size + QSize(260, 180))
         central_widget = QWidget()
         central_widget.setObjectName("layout_canvas")
         central_widget.setMinimumSize(720, 520)
@@ -3132,9 +3134,6 @@ def main() -> None:
     ensure_released_db_initialized()
 
     role = get_user_role(username)
-
-    if is_super_admin(username):
-        role = "admin"
 
     if role is None and not dev_override:
         QMessageBox.critical(

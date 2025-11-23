@@ -1,9 +1,9 @@
 {
-  "dev_mode": true,
+  "dev_mode": false,
   "force_server_state": "auto",
   "force_role": "none",
   "override_language": null,
   "override_theme": null,
-  "super_admins": ["doliveira12"],
-  "local_storage_testers": ["doliveira12"]
+  "super_admins": [],
+  "local_storage_testers": []
 }
