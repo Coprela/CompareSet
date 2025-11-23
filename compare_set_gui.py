@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QPoint, QRect, QSize, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMenuBar,
     QMessageBox,
-    QInputDialog,
+    QDialogButtonBox,
     QPushButton,
     QProgressBar,
     QStatusBar,
@@ -70,7 +70,6 @@ from compareset_env import (
     is_super_admin,
     is_offline_tester,
     is_dev_mode,
-    get_dev_settings,
     DEV_SETTINGS_PATH,
     get_output_directory_for_user,
 )
@@ -282,6 +281,7 @@ def ensure_user_settings_db_initialized() -> None:
                 username TEXT NOT NULL UNIQUE,
                 language TEXT NOT NULL,
                 email TEXT NOT NULL DEFAULT "",
+                theme TEXT NOT NULL DEFAULT "auto",
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -293,6 +293,8 @@ def ensure_user_settings_db_initialized() -> None:
         }
         if "email" not in columns:
             conn.execute("ALTER TABLE UserSettings ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        if "theme" not in columns:
+            conn.execute("ALTER TABLE UserSettings ADD COLUMN theme TEXT NOT NULL DEFAULT 'auto'")
         conn.commit()
     finally:
         conn.close()
@@ -306,7 +308,7 @@ def get_or_create_user_settings(username: str) -> Dict[str, str]:
     try:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT username, language, email FROM UserSettings WHERE username = ?",
+            "SELECT username, language, email, theme FROM UserSettings WHERE username = ?",
             (username,),
         ).fetchone()
         if row:
@@ -314,15 +316,17 @@ def get_or_create_user_settings(username: str) -> Dict[str, str]:
                 "username": row["username"],
                 "language": row["language"],
                 "email": row["email"],
+                "theme": row["theme"] if "theme" in row.keys() else "auto",
             }
         now = datetime.utcnow().isoformat()
         default_language = "pt-BR"
+        default_theme = "auto"
         conn.execute(
-            "INSERT INTO UserSettings (username, language, email, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
-            (username, default_language, now, now),
+            "INSERT INTO UserSettings (username, language, email, theme, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?)",
+            (username, default_language, default_theme, now, now),
         )
         conn.commit()
-        return {"username": username, "language": default_language, "email": ""}
+        return {"username": username, "language": default_language, "email": "", "theme": default_theme}
     finally:
         conn.close()
 
@@ -331,7 +335,7 @@ def update_user_settings(username: str, **kwargs: str) -> None:
     """Update stored settings for a user."""
 
     ensure_user_settings_db_initialized()
-    allowed_fields = {"language", "email"}
+    allowed_fields = {"language", "email", "theme"}
     updates = {key: value for key, value in kwargs.items() if key in allowed_fields}
     if not updates:
         return
@@ -350,9 +354,10 @@ def update_user_settings(username: str, **kwargs: str) -> None:
         if conn.total_changes == 0:
             default_language = updates.get("language", "pt-BR")
             default_email = updates.get("email", "")
+            default_theme = updates.get("theme", "auto")
             conn.execute(
-                "INSERT INTO UserSettings (username, language, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (username, default_language, default_email, now, now),
+                "INSERT INTO UserSettings (username, language, email, theme, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (username, default_language, default_email, default_theme, now, now),
             )
         conn.commit()
     finally:
@@ -835,17 +840,22 @@ class SettingsDialog(QDialog):
     def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.username = username
-        self.setWindowTitle("Settings")
+        self.setWindowTitle("Configurações")
 
         self.language_combo = QComboBox()
         self.language_combo.addItems(["pt-BR", "en-US"])
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Automático (Windows)", "auto")
+        self.theme_combo.addItem("Claro", "light")
+        self.theme_combo.addItem("Escuro", "dark")
 
         layout = QFormLayout(self)
-        layout.addRow("Language", self.language_combo)
+        layout.addRow("Idioma", self.language_combo)
+        layout.addRow("Tema", self.theme_combo)
 
         button_row = QHBoxLayout()
         ok_button = QPushButton("OK")
-        cancel_button = QPushButton("Cancel")
+        cancel_button = QPushButton("Cancelar")
         ok_button.clicked.connect(self.accept)
         cancel_button.clicked.connect(self.reject)
         button_row.addStretch()
@@ -856,11 +866,18 @@ class SettingsDialog(QDialog):
     def load(self) -> None:
         settings = get_or_create_user_settings(self.username)
         language = settings.get("language", "pt-BR")
+        theme = settings.get("theme", "auto")
         if language in {"pt-BR", "en-US"}:
             self.language_combo.setCurrentText(language)
+        idx = self.theme_combo.findData(theme)
+        self.theme_combo.setCurrentIndex(max(idx, 0))
 
     def save(self) -> None:
-        update_user_settings(self.username, language=self.language_combo.currentText())
+        update_user_settings(
+            self.username,
+            language=self.language_combo.currentText(),
+            theme=self.theme_combo.currentData(),
+        )
 
 
 class EmailPromptDialog(QDialog):
@@ -1188,14 +1205,26 @@ class ReleasedDialog(QDialog):
 class MainWindow(QMainWindow):
     """Main application window."""
 
-    def __init__(self, username: str, role: str, user_settings: Dict[str, str]) -> None:
+    def __init__(
+        self,
+        username: str,
+        role: str,
+        user_settings: Dict[str, str],
+        *,
+        preview_role: Optional[str] = None,
+        preview: bool = False,
+    ) -> None:
         super().__init__()
         self.username = username
-        self.role = role
+        self.role = preview_role or role
+        self.preview_mode = preview
         self.user_settings = user_settings
         self.current_language = user_settings.get("language", "pt-BR")
+        self.current_theme = user_settings.get("theme", "auto")
         self.last_browse_dir: Optional[str] = None
         self.setWindowTitle("CompareSet")
+        if self.preview_mode:
+            self.setWindowTitle(f"CompareSet (preview: {self.role})")
 
         self._log_emitter = LogEmitter()
         self._log_handler = QtLogHandler(self._log_emitter)
@@ -1214,6 +1243,8 @@ class MainWindow(QMainWindow):
         self._widget_actions: Dict[str, Dict[str, str]] = {}
         self._dynamic_button_defs: Dict[str, Dict[str, Any]] = {}
         self._dynamic_buttons: Dict[str, QPushButton] = {}
+        self._area_components: Dict[str, List[str]] = {}
+        self._preview_windows: List[QMainWindow] = []
 
         self.old_path_edit = QLineEdit()
         self.new_path_edit = QLineEdit()
@@ -1226,15 +1257,20 @@ class MainWindow(QMainWindow):
         self.new_browse_button.clicked.connect(lambda: self.select_file(self.new_path_edit))
 
         self.compare_button = QPushButton("Compare")
+        self.compare_button.setObjectName("compare_button")
         self.compare_button.clicked.connect(self.start_comparison)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setObjectName("cancel_button")
         self.cancel_button.clicked.connect(self.request_cancel)
         self.history_button = QPushButton("My History")
+        self.history_button.setObjectName("history_button")
         self.history_button.clicked.connect(self.open_history)
         self.released_button = QPushButton("Released")
+        self.released_button.setObjectName("released_button")
         self.released_button.clicked.connect(self.open_released)
         self.settings_button = QPushButton("Configurações")
+        self.settings_button.setObjectName("settings_button")
         self.settings_button.clicked.connect(self.open_settings_dialog)
         self.admin_button: Optional[QPushButton] = None
 
@@ -1242,8 +1278,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)
+        self.progress_bar.setObjectName("progress_bar")
 
         self.status_label = QLabel("Ready")
+        self.status_label.setObjectName("status_label")
         self.connection_status_label = QLabel()
         self.connection_status_label.setAlignment(Qt.AlignLeft)
         self.reload_button = QPushButton()
@@ -1347,6 +1385,7 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(status_bar)
         self.apply_language_setting()
+        self.apply_theme_setting()
         self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label", allow_geometry=True)
         self._register_editable_widget("new_label", self.new_label, display_name="New PDF label", allow_geometry=True)
         self._register_editable_widget(
@@ -1376,6 +1415,7 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
+        self._register_area_component("top_toolbar", "compare_button")
         self._register_editable_widget(
             "cancel_button",
             self.cancel_button,
@@ -1383,6 +1423,7 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
+        self._register_area_component("top_toolbar", "cancel_button")
         self._register_editable_widget(
             "history_button",
             self.history_button,
@@ -1390,6 +1431,7 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
+        self._register_area_component("top_toolbar", "history_button")
         self._register_editable_widget(
             "released_button",
             self.released_button,
@@ -1397,6 +1439,7 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
+        self._register_area_component("top_toolbar", "released_button")
         self._register_editable_widget(
             "settings_button",
             self.settings_button,
@@ -1404,9 +1447,11 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
+        self._register_area_component("top_toolbar", "settings_button")
         self._register_editable_widget(
             "status_label", self.status_label, display_name="Status message", allow_style=True, allow_text=True
         )
+        self._register_area_component("progress_panel", "status_label")
         self._register_editable_widget(
             "connection_status", self.connection_status_label, display_name="Connection banner", allow_style=True
         )
@@ -1418,6 +1463,7 @@ class MainWindow(QMainWindow):
             allow_style=True,
             allow_geometry=True,
         )
+        self._register_area_component("progress_panel", "progress_bar")
         self._register_editable_widget(
             "reload_button",
             self.reload_button,
@@ -1433,6 +1479,7 @@ class MainWindow(QMainWindow):
             allow_style=True,
             allow_geometry=True,
         )
+        self._register_area_component("admin_panel", "log_view")
         if self.admin_button is not None:
             self._register_editable_widget(
                 "admin_button",
@@ -1441,6 +1488,7 @@ class MainWindow(QMainWindow):
                 allow_icon=True,
                 allow_action=True,
             )
+            self._register_area_component("admin_panel", "admin_button")
         self.setCentralWidget(central_widget)
         self._register_layout_target("top_toolbar", self.top_toolbar_frame)
         self._register_layout_target("progress_panel", self.progress_frame)
@@ -1639,6 +1687,34 @@ class MainWindow(QMainWindow):
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
 
+    def _system_theme(self) -> str:
+        try:
+            scheme = QApplication.instance().styleHints().colorScheme()
+            return "dark" if scheme == Qt.ColorScheme.Dark else "light"
+        except Exception:
+            return "light"
+
+    def apply_theme_setting(self) -> None:
+        desired = (self.current_theme or "auto").lower()
+        effective = self._system_theme() if desired == "auto" else desired
+        logger.info("Applying theme: %s (requested=%s)", effective, desired)
+        palette = QPalette()
+        if effective == "dark":
+            palette.setColor(QPalette.Window, QColor(53, 53, 53))
+            palette.setColor(QPalette.WindowText, Qt.white)
+            palette.setColor(QPalette.Base, QColor(35, 35, 35))
+            palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
+            palette.setColor(QPalette.ToolTipBase, Qt.white)
+            palette.setColor(QPalette.ToolTipText, Qt.white)
+            palette.setColor(QPalette.Text, Qt.white)
+            palette.setColor(QPalette.Button, QColor(53, 53, 53))
+            palette.setColor(QPalette.ButtonText, Qt.white)
+            palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+            palette.setColor(QPalette.HighlightedText, Qt.black)
+        else:
+            palette = QApplication.instance().style().standardPalette()
+        QApplication.instance().setPalette(palette)
+
     def _connection_texts(self) -> Dict[str, str]:
         if self.current_language == "pt-BR":
             return {
@@ -1717,12 +1793,17 @@ class MainWindow(QMainWindow):
             self.current_language = dialog.language_combo.currentText()
             self.user_settings["language"] = self.current_language
             self.apply_language_setting()
+            self.current_theme = dialog.theme_combo.currentData()
+            self.user_settings["theme"] = self.current_theme
+            self.apply_theme_setting()
 
     def open_admin_dialog(self) -> None:
         dialog = AdminDialog(self)
         dialog.exec()
 
     def prompt_for_email_if_missing(self) -> None:
+        if getattr(self, "preview_mode", False):
+            return
         current_email = (self.user_settings.get("email") or "").strip()
         while not current_email:
             dialog = EmailPromptDialog(self)
@@ -1913,18 +1994,28 @@ class MainWindow(QMainWindow):
         if layout is None:
             return None
         button_id = definition.get("id") or f"dynamic_{len(self._dynamic_button_defs) + 1}"
-        button = QPushButton(definition.get("text") or "Novo botão")
+        button = QPushButton()
         button.setObjectName(button_id)
-        if definition.get("icon"):
+        display_mode = definition.get("display_mode", "text")
+        button_text = definition.get("text") or "Novo botão"
+        if display_mode != "icon":
+            button.setText(button_text)
+        if definition.get("icon") and display_mode in {"icon", "text_icon"}:
             button.setIcon(QIcon(str(definition.get("icon"))))
+        if isinstance(definition.get("min_width"), int):
+            button.setMinimumWidth(int(definition.get("min_width")))
+        if isinstance(definition.get("min_height"), int):
+            button.setMinimumHeight(int(definition.get("min_height")))
         self._add_widget_to_layout(layout, button)
         button.show()
         if layout.parentWidget() is not None:
             layout.parentWidget().updateGeometry()
         definition["id"] = button_id
         definition.setdefault("display_name", definition.get("text") or button_id)
+        definition.setdefault("display_mode", display_mode)
         self._dynamic_button_defs[button_id] = definition
         self._dynamic_buttons[button_id] = button
+        self._register_area_component(parent_key, button_id)
         self._register_editable_widget(
             button_id,
             button,
@@ -1947,6 +2038,8 @@ class MainWindow(QMainWindow):
             if key.startswith("dynamic_") or key in self._dynamic_button_defs:
                 self._widget_overrides.pop(key, None)
         self._dynamic_button_defs.clear()
+        for area_key, widgets in self._area_components.items():
+            self._area_components[area_key] = [w for w in widgets if not w.startswith("dynamic_")]
 
     def _rebuild_dynamic_buttons(self, definitions: List[Dict[str, Any]]) -> None:
         self._clear_dynamic_buttons()
@@ -1964,6 +2057,200 @@ class MainWindow(QMainWindow):
     def get_dynamic_parents(self) -> List[str]:
         return [key for key, layout in self._dynamic_parent_layouts.items() if layout is not None]
 
+    def get_layout_areas(self) -> List[Dict[str, str]]:
+        labels = {
+            "top_toolbar": "Toolbar",
+            "progress_panel": "Status / Product bar",
+            "admin_panel": "Admin",
+        }
+        return [
+            {"key": key, "label": labels.get(key, key)}
+            for key in self._dynamic_parent_layouts
+            if self._dynamic_parent_layouts.get(key) is not None
+        ]
+
+    def _layout_order_for_area(self, area_key: str) -> List[str]:
+        layout = self._dynamic_parent_layouts.get(area_key)
+        order: List[str] = []
+        if layout is None:
+            return order
+        for idx in range(layout.count()):
+            item = layout.itemAt(idx)
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is None:
+                continue
+            object_name = widget.objectName() or ""
+            if object_name:
+                order.append(object_name)
+        return order
+
+    def get_area_components(self, area_key: str) -> List[Dict[str, Any]]:
+        components: List[Dict[str, Any]] = []
+        order = self._layout_order_for_area(area_key)
+        for widget_key in self._area_components.get(area_key, []):
+            widget_info = self._editable_widgets.get(widget_key, {})
+            widget = widget_info.get("widget")
+            if widget is None:
+                continue
+            components.append(
+                {
+                    "id": widget_key,
+                    "text": widget.text() if hasattr(widget, "text") else widget_info.get("display_name", widget_key),
+                    "display_name": widget_info.get("display_name", widget_key),
+                    "icon": None,
+                    "display_mode": "text_icon",
+                    "action": self._widget_actions.get(widget_key, {}),
+                    "min_width": widget.minimumWidth(),
+                    "min_height": widget.minimumHeight(),
+                }
+            )
+        for button_id, definition in self._dynamic_button_defs.items():
+            if definition.get("parent", "top_toolbar") != area_key:
+                continue
+            widget = self._dynamic_buttons.get(button_id)
+            components.append(
+                {
+                    "id": button_id,
+                    "text": definition.get("text") or (widget.text() if widget else ""),
+                    "display_name": definition.get("display_name") or definition.get("text") or button_id,
+                    "icon": definition.get("icon", ""),
+                    "display_mode": definition.get("display_mode", "text"),
+                    "action": definition.get("action", {}),
+                    "min_width": definition.get("min_width") or (widget.minimumWidth() if widget else 0),
+                    "min_height": definition.get("min_height") or (widget.minimumHeight() if widget else 0),
+                }
+            )
+        components.sort(key=lambda item: order.index(item.get("id")) if item.get("id") in order else len(order))
+        return components
+
+    def get_registered_actions(self) -> Dict[str, str]:
+        return {
+            "Nenhuma": "none",
+            "Abrir histórico": "history",
+            "Abrir liberados": "released",
+            "Abrir configurações": "settings",
+            "Iniciar comparação": "compare",
+            "Cancelar comparação": "cancel",
+        }
+
+    def add_developer_button(self, area_key: Optional[str]) -> Optional[str]:
+        target_area = area_key or "top_toolbar"
+        logger.info("Adding dynamic button to %s", target_area)
+        new_id = self.create_dynamic_button({"text": "Novo botão", "parent": target_area, "display_mode": "text"})
+        if new_id:
+            self._register_area_component(target_area, new_id)
+            self._apply_saved_widget_overrides(self._widget_overrides)
+        return new_id
+
+    def update_developer_button(self, button_id: str, updates: Dict[str, Any]) -> None:
+        definition = self._dynamic_button_defs.get(button_id)
+        widget = self._dynamic_buttons.get(button_id)
+        if definition is None or widget is None:
+            return
+        display_mode = updates.get("display_mode", definition.get("display_mode", "text"))
+        text_value = updates.get("text")
+        icon_value = updates.get("icon")
+        if display_mode == "icon":
+            widget.setText("")
+        elif text_value is not None:
+            widget.setText(text_value)
+        elif display_mode != "icon" and not widget.text():
+            widget.setText(definition.get("text") or "Novo botão")
+        if display_mode in {"icon", "text_icon"} and icon_value:
+            widget.setIcon(QIcon(str(icon_value)))
+        elif display_mode == "text":
+            widget.setIcon(QIcon())
+        min_width = updates.get("min_width")
+        min_height = updates.get("min_height")
+        if isinstance(min_width, int) and min_width > 0:
+            widget.setMinimumWidth(min_width)
+        if isinstance(min_height, int) and min_height > 0:
+            widget.setMinimumHeight(min_height)
+
+        action_data = updates.get("action") if isinstance(updates.get("action"), dict) else {}
+        if action_data:
+            self._widget_actions[button_id] = action_data
+            definition["action"] = action_data
+        elif button_id in self._widget_actions:
+            self._widget_actions.pop(button_id, None)
+            definition.pop("action", None)
+
+        definition.update(
+            {
+                "text": widget.text() or text_value or definition.get("text") or "Novo botão",
+                "icon": icon_value if icon_value is not None else definition.get("icon", ""),
+                "display_mode": display_mode,
+                "min_width": min_width if min_width else None,
+                "min_height": min_height if min_height else None,
+            }
+        )
+        logger.info("Updated dynamic button %s", button_id)
+        self._widget_overrides[button_id] = {
+            "text": widget.text(),
+            "icon": definition.get("icon", ""),
+        }
+        if min_width or min_height:
+            self._widget_overrides[button_id]["geometry"] = {
+                "x": widget.x(),
+                "y": widget.y(),
+                "width": widget.width(),
+                "height": widget.height(),
+            }
+
+    def move_developer_button(self, button_id: str, delta: int) -> bool:
+        definition = self._dynamic_button_defs.get(button_id)
+        if definition is None:
+            return False
+        area_key = definition.get("parent", "top_toolbar")
+        layout = self._dynamic_parent_layouts.get(area_key)
+        widget = self._dynamic_buttons.get(button_id)
+        if layout is None or widget is None:
+            return False
+        current_index = layout.indexOf(widget)
+        new_index = max(0, min(layout.count() - 1, current_index + delta))
+        if new_index == current_index:
+            return False
+        layout.removeWidget(widget)
+        layout.insertWidget(new_index, widget)
+        return True
+
+    def _export_dynamic_buttons(self) -> List[Dict[str, Any]]:
+        ordered: List[Dict[str, Any]] = []
+        for area_key in self._dynamic_parent_layouts:
+            order = self._layout_order_for_area(area_key)
+            for button_id in order:
+                if button_id not in self._dynamic_button_defs:
+                    continue
+                ordered.append(dict(self._dynamic_button_defs[button_id]))
+        for button_id, definition in self._dynamic_button_defs.items():
+            if all(definition is not d for d in ordered):
+                ordered.append(dict(definition))
+        return ordered
+
+    def export_layout_snapshot(self) -> Dict[str, Any]:
+        frames = {}
+        for key, widget in self._layout_targets.items():
+            geom = widget.geometry()
+            frames[key] = {
+                "x": geom.x(),
+                "y": geom.y(),
+                "width": geom.width(),
+                "height": geom.height(),
+            }
+        return {
+            "frames": frames,
+            "widgets": self._widget_overrides,
+            "dynamic_buttons": self._export_dynamic_buttons(),
+        }
+
+    def open_role_preview(self, role: str) -> None:
+        logger.info("Opening role preview for %s", role)
+        preview_window = MainWindow(self.username, self.role, dict(self.user_settings), preview_role=role, preview=True)
+        self._preview_windows.append(preview_window)
+        preview_window.show()
+
     def _invoke_custom_action(self, key: str) -> None:
         action = self._widget_actions.get(key)
         if not action:
@@ -1975,6 +2262,16 @@ class MainWindow(QMainWindow):
                 QDesktopServices.openUrl(QUrl(str(target)))
             elif action_type == "file" and target:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+            elif action_type == "history":
+                self.open_history()
+            elif action_type == "released":
+                self.open_released()
+            elif action_type == "settings":
+                self.open_settings_dialog()
+            elif action_type == "compare":
+                self.start_comparison()
+            elif action_type == "cancel":
+                self.request_cancel()
             elif action_type in {"method", "dialog"} and target:
                 func = getattr(self, str(target), None)
                 if callable(func):
@@ -2006,6 +2303,11 @@ class MainWindow(QMainWindow):
         handler = LayoutEditFilter(self, key)
         widget.installEventFilter(handler)
         self._layout_filters[key] = handler
+
+    def _register_area_component(self, area_key: str, widget_key: str) -> None:
+        components = self._area_components.setdefault(area_key, [])
+        if widget_key not in components:
+            components.append(widget_key)
 
     def _apply_default_layout_geometry(self) -> None:
         canvas_size: QSize = self.layout_canvas.size() or QSize(900, 620)
@@ -2081,7 +2383,7 @@ class MainWindow(QMainWindow):
             if overrides:
                 layout_data["widgets"][key] = overrides
         if self._dynamic_button_defs:
-            layout_data["dynamic_buttons"] = list(self._dynamic_button_defs.values())
+            layout_data["dynamic_buttons"] = self._export_dynamic_buttons()
         DEV_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(DEV_LAYOUT_PATH, "w", encoding="utf-8") as handle:
             json.dump(layout_data, handle, indent=2)
@@ -2157,17 +2459,22 @@ class MainWindow(QMainWindow):
     def _prompt_dev_password(self) -> None:
         if self._dev_unlocked:
             return
-        password, ok = QInputDialog.getText(
-            self,
-            "Developer mode",
-            "Enter developer password:",
-            QLineEdit.Password,
-        )
-        if not ok:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Developer mode")
+        form = QFormLayout(dialog)
+        password_edit = QLineEdit()
+        password_edit.setEchoMode(QLineEdit.Password)
+        form.addRow("Senha", password_edit)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
             return
-        if password != "doliveira12@CompareSet2025":
-            QMessageBox.warning(self, "Developer mode", "Invalid password.")
+        if password_edit.text() != "doliveira12@CompareSet2025":
+            QMessageBox.warning(self, "Developer mode", "Senha incorreta")
             return
+        logger.info("Developer mode unlocked for session by %s", self.username)
         self._dev_unlocked = True
         self._unlock_developer_mode()
 
@@ -2237,11 +2544,8 @@ class MainWindow(QMainWindow):
     def open_developer_tools(self) -> None:
         dialog = DeveloperToolsDialog(
             self,
-            get_dev_settings(),
             layout_mode_active=self.layout_mode_enabled,
-            developer_enabled=self._is_developer_enabled(),
         )
-        dialog.settings_applied.connect(self._update_developer_menu_state)
         dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
         dialog.save_layout_requested.connect(self.save_dev_layout)
         dialog.reset_layout_requested.connect(self.reset_dev_layout)
