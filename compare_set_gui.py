@@ -1568,7 +1568,6 @@ class MainWindow(QMainWindow):
         for line_edit in (self.old_path_edit, self.new_path_edit):
             line_edit.setPlaceholderText("Select a PDF file")
             line_edit.setMinimumHeight(28)
-            line_edit.setReadOnly(True)
 
         self.old_browse_button = QPushButton("Browse…")
         self.new_browse_button = QPushButton("Browse…")
@@ -1632,6 +1631,11 @@ class MainWindow(QMainWindow):
 
         self._last_old_path: Optional[Path] = None
 
+        self.adjustSize()
+        initial_size = self.sizeHint().expandedTo(QSize(880, 540))
+        self.setMinimumSize(initial_size)
+        self.resize(initial_size)
+        self.setMaximumSize(initial_size + QSize(260, 180))
         central_widget = QWidget()
         central_widget.setObjectName("layout_canvas")
         central_widget.setMinimumSize(720, 520)
