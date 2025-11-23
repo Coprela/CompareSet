@@ -119,15 +119,14 @@ class DeveloperToolsDialog(QDialog):
         grid.addLayout(form, 1, 1, 3, 1)
 
         buttons = QHBoxLayout()
-        self.add_button_btn = QPushButton("Add button")
-        self.add_button_btn.clicked.connect(self._add_button)
+        # Temporary removal of dynamic button creation while the feature is disabled.
         self.save_button_btn = QPushButton("Apply changes")
         self.save_button_btn.clicked.connect(self._apply_changes)
         self.move_up_btn = QPushButton("Move up")
         self.move_up_btn.clicked.connect(lambda: self._move_selected(-1))
         self.move_down_btn = QPushButton("Move down")
         self.move_down_btn.clicked.connect(lambda: self._move_selected(1))
-        for btn in (self.add_button_btn, self.save_button_btn, self.move_up_btn, self.move_down_btn):
+        for btn in (self.save_button_btn, self.move_up_btn, self.move_down_btn):
             buttons.addWidget(btn)
         grid.addLayout(buttons, 4, 1)
 
