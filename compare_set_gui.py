@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QFrame,
+    QGraphicsDropShadowEffect,
 )
 
 from compareset_engine import (
@@ -1254,6 +1255,7 @@ class MainWindow(QMainWindow):
         self.new_path_edit = QLineEdit()
         for line_edit in (self.old_path_edit, self.new_path_edit):
             line_edit.setPlaceholderText("Select a PDF file")
+            line_edit.setMinimumHeight(40)
 
         self.old_browse_button = QPushButton("Browse…")
         self.new_browse_button = QPushButton("Browse…")
@@ -1278,6 +1280,18 @@ class MainWindow(QMainWindow):
         self.settings_button.clicked.connect(self.open_settings_dialog)
         self.admin_button: Optional[QPushButton] = None
 
+        for button in (
+            self.old_browse_button,
+            self.new_browse_button,
+            self.compare_button,
+            self.cancel_button,
+            self.history_button,
+            self.released_button,
+            self.settings_button,
+        ):
+            button.setMinimumHeight(44)
+            button.setCursor(Qt.PointingHandCursor)
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
@@ -1286,14 +1300,15 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("status_label")
+        self.status_label.setWordWrap(True)
+        self.status_label.setMinimumHeight(22)
         self.offline_banner = QLabel()
-        self.offline_banner.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.offline_banner.setAlignment(Qt.AlignCenter)
         self.offline_banner.setVisible(False)
         self._offline_warning_shown = False
 
         self.version_label = QLabel(f"v{APP_VERSION}")
         self.version_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.version_label.setStyleSheet("color: #999;")
         self.version_banner = QPushButton()
         self.version_banner.setVisible(False)
         self.version_banner.clicked.connect(self._open_update_link)
@@ -1305,7 +1320,7 @@ class MainWindow(QMainWindow):
         self._last_old_path: Optional[Path] = None
 
         self.resize(1000, 650)
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(850, 540)
         self.setMaximumSize(1200, 800)
         central_widget = QWidget()
         central_widget.setObjectName("layout_canvas")
@@ -1313,17 +1328,23 @@ class MainWindow(QMainWindow):
         central_widget.setAttribute(Qt.WA_StyledBackground, True)
 
         canvas_layout = QVBoxLayout(central_widget)
-        canvas_layout.setContentsMargins(24, 24, 24, 24)
-        canvas_layout.setSpacing(16)
+        canvas_layout.setContentsMargins(32, 32, 32, 32)
+        canvas_layout.setSpacing(20)
         canvas_layout.addStretch()
 
         self.main_card = QFrame()
         self.main_card.setObjectName("main_card")
         self.main_card.setMaximumWidth(900)
-        self.main_card.setMinimumWidth(780)
+        self.main_card.setMinimumWidth(800)
         main_card_layout = QVBoxLayout(self.main_card)
-        main_card_layout.setContentsMargins(16, 16, 16, 16)
-        main_card_layout.setSpacing(12)
+        main_card_layout.setContentsMargins(20, 20, 20, 20)
+        main_card_layout.setSpacing(18)
+
+        shadow = QGraphicsDropShadowEffect(self.main_card)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 12)
+        shadow.setColor(QColor(0, 0, 0, 50))
+        self.main_card.setGraphicsEffect(shadow)
 
         canvas_layout.addWidget(self.main_card, 0, Qt.AlignHCenter)
         canvas_layout.addStretch()
@@ -1349,13 +1370,37 @@ class MainWindow(QMainWindow):
 
         # Theme styling is applied dynamically in ``apply_theme_setting``.
 
+        # Hero header
+        hero_frame = QFrame(self.main_card)
+        hero_layout = QHBoxLayout(hero_frame)
+        hero_layout.setContentsMargins(4, 0, 4, 0)
+        hero_layout.setSpacing(10)
+        hero_texts = QVBoxLayout()
+        hero_texts.setSpacing(4)
+        self.title_label = QLabel("CompareSet")
+        self.title_label.setObjectName("title_label")
+        self.subtitle_label = QLabel("Selecione os arquivos e execute a comparação")
+        self.subtitle_label.setProperty("class", "field_label")
+        hero_texts.addWidget(self.title_label)
+        hero_texts.addWidget(self.subtitle_label)
+        hero_layout.addLayout(hero_texts)
+        hero_layout.addStretch()
+        hero_meta = QVBoxLayout()
+        hero_meta.setSpacing(6)
+        hero_meta.addWidget(self.layout_indicator, alignment=Qt.AlignRight)
+        hero_layout.addLayout(hero_meta)
+
+        divider_top = QFrame()
+        divider_top.setFrameShape(QFrame.HLine)
+        divider_top.setFrameShadow(QFrame.Sunken)
+
         # Group: File selection
         file_group = QFrame()
         file_group.setObjectName("file_group")
         file_group_layout = QGridLayout(file_group)
-        file_group_layout.setContentsMargins(12, 12, 12, 12)
+        file_group_layout.setContentsMargins(16, 16, 16, 16)
         file_group_layout.setHorizontalSpacing(12)
-        file_group_layout.setVerticalSpacing(10)
+        file_group_layout.setVerticalSpacing(12)
         file_group_layout.setColumnStretch(1, 1)
 
         self.old_label = QLabel("Old revision (PDF)")
@@ -1376,13 +1421,15 @@ class MainWindow(QMainWindow):
         actions_group = QFrame()
         actions_group.setObjectName("actions_group")
         actions_layout = QHBoxLayout(actions_group)
-        actions_layout.setContentsMargins(12, 4, 12, 4)
+        actions_layout.setContentsMargins(14, 10, 14, 10)
         actions_layout.setSpacing(10)
         actions_layout.addWidget(self.history_button)
         actions_layout.addWidget(self.released_button)
         actions_layout.addWidget(self.settings_button)
         if self.role == "admin":
             self.admin_button = QPushButton("Administração")
+            self.admin_button.setMinimumHeight(44)
+            self.admin_button.setCursor(Qt.PointingHandCursor)
             self.admin_button.clicked.connect(self.open_admin_dialog)
             actions_layout.addWidget(self.admin_button)
         actions_layout.addStretch()
@@ -1393,25 +1440,18 @@ class MainWindow(QMainWindow):
         self.top_toolbar_frame = QFrame(self.main_card)
         self.top_toolbar_frame.setObjectName("top_toolbar")
         top_layout = QVBoxLayout(self.top_toolbar_frame)
-        top_layout.setContentsMargins(16, 16, 16, 16)
-        top_layout.setSpacing(14)
-
-        title_row = QHBoxLayout()
-        self.title_label = QLabel("CompareSet")
-        self.title_label.setObjectName("title_label")
-        self.subtitle_label = QLabel("Selecione os arquivos e execute a comparação")
-        self.subtitle_label.setProperty("class", "field_label")
-        self.subtitle_label.setStyleSheet("color: #bfbfbf;")
-        title_row.addWidget(self.title_label)
-        title_row.addStretch()
-        title_row.addWidget(self.subtitle_label)
-        top_layout.addLayout(title_row)
-
+        top_layout.setContentsMargins(20, 18, 20, 18)
+        top_layout.setSpacing(16)
+        top_layout.addWidget(hero_frame)
+        top_layout.addWidget(divider_top)
         top_layout.addWidget(file_group)
+
+        actions_header_row = QHBoxLayout()
         self.actions_header = QLabel("Ações")
         self.actions_header.setProperty("class", "section_label")
-        self.actions_header.setStyleSheet("margin-left: 2px;")
-        top_layout.addWidget(self.actions_header)
+        actions_header_row.addWidget(self.actions_header)
+        actions_header_row.addStretch()
+        top_layout.addLayout(actions_header_row)
         top_layout.addWidget(actions_group)
 
         self.toolbar_dynamic_layout = QHBoxLayout()
@@ -1423,22 +1463,27 @@ class MainWindow(QMainWindow):
         self.progress_frame = QFrame(self.main_card)
         self.progress_frame.setObjectName("progress_panel")
         progress_layout = QVBoxLayout(self.progress_frame)
-        progress_layout.setContentsMargins(16, 16, 16, 16)
-        progress_layout.setSpacing(8)
+        progress_layout.setContentsMargins(20, 18, 20, 18)
+        progress_layout.setSpacing(10)
 
         self.status_header = QLabel("Status")
         self.status_header.setProperty("class", "section_label")
-        self.status_header.setStyleSheet("margin-left: 2px;")
         progress_layout.addWidget(self.status_header)
         progress_layout.addWidget(self.status_label)
         progress_layout.addWidget(self.progress_bar)
+
+        footer_divider = QFrame()
+        footer_divider.setFrameShape(QFrame.HLine)
+        footer_divider.setFrameShadow(QFrame.Sunken)
         footer_row = QHBoxLayout()
+        footer_row.setContentsMargins(4, 2, 4, 0)
         footer_row.addWidget(self.version_banner)
         footer_row.addStretch(1)
         footer_row.addWidget(self.version_label)
 
         main_card_layout.addWidget(self.top_toolbar_frame)
         main_card_layout.addWidget(self.progress_frame)
+        main_card_layout.addWidget(footer_divider)
         main_card_layout.addLayout(footer_row)
 
         status_bar = QStatusBar()
@@ -1780,17 +1825,39 @@ class MainWindow(QMainWindow):
             palette = QApplication.instance().style().standardPalette()
         QApplication.instance().setPalette(palette)
         if effective == "dark":
-            card_bg = "#252525"
-            canvas_bg = "#1f1f1f"
+            card_bg = "#242424"
+            canvas_bg = "#1c1c1c"
             text_color = "#f3f3f3"
             panel_bg = "#2a2a2a"
             border = "#3a3a3a"
+            input_bg = "#1f1f1f"
+            button_bg = "#2c2c2c"
+            button_hover = "#343434"
+            button_pressed = "#2a2a2a"
+            button_border = "#3d3d3d"
+            disabled_bg = "#222222"
+            disabled_text = "#7f7f7f"
+            disabled_border = "#2f2f2f"
+            accent = "#5b8def"
+            accent_hover = "#6c9bff"
+            muted_text = "#b8b8b8"
         else:
             card_bg = "#ffffff"
-            canvas_bg = "#f5f5f5"
+            canvas_bg = "#f3f6fb"
             text_color = "#1a1a1a"
             panel_bg = "#ffffff"
-            border = "#d0d0d0"
+            border = "#d9e1ef"
+            input_bg = "#f7f9fc"
+            button_bg = "#f2f5fb"
+            button_hover = "#e7eef9"
+            button_pressed = "#dce6f7"
+            button_border = "#cbd5e5"
+            disabled_bg = "#eef1f6"
+            disabled_text = "#9aa3b5"
+            disabled_border = "#dfe5f0"
+            accent = "#2563eb"
+            accent_hover = "#1e4fbf"
+            muted_text = "#6b7280"
         self.layout_canvas.setStyleSheet(
             f"""
             QWidget#layout_canvas {{
@@ -1800,13 +1867,80 @@ class MainWindow(QMainWindow):
             }}
             QFrame#main_card {{
                 background-color: {card_bg};
-                border-radius: 16px;
+                border-radius: 18px;
                 border: 1px solid {border};
             }}
-            QFrame#top_toolbar, QFrame#progress_panel {{
+            QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#actions_group {{
                 background-color: {panel_bg};
                 border: 1px solid {border};
+                border-radius: 12px;
+            }}
+            QLabel#title_label {{
+                font-size: 24px;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+            }}
+            QLabel[class="section_label"] {{
+                font-size: 14px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+            }}
+            QLabel[class="field_label"] {{
+                color: {muted_text};
+                font-size: 13px;
+            }}
+            QLabel#version_label {{
+                color: {muted_text};
+            }}
+            QLineEdit {{
+                padding: 10px 12px;
                 border-radius: 10px;
+                border: 1px solid {border};
+                background-color: {input_bg};
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {accent};
+                outline: none;
+            }}
+            QPushButton {{
+                padding: 10px 16px;
+                border-radius: 10px;
+                border: 1px solid {button_border};
+                background-color: {button_bg};
+                color: {text_color};
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {button_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: {button_pressed};
+            }}
+            QPushButton:disabled {{
+                color: {disabled_text};
+                background-color: {disabled_bg};
+                border-color: {disabled_border};
+            }}
+            QPushButton#compare_button {{
+                background-color: {accent};
+                color: #ffffff;
+                border: none;
+            }}
+            QPushButton#compare_button:hover {{
+                background-color: {accent_hover};
+            }}
+            QPushButton#cancel_button {{
+                border-color: {border};
+            }}
+            QProgressBar {{
+                border: 1px solid {border};
+                border-radius: 8px;
+                background-color: {input_bg};
+                height: 12px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {accent};
+                border-radius: 8px;
             }}
         """
         )
