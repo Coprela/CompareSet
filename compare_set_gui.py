@@ -124,13 +124,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cancel": "Cancelar",
         "ready": "Pronto",
         "admin": "Administração",
-        "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
+        "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador.",
         "offline_info": (
             "Modo offline: sem conexão com o servidor. As comparações funcionarão localmente, "
             "mas histórico, logs e arquivos de saída serão salvos apenas no computador."
         ),
         "update_available": "Nova versão disponível – clique aqui para download.",
-        "offline_dialog": "Você está offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
+        "offline_dialog": "Você está offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador.",
         "offline_close": "Fechar",
         "offline_wrong_password": "Senha incorreta",
         "settings_title": "Configurações",
@@ -161,6 +161,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "release_dialog_title": "Enviar para liberados",
         "release_cancel": "Cancelar",
         "release_send": "Enviar para Liberados",
+        "history_title": "Meu histórico",
+        "history_view": "Visualizar",
+        "history_export": "Exportar",
+        "history_view_log": "Ver log",
+        "history_clear": "Limpar histórico",
+        "history_clear_confirm": "Remover todos os resultados exibidos? Esta ação não pode ser desfeita.",
+        "history_clear_none": "Nenhum histórico para limpar.",
+        "history_clear_done": "Histórico limpo.",
+        "history_empty": "Nenhum histórico encontrado.",
+        "history_showing": "Exibindo {count} resultado(s) para {user}.",
         "developer_tools": "Developer Tools",
         "developer_layout_tab": "Layout",
         "developer_preview_tab": "Visualizar como",
@@ -208,13 +218,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cancel": "Cancel",
         "ready": "Ready",
         "admin": "Administration",
-        "offline_status": "Status: Offline – no connection to the server. Check your network/VPN or contact your system administrator.",
+        "offline_status": "Status: Offline – no connection to the server. Check your network/VPN or contact your administrator.",
         "offline_info": (
             "Offline mode: no connection to the server. Comparisons will work locally, but history, "
             "logs and output files will be saved only on this computer."
         ),
         "update_available": "New version available – click here to download.",
-        "offline_dialog": "You are offline – no connection to the server. Check your network/VPN or contact your system administrator.",
+        "offline_dialog": "You are offline – no connection to the server. Check your network/VPN or contact your administrator.",
         "offline_close": "Close",
         "offline_wrong_password": "Incorrect password",
         "settings_title": "Settings",
@@ -245,6 +255,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "release_dialog_title": "Send to Released",
         "release_cancel": "Cancel",
         "release_send": "Send to Released",
+        "history_title": "My History",
+        "history_view": "View",
+        "history_export": "Export",
+        "history_view_log": "View log",
+        "history_clear": "Clear history",
+        "history_clear_confirm": "Remove all displayed results? This action cannot be undone.",
+        "history_clear_none": "No history to clear.",
+        "history_clear_done": "History cleared.",
+        "history_empty": "No previous comparisons found.",
+        "history_showing": "Showing {count} result(s) for {user}.",
         "developer_tools": "Developer Tools",
         "developer_layout_tab": "Layout",
         "developer_preview_tab": "View as role",
@@ -767,15 +787,21 @@ class HistoryDialog(QDialog):
     def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.username = username
+        self.language = getattr(parent, "current_language", "pt-BR")
         base_output_dir = Path(get_output_directory_for_user(username))
         self.user_results_dir = str(base_output_dir / username)
         self.user_logs_dir = os.path.join(LOG_DIR, username)
-        self.setWindowTitle("My History")
+        self.setWindowTitle(tr(self.language, "history_title"))
         self.entries: List[Dict[str, Union[str, datetime]]] = []
 
-        layout = QVBoxLayout(self)
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 12, 12, 12)
+        card_layout.setSpacing(12)
+
         self.info_label = QLabel()
-        layout.addWidget(self.info_label)
+        card_layout.addWidget(self.info_label)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Date/Time", "Base name", "File name", "Actions"])
@@ -788,31 +814,41 @@ class HistoryDialog(QDialog):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        layout.addWidget(self.table)
+        card_layout.addWidget(self.table)
 
-        self.released_button = QPushButton("Released")
+        self.released_button = QPushButton(tr(self.language, "released"))
         self.released_button.clicked.connect(self.send_selected_to_released)
-        clear_button = QPushButton("Limpar Histórico")
+        clear_button = QPushButton(tr(self.language, "history_clear"))
         clear_button.clicked.connect(self.clear_history)
-        close_button = QPushButton("Close")
+        close_button = QPushButton(tr(self.language, "close"))
         close_button.clicked.connect(self.accept)
         button_row = QHBoxLayout()
         button_row.addStretch()
         button_row.addWidget(clear_button)
         button_row.addWidget(self.released_button)
         button_row.addWidget(close_button)
-        layout.addLayout(button_row)
+        card_layout.addLayout(button_row)
+
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        wrapper.addWidget(card)
 
         self.refresh_history()
+        self.adjustSize()
+        min_size = self.sizeHint()
+        self.setMinimumSize(min_size)
+        self.setMaximumSize(min_size + QSize(240, 240))
 
     def refresh_history(self) -> None:
         self.entries = self._collect_entries()
         self.table.setRowCount(len(self.entries))
 
         if not self.entries:
-            self.info_label.setText("No previous comparisons found.")
+            self.info_label.setText(tr(self.language, "history_empty"))
         else:
-            self.info_label.setText(f"Showing {len(self.entries)} result(s) for {self.username}.")
+            self.info_label.setText(
+                tr(self.language, "history_showing").format(count=len(self.entries), user=self.username)
+            )
 
         for row_index, entry in enumerate(self.entries):
             timestamp_item = QTableWidgetItem(entry["display_time"])
@@ -824,11 +860,11 @@ class HistoryDialog(QDialog):
             action_widget = QWidget()
             action_layout = QHBoxLayout(action_widget)
             action_layout.setContentsMargins(0, 0, 0, 0)
-            view_button = QPushButton("View")
+            view_button = QPushButton(tr(self.language, "history_view"))
             view_button.clicked.connect(
                 lambda _=False, p=entry["path"]: open_with_default_application(p)
             )
-            export_button = QPushButton("Export")
+            export_button = QPushButton(tr(self.language, "history_export"))
             export_button.clicked.connect(
                 lambda _=False, p=entry["path"], fn=entry["filename"]: self.export_result(p, fn)
             )
@@ -836,7 +872,7 @@ class HistoryDialog(QDialog):
             action_layout.addWidget(export_button)
 
             if entry.get("log_path") and getattr(self.parent(), "role", "") == "admin":
-                log_button = QPushButton("View log")
+                log_button = QPushButton(tr(self.language, "history_view_log"))
                 log_button.clicked.connect(
                     lambda _=False, lp=entry["log_path"]: self.view_log(lp)
                 )
@@ -1000,21 +1036,21 @@ class HistoryDialog(QDialog):
 
     def clear_history(self) -> None:
         if not os.path.exists(self.user_results_dir):
-            QMessageBox.information(self, "My History", "Nenhum histórico para limpar.")
+            QMessageBox.information(self, self.windowTitle(), tr(self.language, "history_clear_none"))
             return
         if QMessageBox.question(
             self,
-            "Limpar Histórico",
-            "Remover todos os resultados exibidos? Esta ação não pode ser desfeita.",
+            self.windowTitle(),
+            tr(self.language, "history_clear_confirm"),
         ) != QMessageBox.Yes:
             return
         try:
             for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
                 pdf_path.unlink(missing_ok=True)
             self.refresh_history()
-            QMessageBox.information(self, "My History", "Histórico limpo.")
+            QMessageBox.information(self, self.windowTitle(), tr(self.language, "history_clear_done"))
         except Exception as exc:
-            QMessageBox.critical(self, "My History", f"Erro ao limpar histórico:\n{exc}")
+            QMessageBox.critical(self, self.windowTitle(), f"Erro ao limpar histórico:\n{exc}")
 
 
 class SettingsDialog(QDialog):
@@ -1283,7 +1319,7 @@ class ReleasedDialog(QDialog):
         self.role = role
         self.language = language
         self.setWindowTitle(tr(language, "released_title"))
-        self.resize(800, 420)
+        self.adjustSize()
 
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(16, 16, 16, 16)
@@ -1336,6 +1372,9 @@ class ReleasedDialog(QDialog):
         wrapper.addLayout(layout)
 
         self.refresh()
+        min_size = self.sizeHint().expandedTo(QSize(760, 420))
+        self.setMinimumSize(min_size)
+        self.setMaximumSize(min_size + QSize(240, 240))
 
     def refresh(self) -> None:
         entries = list_released_entries()
@@ -1768,6 +1807,14 @@ class MainWindow(QMainWindow):
         self.setStatusBar(status_bar)
         self.apply_language_setting()
         self.apply_theme_setting()
+
+        final_size = self.sizeHint().expandedTo(QSize(880, 540))
+        self.setMinimumSize(final_size)
+        self.resize(final_size)
+        self.setMaximumSize(final_size + QSize(260, 180))
+        if self._dev_unlocked:
+            self._init_developer_menu()
+            self._update_developer_menu_state()
         self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label", allow_geometry=True)
         self._register_editable_widget("new_label", self.new_label, display_name="New PDF label", allow_geometry=True)
         self._register_editable_widget(
@@ -2071,59 +2118,64 @@ class MainWindow(QMainWindow):
             palette = QApplication.instance().style().standardPalette()
         QApplication.instance().setPalette(palette)
         if effective == "dark":
-            card_bg = "#242424"
-            canvas_bg = "#1c1c1c"
-            text_color = "#f3f3f3"
-            panel_bg = "#2a2a2a"
-            border = "#3a3a3a"
-            input_bg = "#1f1f1f"
-            button_bg = "#2c2c2c"
-            button_hover = "#343434"
-            button_pressed = "#2a2a2a"
-            button_border = "#3d3d3d"
-            disabled_bg = "#222222"
-            disabled_text = "#7f7f7f"
-            disabled_border = "#2f2f2f"
-            accent = "#5b8def"
-            accent_hover = "#6c9bff"
-            muted_text = "#b8b8b8"
+            colors = {
+                "card_bg": "#242424",
+                "canvas_bg": "#1c1c1c",
+                "text_color": "#f3f3f3",
+                "panel_bg": "#2a2a2a",
+                "border": "#3a3a3a",
+                "input_bg": "#1f1f1f",
+                "button_bg": "#2c2c2c",
+                "button_hover": "#343434",
+                "button_pressed": "#2a2a2a",
+                "button_border": "#3d3d3d",
+                "disabled_bg": "#222222",
+                "disabled_text": "#7f7f7f",
+                "disabled_border": "#2f2f2f",
+                "accent": "#5b8def",
+                "accent_hover": "#6c9bff",
+                "muted_text": "#b8b8b8",
+            }
         else:
-            card_bg = "#ffffff"
-            canvas_bg = "#f3f6fb"
-            text_color = "#1a1a1a"
-            panel_bg = "#ffffff"
-            border = "#d9e1ef"
-            input_bg = "#f7f9fc"
-            button_bg = "#f2f5fb"
-            button_hover = "#e7eef9"
-            button_pressed = "#dce6f7"
-            button_border = "#cbd5e5"
-            disabled_bg = "#eef1f6"
-            disabled_text = "#9aa3b5"
-            disabled_border = "#dfe5f0"
-            accent = "#2563eb"
-            accent_hover = "#1e4fbf"
-            muted_text = "#6b7280"
-        self.layout_canvas.setStyleSheet(
-            f"""
-            QWidget#layout_canvas {{
-                background-color: {canvas_bg};
-                color: {text_color};
+            colors = {
+                "card_bg": "#ffffff",
+                "canvas_bg": "#f3f6fb",
+                "text_color": "#1a1a1a",
+                "panel_bg": "#ffffff",
+                "border": "#d9e1ef",
+                "input_bg": "#f7f9fc",
+                "button_bg": "#f2f5fb",
+                "button_hover": "#e7eef9",
+                "button_pressed": "#dce6f7",
+                "button_border": "#cbd5e5",
+                "disabled_bg": "#eef1f6",
+                "disabled_text": "#9aa3b5",
+                "disabled_border": "#dfe5f0",
+                "accent": "#2563eb",
+                "accent_hover": "#1e4fbf",
+                "muted_text": "#6b7280",
+            }
+
+        self._theme_colors = colors
+        style_sheet = f"""
+            QWidget#layout_canvas, QDialog, QWidget {{
+                background-color: {colors['canvas_bg']};
+                color: {colors['text_color']};
                 font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
             }}
             QFrame#main_card {{
-                background-color: {card_bg};
+                background-color: {colors['card_bg']};
                 border-radius: 18px;
-                border: 1px solid {border};
+                border: 1px solid {colors['border']};
             }}
             QFrame#dialog_card {{
-                background-color: {panel_bg};
-                border: 1px solid {border};
+                background-color: {colors['panel_bg']};
+                border: 1px solid {colors['border']};
                 border-radius: 12px;
             }}
             QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#actions_group {{
-                background-color: {panel_bg};
-                border: 1px solid {border};
+                background-color: {colors['panel_bg']};
+                border: 1px solid {colors['border']};
                 border-radius: 12px;
             }}
             QLabel#title_label {{
@@ -2137,64 +2189,66 @@ class MainWindow(QMainWindow):
                 letter-spacing: 0.3px;
             }}
             QLabel[class="field_label"] {{
-                color: {muted_text};
+                color: {colors['muted_text']};
                 font-size: 13px;
             }}
             QLabel#version_label {{
-                color: {muted_text};
+                color: {colors['muted_text']};
             }}
             QLineEdit {{
                 padding: 8px 10px;
                 border-radius: 10px;
-                border: 1px solid {border};
-                background-color: {input_bg};
+                border: 1px solid {colors['border']};
+                background-color: {colors['input_bg']};
             }}
             QLineEdit:focus {{
-                border: 1px solid {accent};
+                border: 1px solid {colors['accent']};
                 outline: none;
             }}
             QPushButton {{
                 padding: 8px 14px;
                 border-radius: 10px;
-                border: 1px solid {button_border};
-                background-color: {button_bg};
-                color: {text_color};
+                border: 1px solid {colors['button_border']};
+                background-color: {colors['button_bg']};
+                color: {colors['text_color']};
                 font-weight: 600;
             }}
             QPushButton:hover {{
-                background-color: {button_hover};
+                background-color: {colors['button_hover']};
             }}
             QPushButton:pressed {{
-                background-color: {button_pressed};
+                background-color: {colors['button_pressed']};
             }}
             QPushButton:disabled {{
-                color: {disabled_text};
-                background-color: {disabled_bg};
-                border-color: {disabled_border};
+                color: {colors['disabled_text']};
+                background-color: {colors['disabled_bg']};
+                border-color: {colors['disabled_border']};
             }}
             QPushButton#compare_button {{
-                background-color: {accent};
+                background-color: {colors['accent']};
                 color: #ffffff;
                 border: none;
             }}
             QPushButton#compare_button:hover {{
-                background-color: {accent_hover};
+                background-color: {colors['accent_hover']};
             }}
             QPushButton#cancel_button {{
-                border-color: {border};
+                border-color: {colors['border']};
             }}
             QProgressBar {{
-                border: 1px solid {border};
+                border: 1px solid {colors['border']};
                 border-radius: 8px;
-                background-color: {input_bg};
+                background-color: {colors['input_bg']};
                 height: 12px;
             }}
             QProgressBar::chunk {{
-                background-color: {accent};
+                background-color: {colors['accent']};
                 border-radius: 8px;
             }}
         """
-        )
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(style_sheet)
 
     def _connection_texts(self) -> Dict[str, str]:
         return {
@@ -3030,6 +3084,8 @@ class MainWindow(QMainWindow):
     def _unlock_developer_mode(self) -> None:
         if is_dev_mode():
             self.load_dev_layout()
+        self._init_developer_menu()
+        self._update_developer_menu_state()
         self.open_developer_tools()
 
     def _init_developer_menu(self) -> None:
