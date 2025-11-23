@@ -1319,47 +1319,162 @@ class MainWindow(QMainWindow):
         )
         self.layout_indicator.hide()
 
-        file_layout = QGridLayout()
-        self.old_label = QLabel("Old revision (PDF)")
-        self.new_label = QLabel("New revision (PDF)")
-        file_layout.addWidget(self.old_label, 0, 0)
-        file_layout.addWidget(self.old_path_edit, 0, 1)
-        file_layout.addWidget(self.old_browse_button, 0, 2)
-        file_layout.addWidget(self.new_label, 1, 0)
-        file_layout.addWidget(self.new_path_edit, 1, 1)
-        file_layout.addWidget(self.new_browse_button, 1, 2)
+        # Modernized visual language for the window
+        central_widget.setStyleSheet(
+            """
+            QWidget#layout_canvas {
+                background-color: #1f1f1f;
+                color: #f3f3f3;
+                font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            }
+            QFrame#top_toolbar, QFrame#progress_panel {
+                background-color: #2a2a2a;
+                border: 1px solid #3a3a3a;
+                border-radius: 10px;
+            }
+            QLabel#title_label {
+                font-size: 18px;
+                font-weight: 600;
+            }
+            QLabel[class="section_label"] {
+                font-size: 12px;
+                letter-spacing: 0.2px;
+                color: #c9c9c9;
+                text-transform: uppercase;
+            }
+            QLabel[class="field_label"] {
+                font-size: 12px;
+                color: #dcdcdc;
+            }
+            QLineEdit {
+                padding: 8px 10px;
+                border: 1px solid #3f3f3f;
+                border-radius: 6px;
+                background: #1b1b1b;
+                color: #f5f5f5;
+                selection-background-color: #2d65c4;
+            }
+            QPushButton {
+                padding: 8px 14px;
+                border-radius: 8px;
+                border: 1px solid #3a3a3a;
+                background-color: #303030;
+                color: #f0f0f0;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+            QPushButton:disabled {
+                color: #9b9b9b;
+                background-color: #2b2b2b;
+                border-color: #3a3a3a;
+            }
+            QPushButton#compare_button {
+                background-color: #2d65c4;
+                border: 1px solid #2d65c4;
+                color: white;
+                font-weight: 600;
+            }
+            QPushButton#compare_button:hover {
+                background-color: #3373dc;
+            }
+            QProgressBar {
+                border: 1px solid #3a3a3a;
+                border-radius: 8px;
+                background: #1b1b1b;
+                text-align: center;
+                height: 14px;
+            }
+            QProgressBar::chunk {
+                background-color: #2d65c4;
+                border-radius: 8px;
+            }
+        """
+        )
 
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.history_button)
-        button_layout.addWidget(self.released_button)
-        button_layout.addWidget(self.settings_button)
+        # Group: File selection
+        file_group = QFrame()
+        file_group.setObjectName("file_group")
+        file_group_layout = QGridLayout(file_group)
+        file_group_layout.setContentsMargins(12, 12, 12, 12)
+        file_group_layout.setHorizontalSpacing(12)
+        file_group_layout.setVerticalSpacing(10)
+        file_group_layout.setColumnStretch(1, 1)
+
+        self.old_label = QLabel("Old revision (PDF)")
+        self.old_label.setObjectName("old_label")
+        self.old_label.setProperty("class", "field_label")
+        self.new_label = QLabel("New revision (PDF)")
+        self.new_label.setObjectName("new_label")
+        self.new_label.setProperty("class", "field_label")
+
+        file_group_layout.addWidget(self.old_label, 0, 0)
+        file_group_layout.addWidget(self.old_path_edit, 0, 1)
+        file_group_layout.addWidget(self.old_browse_button, 0, 2)
+        file_group_layout.addWidget(self.new_label, 1, 0)
+        file_group_layout.addWidget(self.new_path_edit, 1, 1)
+        file_group_layout.addWidget(self.new_browse_button, 1, 2)
+
+        # Group: Actions
+        actions_group = QFrame()
+        actions_group.setObjectName("actions_group")
+        actions_layout = QHBoxLayout(actions_group)
+        actions_layout.setContentsMargins(12, 4, 12, 4)
+        actions_layout.setSpacing(10)
+        actions_layout.addWidget(self.history_button)
+        actions_layout.addWidget(self.released_button)
+        actions_layout.addWidget(self.settings_button)
         if self.role == "admin":
             self.admin_button = QPushButton("Administração")
             self.admin_button.clicked.connect(self.open_admin_dialog)
-            button_layout.addWidget(self.admin_button)
-        button_layout.addStretch()
-        button_layout.addWidget(self.cancel_button)
-        button_layout.addWidget(self.compare_button)
+            actions_layout.addWidget(self.admin_button)
+        actions_layout.addStretch()
+        actions_layout.addWidget(self.cancel_button)
+        actions_layout.addWidget(self.compare_button)
 
+        # Structured main toolbar container
         self.top_toolbar_frame = QFrame(central_widget)
         self.top_toolbar_frame.setObjectName("top_toolbar")
         top_layout = QVBoxLayout(self.top_toolbar_frame)
-        top_layout.setContentsMargins(8, 8, 8, 8)
-        top_layout.addLayout(file_layout)
-        top_layout.addSpacing(8)
-        top_layout.addLayout(button_layout)
+        top_layout.setContentsMargins(16, 16, 16, 16)
+        top_layout.setSpacing(14)
+
+        title_row = QHBoxLayout()
+        title = QLabel("CompareSet")
+        title.setObjectName("title_label")
+        subtitle = QLabel("Selecione os arquivos e execute a comparação")
+        subtitle.setProperty("class", "field_label")
+        subtitle.setStyleSheet("color: #bfbfbf;")
+        title_row.addWidget(title)
+        title_row.addStretch()
+        title_row.addWidget(subtitle)
+        top_layout.addLayout(title_row)
+
+        top_layout.addWidget(file_group)
+        actions_header = QLabel("Ações")
+        actions_header.setProperty("class", "section_label")
+        actions_header.setStyleSheet("margin-left: 2px;")
+        top_layout.addWidget(actions_header)
+        top_layout.addWidget(actions_group)
+
         self.toolbar_dynamic_layout = QHBoxLayout()
         self.toolbar_dynamic_layout.setContentsMargins(0, 0, 0, 0)
         self.toolbar_dynamic_layout.addStretch()
-        top_layout.addSpacing(4)
         top_layout.addLayout(self.toolbar_dynamic_layout)
 
+        # Progress and status area
         self.progress_frame = QFrame(central_widget)
         self.progress_frame.setObjectName("progress_panel")
         progress_layout = QVBoxLayout(self.progress_frame)
-        progress_layout.setContentsMargins(8, 8, 8, 8)
-        progress_layout.addWidget(self.progress_bar)
+        progress_layout.setContentsMargins(16, 16, 16, 16)
+        progress_layout.setSpacing(8)
+
+        status_header = QLabel("Status")
+        status_header.setProperty("class", "section_label")
+        status_header.setStyleSheet("margin-left: 2px;")
+        progress_layout.addWidget(status_header)
         progress_layout.addWidget(self.status_label)
+        progress_layout.addWidget(self.progress_bar)
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(False)
         status_bar.addWidget(self.offline_banner, 1)
@@ -1692,8 +1807,8 @@ class MainWindow(QMainWindow):
         if OFFLINE_MODE:
             self.offline_banner.setText(translations["offline_status"])
             self.offline_banner.setStyleSheet(
-                "color: #842029; background-color: #f8d7da; "
-                "border: 1px solid #f5c2c7; padding: 6px 10px; border-radius: 4px;"
+                "color: #f0e0dd; background-color: #3b1f1f; "
+                "border: 1px solid #5c2b2b; padding: 8px 12px; border-radius: 6px;"
             )
             self.offline_banner.show()
         else:
