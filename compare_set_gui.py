@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import sys
 import threading
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -59,6 +60,7 @@ import compareset_env as csenv
 from connection_monitor import ConnectionMonitor
 from developer_tools_dialog import DeveloperToolsDialog
 from compareset_env import (
+    APP_VERSION,
     CURRENT_USER,
     IS_TESTER,
     OFFLINE_MODE,
@@ -67,6 +69,7 @@ from compareset_env import (
     HISTORY_DIR,
     LOG_DIR,
     OUTPUT_DIR,
+    VERSION_INFO_PATH,
     initialize_environment,
     is_super_admin,
     is_offline_tester,
@@ -1223,7 +1226,7 @@ class MainWindow(QMainWindow):
         self.current_language = user_settings.get("language", "pt-BR")
         self.current_theme = user_settings.get("theme", "auto")
         self.last_browse_dir: Optional[str] = None
-        self.setWindowTitle("CompareSet")
+        self.setWindowTitle(f"CompareSet v{APP_VERSION}")
         if self.preview_mode:
             self.setWindowTitle(f"CompareSet (preview: {self.role})")
 
@@ -1288,17 +1291,42 @@ class MainWindow(QMainWindow):
         self.offline_banner.setVisible(False)
         self._offline_warning_shown = False
 
+        self.version_label = QLabel(f"v{APP_VERSION}")
+        self.version_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.version_label.setStyleSheet("color: #999;")
+        self.version_banner = QPushButton()
+        self.version_banner.setVisible(False)
+        self.version_banner.clicked.connect(self._open_update_link)
+        self._update_download_url: Optional[str] = None
+
         self._log_history: List[str] = []
         self._dev_dialog: Optional[DeveloperToolsDialog] = None
 
         self._last_old_path: Optional[Path] = None
 
-        self.resize(900, 620)
+        self.resize(1000, 650)
+        self.setMinimumSize(900, 600)
+        self.setMaximumSize(1200, 800)
         central_widget = QWidget()
         central_widget.setObjectName("layout_canvas")
-        central_widget.setLayout(None)
         central_widget.setMinimumSize(720, 520)
         central_widget.setAttribute(Qt.WA_StyledBackground, True)
+
+        canvas_layout = QVBoxLayout(central_widget)
+        canvas_layout.setContentsMargins(24, 24, 24, 24)
+        canvas_layout.setSpacing(16)
+        canvas_layout.addStretch()
+
+        self.main_card = QFrame()
+        self.main_card.setObjectName("main_card")
+        self.main_card.setMaximumWidth(900)
+        self.main_card.setMinimumWidth(780)
+        main_card_layout = QVBoxLayout(self.main_card)
+        main_card_layout.setContentsMargins(16, 16, 16, 16)
+        main_card_layout.setSpacing(12)
+
+        canvas_layout.addWidget(self.main_card, 0, Qt.AlignHCenter)
+        canvas_layout.addStretch()
         self.layout_canvas = central_widget
         self.layout_mode_enabled = False
         self._dev_features_active = False
@@ -1319,78 +1347,7 @@ class MainWindow(QMainWindow):
         )
         self.layout_indicator.hide()
 
-        # Modernized visual language for the window
-        central_widget.setStyleSheet(
-            """
-            QWidget#layout_canvas {
-                background-color: #1f1f1f;
-                color: #f3f3f3;
-                font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-            }
-            QFrame#top_toolbar, QFrame#progress_panel {
-                background-color: #2a2a2a;
-                border: 1px solid #3a3a3a;
-                border-radius: 10px;
-            }
-            QLabel#title_label {
-                font-size: 18px;
-                font-weight: 600;
-            }
-            QLabel[class="section_label"] {
-                font-size: 12px;
-                letter-spacing: 0.2px;
-                color: #c9c9c9;
-                text-transform: uppercase;
-            }
-            QLabel[class="field_label"] {
-                font-size: 12px;
-                color: #dcdcdc;
-            }
-            QLineEdit {
-                padding: 8px 10px;
-                border: 1px solid #3f3f3f;
-                border-radius: 6px;
-                background: #1b1b1b;
-                color: #f5f5f5;
-                selection-background-color: #2d65c4;
-            }
-            QPushButton {
-                padding: 8px 14px;
-                border-radius: 8px;
-                border: 1px solid #3a3a3a;
-                background-color: #303030;
-                color: #f0f0f0;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-            }
-            QPushButton:disabled {
-                color: #9b9b9b;
-                background-color: #2b2b2b;
-                border-color: #3a3a3a;
-            }
-            QPushButton#compare_button {
-                background-color: #2d65c4;
-                border: 1px solid #2d65c4;
-                color: white;
-                font-weight: 600;
-            }
-            QPushButton#compare_button:hover {
-                background-color: #3373dc;
-            }
-            QProgressBar {
-                border: 1px solid #3a3a3a;
-                border-radius: 8px;
-                background: #1b1b1b;
-                text-align: center;
-                height: 14px;
-            }
-            QProgressBar::chunk {
-                background-color: #2d65c4;
-                border-radius: 8px;
-            }
-        """
-        )
+        # Theme styling is applied dynamically in ``apply_theme_setting``.
 
         # Group: File selection
         file_group = QFrame()
@@ -1433,28 +1390,28 @@ class MainWindow(QMainWindow):
         actions_layout.addWidget(self.compare_button)
 
         # Structured main toolbar container
-        self.top_toolbar_frame = QFrame(central_widget)
+        self.top_toolbar_frame = QFrame(self.main_card)
         self.top_toolbar_frame.setObjectName("top_toolbar")
         top_layout = QVBoxLayout(self.top_toolbar_frame)
         top_layout.setContentsMargins(16, 16, 16, 16)
         top_layout.setSpacing(14)
 
         title_row = QHBoxLayout()
-        title = QLabel("CompareSet")
-        title.setObjectName("title_label")
-        subtitle = QLabel("Selecione os arquivos e execute a comparação")
-        subtitle.setProperty("class", "field_label")
-        subtitle.setStyleSheet("color: #bfbfbf;")
-        title_row.addWidget(title)
+        self.title_label = QLabel("CompareSet")
+        self.title_label.setObjectName("title_label")
+        self.subtitle_label = QLabel("Selecione os arquivos e execute a comparação")
+        self.subtitle_label.setProperty("class", "field_label")
+        self.subtitle_label.setStyleSheet("color: #bfbfbf;")
+        title_row.addWidget(self.title_label)
         title_row.addStretch()
-        title_row.addWidget(subtitle)
+        title_row.addWidget(self.subtitle_label)
         top_layout.addLayout(title_row)
 
         top_layout.addWidget(file_group)
-        actions_header = QLabel("Ações")
-        actions_header.setProperty("class", "section_label")
-        actions_header.setStyleSheet("margin-left: 2px;")
-        top_layout.addWidget(actions_header)
+        self.actions_header = QLabel("Ações")
+        self.actions_header.setProperty("class", "section_label")
+        self.actions_header.setStyleSheet("margin-left: 2px;")
+        top_layout.addWidget(self.actions_header)
         top_layout.addWidget(actions_group)
 
         self.toolbar_dynamic_layout = QHBoxLayout()
@@ -1463,18 +1420,27 @@ class MainWindow(QMainWindow):
         top_layout.addLayout(self.toolbar_dynamic_layout)
 
         # Progress and status area
-        self.progress_frame = QFrame(central_widget)
+        self.progress_frame = QFrame(self.main_card)
         self.progress_frame.setObjectName("progress_panel")
         progress_layout = QVBoxLayout(self.progress_frame)
         progress_layout.setContentsMargins(16, 16, 16, 16)
         progress_layout.setSpacing(8)
 
-        status_header = QLabel("Status")
-        status_header.setProperty("class", "section_label")
-        status_header.setStyleSheet("margin-left: 2px;")
-        progress_layout.addWidget(status_header)
+        self.status_header = QLabel("Status")
+        self.status_header.setProperty("class", "section_label")
+        self.status_header.setStyleSheet("margin-left: 2px;")
+        progress_layout.addWidget(self.status_header)
         progress_layout.addWidget(self.status_label)
         progress_layout.addWidget(self.progress_bar)
+        footer_row = QHBoxLayout()
+        footer_row.addWidget(self.version_banner)
+        footer_row.addStretch(1)
+        footer_row.addWidget(self.version_label)
+
+        main_card_layout.addWidget(self.top_toolbar_frame)
+        main_card_layout.addWidget(self.progress_frame)
+        main_card_layout.addLayout(footer_row)
+
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(False)
         status_bar.addWidget(self.offline_banner, 1)
@@ -1591,6 +1557,8 @@ class MainWindow(QMainWindow):
 
         self._apply_default_layout_geometry()
         self._apply_connection_state(SERVER_ONLINE)
+        if SERVER_ONLINE:
+            self._check_for_updates()
         self.connection_monitor = ConnectionMonitor(parent=self)
         self.connection_monitor.status_changed.connect(self._on_connection_status_changed)
         self.connection_monitor.check_failed.connect(self._on_connection_error)
@@ -1729,28 +1697,57 @@ class MainWindow(QMainWindow):
         self.apply_language_setting()
 
     def apply_language_setting(self) -> None:
-        if self.current_language == "pt-BR":
-            self.old_label.setText("Revisão antiga (PDF)")
-            self.new_label.setText("Nova revisão (PDF)")
-            self.old_browse_button.setText("Procurar…")
-            self.new_browse_button.setText("Procurar…")
-            self.compare_button.setText("Comparar")
-            self.cancel_button.setText("Cancelar")
-            self.history_button.setText("Meu histórico")
-            self.released_button.setText("Liberados")
-            self.settings_button.setText("Configurações")
-            self.status_label.setText("Pronto")
-        else:
-            self.old_label.setText("Old revision (PDF)")
-            self.new_label.setText("New revision (PDF)")
-            self.old_browse_button.setText("Browse…")
-            self.new_browse_button.setText("Browse…")
-            self.compare_button.setText("Compare")
-            self.cancel_button.setText("Cancel")
-            self.history_button.setText("My History")
-            self.released_button.setText("Released")
-            self.settings_button.setText("Settings")
-            self.status_label.setText("Ready")
+        translations = {
+            "pt-BR": {
+                "title": "CompareSet",
+                "subtitle": "Selecione os arquivos e execute a comparação",
+                "actions": "Ações",
+                "status": "Status",
+                "old": "Revisão antiga (PDF)",
+                "new": "Nova revisão (PDF)",
+                "browse": "Procurar…",
+                "history": "Meu histórico",
+                "released": "Liberados",
+                "settings": "Configurações",
+                "compare": "Comparar",
+                "cancel": "Cancelar",
+                "ready": "Pronto",
+                "admin": "Administração",
+            },
+            "en-US": {
+                "title": "CompareSet",
+                "subtitle": "Select the files and run the comparison",
+                "actions": "Actions",
+                "status": "Status",
+                "old": "Old revision (PDF)",
+                "new": "New revision (PDF)",
+                "browse": "Browse…",
+                "history": "My History",
+                "released": "Released",
+                "settings": "Settings",
+                "compare": "Compare",
+                "cancel": "Cancel",
+                "ready": "Ready",
+                "admin": "Administration",
+            },
+        }
+        current = translations.get(self.current_language, translations["pt-BR"])
+        self.title_label.setText(current["title"])
+        self.subtitle_label.setText(current["subtitle"])
+        self.actions_header.setText(current["actions"])
+        self.status_header.setText(current["status"])
+        self.old_label.setText(current["old"])
+        self.new_label.setText(current["new"])
+        self.old_browse_button.setText(current["browse"])
+        self.new_browse_button.setText(current["browse"])
+        self.compare_button.setText(current["compare"])
+        self.cancel_button.setText(current["cancel"])
+        self.history_button.setText(current["history"])
+        self.released_button.setText(current["released"])
+        self.settings_button.setText(current["settings"])
+        if self.admin_button is not None:
+            self.admin_button.setText(current["admin"])
+        self.status_label.setText(current["ready"])
         self.update_connection_banner()
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
@@ -1782,24 +1779,57 @@ class MainWindow(QMainWindow):
         else:
             palette = QApplication.instance().style().standardPalette()
         QApplication.instance().setPalette(palette)
+        if effective == "dark":
+            card_bg = "#252525"
+            canvas_bg = "#1f1f1f"
+            text_color = "#f3f3f3"
+            panel_bg = "#2a2a2a"
+            border = "#3a3a3a"
+        else:
+            card_bg = "#ffffff"
+            canvas_bg = "#f5f5f5"
+            text_color = "#1a1a1a"
+            panel_bg = "#ffffff"
+            border = "#d0d0d0"
+        self.layout_canvas.setStyleSheet(
+            f"""
+            QWidget#layout_canvas {{
+                background-color: {canvas_bg};
+                color: {text_color};
+                font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            }}
+            QFrame#main_card {{
+                background-color: {card_bg};
+                border-radius: 16px;
+                border: 1px solid {border};
+            }}
+            QFrame#top_toolbar, QFrame#progress_panel {{
+                background-color: {panel_bg};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+        """
+        )
 
     def _connection_texts(self) -> Dict[str, str]:
         if self.current_language == "pt-BR":
             return {
-                "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN.",
+                "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
                 "offline_info": (
-                    "Modo offline: sem conexão com o servidor. As comparações funcionarão, "
-                    "mas o histórico, logs e arquivos de saída serão salvos apenas localmente."
+                    "Modo offline: sem conexão com o servidor. As comparações funcionarão localmente, "
+                    "mas histórico, logs e arquivos de saída serão salvos apenas no computador."
                 ),
                 "reconnected": "Reconectado ao servidor.",
+                "update_available": "Nova versão disponível – clique aqui para download.",
             }
         return {
-            "offline_status": "Status: Offline – no connection to the server. Check your network/VPN.",
+            "offline_status": "Status: Offline – no connection to the server. Check your network/VPN or contact your system administrator.",
             "offline_info": (
-                "Offline mode: no connection to the server. Comparisons will work, but history, "
-                "logs and output files will be saved only locally."
+                "Offline mode: no connection to the server. Comparisons will work locally, but history, "
+                "logs and output files will be saved only on this computer."
             ),
             "reconnected": "Reconnected to server.",
+            "update_available": "New version available – click here to download.",
         }
 
     def update_connection_banner(self) -> None:
@@ -1823,23 +1853,80 @@ class MainWindow(QMainWindow):
             except Exception:
                 logger.exception("Failed to ensure directories after connectivity change")
         self.update_connection_banner()
-        blocked = OFFLINE_MODE
-        for btn in (self.compare_button, self.history_button, self.released_button):
+        blocked = OFFLINE_MODE and not (self._dev_unlocked or is_dev_mode())
+        for btn in (
+            self.compare_button,
+            self.history_button,
+            self.released_button,
+            self.old_browse_button,
+            self.new_browse_button,
+        ):
             btn.setEnabled(not blocked and self._worker is None)
+        if self.admin_button is not None:
+            self.admin_button.setEnabled(not blocked)
         if blocked and self._worker is not None:
             self.request_cancel()
         if not blocked and not previous_state:
             translations = self._connection_texts()
             self.status_label.setText(translations["reconnected"])
+        if not SERVER_ONLINE:
+            self.version_banner.hide()
+            self._update_download_url = None
         if self._dev_dialog is not None:
             self._dev_dialog.update_connection_text(SERVER_ONLINE)
 
     def _on_connection_status_changed(self, online: bool) -> None:
         self._apply_connection_state(online)
+        if online:
+            self._check_for_updates()
         self.show_offline_warning_once()
 
     def _on_connection_error(self, message: str) -> None:
         logger.warning("Connection check failed: %s", message)
+
+    def _parse_version(self, value: str) -> List[int]:
+        parts = []
+        for chunk in value.strip().split("."):
+            try:
+                parts.append(int(chunk))
+            except ValueError:
+                parts.append(0)
+        return parts or [0]
+
+    def _check_for_updates(self) -> None:
+        if not SERVER_ONLINE:
+            return
+        try:
+            with open(VERSION_INFO_PATH, "r", encoding="utf-8") as handle:
+                lines = handle.read().splitlines()
+        except FileNotFoundError:
+            return
+        except Exception:
+            logger.exception("Unable to read remote version file")
+            return
+        if not lines:
+            return
+        server_version = lines[0].strip()
+        download_url = lines[1].strip() if len(lines) > 1 else ""
+        local_version = APP_VERSION
+        if self._parse_version(server_version) > self._parse_version(local_version):
+            translations = self._connection_texts()
+            self.version_banner.setText(translations.get("update_available", "New version available"))
+            self.version_banner.setStyleSheet(
+                "background-color: #f3b026; color: #1a1a1a; font-weight: 600; padding: 6px 10px;"
+            )
+            self.version_banner.setVisible(True)
+            self._update_download_url = download_url or None
+        else:
+            self.version_banner.setVisible(False)
+            self._update_download_url = None
+
+    def _open_update_link(self) -> None:
+        if self._update_download_url:
+            try:
+                webbrowser.open(self._update_download_url)
+            except Exception:
+                logger.exception("Failed to open update link")
 
     def show_offline_warning_once(self) -> None:
         if OFFLINE_MODE and not self._offline_warning_shown:
@@ -2379,18 +2466,7 @@ class MainWindow(QMainWindow):
             components.append(widget_key)
 
     def _apply_default_layout_geometry(self) -> None:
-        canvas_size: QSize = self.layout_canvas.size() or QSize(900, 620)
-        width = max(640, canvas_size.width() - 20)
-        y = 10
-        for key in ("top_toolbar", "progress_panel"):
-            widget = self._layout_targets.get(key)
-            if widget is None or not widget.isVisible():
-                continue
-            hint = widget.sizeHint() or QSize(width, 120)
-            height = max(100, hint.height() + 16)
-            widget.setGeometry(10, y, width, height)
-            self._default_layouts[key] = widget.geometry()
-            y += height + 10
+        # Layouts keep the card centered; only keep a sensible indicator anchor.
         self.layout_indicator.move(16, 10)
 
     def _is_reasonable_geometry(self, rect: QRect) -> bool:
