@@ -56,6 +56,7 @@ from compareset_engine import (
     write_log,
 )
 import compareset_env as csenv
+from connection_monitor import ConnectionMonitor
 from developer_tools_dialog import DeveloperToolsDialog
 from compareset_env import (
     CURRENT_USER,
@@ -1282,16 +1283,13 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("status_label")
-        self.connection_status_label = QLabel()
-        self.connection_status_label.setAlignment(Qt.AlignLeft)
-        self.reload_button = QPushButton()
-        self.reload_button.setFixedHeight(22)
-        self.reload_button.clicked.connect(self.reload_server_status)
+        self.offline_banner = QLabel()
+        self.offline_banner.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.offline_banner.setVisible(False)
         self._offline_warning_shown = False
 
-        self.log_view = QTextEdit()
-        self.log_view.setReadOnly(True)
-        self.log_view.setLineWrapMode(QTextEdit.NoWrap)
+        self._log_history: List[str] = []
+        self._dev_dialog: Optional[DeveloperToolsDialog] = None
 
         self._last_old_path: Optional[Path] = None
 
@@ -1335,6 +1333,10 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.history_button)
         button_layout.addWidget(self.released_button)
         button_layout.addWidget(self.settings_button)
+        if self.role == "admin":
+            self.admin_button = QPushButton("Administração")
+            self.admin_button.clicked.connect(self.open_admin_dialog)
+            button_layout.addWidget(self.admin_button)
         button_layout.addStretch()
         button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.compare_button)
@@ -1358,30 +1360,9 @@ class MainWindow(QMainWindow):
         progress_layout.setContentsMargins(8, 8, 8, 8)
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.status_label)
-        self.progress_dynamic_layout = QHBoxLayout()
-        self.progress_dynamic_layout.setContentsMargins(0, 0, 0, 0)
-        self.progress_dynamic_layout.addStretch()
-        progress_layout.addSpacing(4)
-        progress_layout.addLayout(self.progress_dynamic_layout)
-
-        self.admin_frame = QFrame(central_widget)
-        self.admin_frame.setObjectName("admin_panel")
-        if self.role == "admin":
-            self.admin_button = QPushButton("Administração")
-            self.admin_button.clicked.connect(self.open_admin_dialog)
-            admin_layout = QVBoxLayout(self.admin_frame)
-            admin_layout.setContentsMargins(8, 8, 8, 8)
-            admin_layout.addWidget(self.admin_button)
-            admin_layout.addWidget(self.log_view)
-            self.admin_dynamic_layout = QVBoxLayout()
-            admin_layout.addLayout(self.admin_dynamic_layout)
-        else:
-            self.admin_frame.setVisible(False)
-
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(False)
-        status_bar.addWidget(self.connection_status_label, 1)
-        status_bar.addPermanentWidget(self.reload_button)
+        status_bar.addWidget(self.offline_banner, 1)
 
         self.setStatusBar(status_bar)
         self.apply_language_setting()
@@ -1453,9 +1434,6 @@ class MainWindow(QMainWindow):
         )
         self._register_area_component("progress_panel", "status_label")
         self._register_editable_widget(
-            "connection_status", self.connection_status_label, display_name="Connection banner", allow_style=True
-        )
-        self._register_editable_widget(
             "progress_bar",
             self.progress_bar,
             display_name="Progress bar",
@@ -1464,22 +1442,6 @@ class MainWindow(QMainWindow):
             allow_geometry=True,
         )
         self._register_area_component("progress_panel", "progress_bar")
-        self._register_editable_widget(
-            "reload_button",
-            self.reload_button,
-            display_name="Reload connection",
-            allow_icon=True,
-            allow_action=True,
-        )
-        self._register_editable_widget(
-            "log_view",
-            self.log_view,
-            display_name="Admin log",
-            allow_text=False,
-            allow_style=True,
-            allow_geometry=True,
-        )
-        self._register_area_component("admin_panel", "log_view")
         if self.admin_button is not None:
             self._register_editable_widget(
                 "admin_button",
@@ -1488,16 +1450,12 @@ class MainWindow(QMainWindow):
                 allow_icon=True,
                 allow_action=True,
             )
-            self._register_area_component("admin_panel", "admin_button")
         self.setCentralWidget(central_widget)
         self._register_layout_target("top_toolbar", self.top_toolbar_frame)
         self._register_layout_target("progress_panel", self.progress_frame)
-        if self.admin_frame.isVisible():
-            self._register_layout_target("admin_panel", self.admin_frame)
         self._dynamic_parent_layouts = {
             "top_toolbar": self.toolbar_dynamic_layout,
-            "progress_panel": self.progress_dynamic_layout,
-            "admin_panel": getattr(self, "admin_dynamic_layout", None),
+            "progress_panel": None,
         }
         self._register_editable_widget(
             "top_toolbar",
@@ -1515,30 +1473,22 @@ class MainWindow(QMainWindow):
             allow_style=True,
             allow_geometry=True,
         )
-        if self.admin_frame.isVisible():
-            self._register_editable_widget(
-                "admin_panel",
-                self.admin_frame,
-                display_name="Admin panel",
-                allow_text=False,
-                allow_style=True,
-                allow_geometry=True,
-            )
 
         self._apply_default_layout_geometry()
-        # Developer UI remains hidden until unlocked via the secret shortcut.
-        # This prevents the Developer menu from appearing by default even when
-        # dev_mode is enabled in the configuration.
-        if self._is_developer_enabled():
-            self._init_developer_menu()
-            self.load_dev_layout()
+        self._apply_connection_state(SERVER_ONLINE)
+        self.connection_monitor = ConnectionMonitor(parent=self)
+        self.connection_monitor.status_changed.connect(self._on_connection_status_changed)
+        self.connection_monitor.check_failed.connect(self._on_connection_error)
+        self.connection_monitor.start()
         self.show_offline_warning_once()
         self.prompt_for_email_if_missing()
 
     @Slot(str)
     def append_log(self, message: str) -> None:
-        self.log_view.append(message)
-        self.log_view.ensureCursorVisible()
+        self._log_history.append(message)
+        self._log_history = self._log_history[-500:]
+        if self._dev_dialog is not None:
+            self._dev_dialog.set_log_messages(list(self._log_history))
 
     def select_file(self, target: QLineEdit) -> None:
         start_dir = self.last_browse_dir or str(Path.home())
@@ -1555,9 +1505,14 @@ class MainWindow(QMainWindow):
             logger.info("Cancellation requested by user.")
             self._worker.request_cancel()
             self.cancel_button.setEnabled(False)
+            self.progress_bar.setRange(0, 0)
             self.status_label.setText("Cancelling…")
 
     def start_comparison(self) -> None:
+        if OFFLINE_MODE:
+            translations = self._connection_texts()
+            QMessageBox.warning(self, "CompareSet", translations["offline_status"])
+            return
         old_path = Path(self.old_path_edit.text()).expanduser().resolve()
         new_path = Path(self.new_path_edit.text()).expanduser().resolve()
 
@@ -1640,7 +1595,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.status_label.setText("Comparison cancelled.")
+        self.status_label.setText("Pronto" if self.current_language == "pt-BR" else "Ready")
         self.cancel_button.setEnabled(False)
         QMessageBox.information(self, "CompareSet", "Comparison was cancelled.")
         self._worker = None
@@ -1681,8 +1636,6 @@ class MainWindow(QMainWindow):
             self.released_button.setText("Released")
             self.settings_button.setText("Settings")
             self.status_label.setText("Ready")
-        translations = self._connection_texts()
-        self.reload_button.setText(translations["reload_label"])
         self.update_connection_banner()
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
@@ -1718,64 +1671,66 @@ class MainWindow(QMainWindow):
     def _connection_texts(self) -> Dict[str, str]:
         if self.current_language == "pt-BR":
             return {
-                "online_status": "Status: Conectado ao servidor",
-                "offline_status": "Status: Offline (sem conexão com o servidor)",
+                "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN.",
                 "offline_info": (
                     "Modo offline: sem conexão com o servidor. As comparações funcionarão, "
                     "mas o histórico, logs e arquivos de saída serão salvos apenas localmente."
                 ),
-                "reload_label": "Recarregar",
-                "still_offline": "Servidor ainda indisponível. Verifique sua VPN/conexão.",
                 "reconnected": "Reconectado ao servidor.",
             }
         return {
-            "online_status": "Status: Connected to server",
-            "offline_status": "Status: Offline (no connection to the server)",
+            "offline_status": "Status: Offline – no connection to the server. Check your network/VPN.",
             "offline_info": (
                 "Offline mode: no connection to the server. Comparisons will work, but history, "
                 "logs and output files will be saved only locally."
             ),
-            "reload_label": "Reload",
-            "still_offline": "Server still unavailable. Please check your VPN/connection.",
             "reconnected": "Reconnected to server.",
         }
 
     def update_connection_banner(self) -> None:
         translations = self._connection_texts()
         if OFFLINE_MODE:
-            self.connection_status_label.setText(translations["offline_status"])
-            self.connection_status_label.setStyleSheet(
+            self.offline_banner.setText(translations["offline_status"])
+            self.offline_banner.setStyleSheet(
                 "color: #842029; background-color: #f8d7da; "
-                "border: 1px solid #f5c2c7; padding: 4px 8px; border-radius: 4px;"
+                "border: 1px solid #f5c2c7; padding: 6px 10px; border-radius: 4px;"
             )
+            self.offline_banner.show()
         else:
-            self.connection_status_label.setText(translations["online_status"])
-            self.connection_status_label.setStyleSheet(
-                "color: #0f5132; background-color: #d1e7dd; "
-                "border: 1px solid #badbcc; padding: 4px 8px; border-radius: 4px;"
-            )
+            self.offline_banner.hide()
+
+    def _apply_connection_state(self, online: bool) -> None:
+        previous_state = SERVER_ONLINE
+        set_connection_state(online)
+        if SERVER_ONLINE or is_offline_tester(CURRENT_USER):
+            try:
+                ensure_server_directories()
+            except Exception:
+                logger.exception("Failed to ensure directories after connectivity change")
+        self.update_connection_banner()
+        blocked = OFFLINE_MODE
+        for btn in (self.compare_button, self.history_button, self.released_button):
+            btn.setEnabled(not blocked and self._worker is None)
+        if blocked and self._worker is not None:
+            self.request_cancel()
+        if not blocked and not previous_state:
+            translations = self._connection_texts()
+            self.status_label.setText(translations["reconnected"])
+        if self._dev_dialog is not None:
+            self._dev_dialog.update_connection_text(SERVER_ONLINE)
+
+    def _on_connection_status_changed(self, online: bool) -> None:
+        self._apply_connection_state(online)
+        self.show_offline_warning_once()
+
+    def _on_connection_error(self, message: str) -> None:
+        logger.warning("Connection check failed: %s", message)
 
     def show_offline_warning_once(self) -> None:
         if OFFLINE_MODE and not self._offline_warning_shown:
             translations = self._connection_texts()
             QMessageBox.warning(self, "CompareSet", translations["offline_info"])
             self._offline_warning_shown = True
-
-    def reload_server_status(self) -> None:
-        was_offline = OFFLINE_MODE
-        set_connection_state(is_server_available(SERVER_ROOT))
-
-        if SERVER_ONLINE or is_offline_tester(CURRENT_USER):
-            ensure_server_directories()
-
-        self.update_connection_banner()
-
-        if was_offline and SERVER_ONLINE:
-            translations = self._connection_texts()
-            self.status_label.setText(translations["reconnected"])
-        elif OFFLINE_MODE:
-            translations = self._connection_texts()
-            QMessageBox.information(self, "CompareSet", translations["still_offline"])
 
     def open_history(self) -> None:
         dialog = HistoryDialog(self.username, self)
@@ -1820,11 +1775,11 @@ class MainWindow(QMainWindow):
         for widget in (
             self.old_browse_button,
             self.new_browse_button,
-            self.compare_button,
             self.old_path_edit,
             self.new_path_edit,
         ):
             widget.setEnabled(enabled)
+        self.compare_button.setEnabled(enabled and not OFFLINE_MODE)
         self.cancel_button.setEnabled(not enabled and self._worker is not None)
 
     def _register_editable_widget(
@@ -2061,7 +2016,6 @@ class MainWindow(QMainWindow):
         labels = {
             "top_toolbar": "Toolbar",
             "progress_panel": "Status / Product bar",
-            "admin_panel": "Admin",
         }
         return [
             {"key": key, "label": labels.get(key, key)}
@@ -2313,12 +2267,12 @@ class MainWindow(QMainWindow):
         canvas_size: QSize = self.layout_canvas.size() or QSize(900, 620)
         width = max(640, canvas_size.width() - 20)
         y = 10
-        for key in ("top_toolbar", "progress_panel", "admin_panel"):
+        for key in ("top_toolbar", "progress_panel"):
             widget = self._layout_targets.get(key)
             if widget is None or not widget.isVisible():
                 continue
             hint = widget.sizeHint() or QSize(width, 120)
-            height = max(100 if key != "admin_panel" else 200, hint.height() + 16)
+            height = max(100, hint.height() + 16)
             widget.setGeometry(10, y, width, height)
             self._default_layouts[key] = widget.geometry()
             y += height + 10
@@ -2479,17 +2433,9 @@ class MainWindow(QMainWindow):
         self._unlock_developer_mode()
 
     def _unlock_developer_mode(self) -> None:
-        if not getattr(self, "_developer_menu_initialized", False):
-            self._init_developer_menu()
-        else:
-            self._update_developer_menu_state()
         if is_dev_mode():
             self.load_dev_layout()
-        QMessageBox.information(
-            self,
-            "Developer mode",
-            "Developer mode unlocked for this session.",
-        )
+        self.open_developer_tools()
 
     def _init_developer_menu(self) -> None:
         if getattr(self, "_developer_menu_initialized", False):
@@ -2545,10 +2491,14 @@ class MainWindow(QMainWindow):
         dialog = DeveloperToolsDialog(
             self,
             layout_mode_active=self.layout_mode_enabled,
+            log_messages=list(self._log_history),
         )
         dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
         dialog.save_layout_requested.connect(self.save_dev_layout)
         dialog.reset_layout_requested.connect(self.reset_dev_layout)
+        dialog.update_connection_text(SERVER_ONLINE)
+        self._dev_dialog = dialog
+        dialog.finished.connect(lambda _: setattr(self, "_dev_dialog", None))
         dialog.exec()
 
     def open_layout_designer(self) -> None:
@@ -2567,18 +2517,9 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     initialize_environment()
-    set_connection_state(csenv.SERVER_ONLINE)
+    set_connection_state(is_server_available(SERVER_ROOT))
 
     username = get_current_username()
-
-    if not csenv.SERVER_ONLINE and not csenv.IS_TESTER:
-        QMessageBox.critical(
-            None,
-            "CompareSet",
-            "You are offline or the CompareSet server is not reachable.\n"
-            "Please connect to GlobalProtect/VPN and try again.",
-        )
-        sys.exit(1)
 
     window_title_suffix = " [TEST MODE - OFFLINE]" if OFFLINE_MODE and csenv.IS_TESTER else ""
 
