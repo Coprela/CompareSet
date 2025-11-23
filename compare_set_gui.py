@@ -108,6 +108,184 @@ HISTORY_DIR = csenv.HISTORY_DIR
 LOG_DIR = csenv.LOG_DIR
 
 
+TRANSLATIONS: Dict[str, Dict[str, str]] = {
+    "pt-BR": {
+        "app_title": "CompareSet",
+        "main_subtitle": "Selecione os arquivos e execute a comparação",
+        "actions": "Ações",
+        "status": "Status",
+        "old_label": "Revisão antiga (PDF)",
+        "new_label": "Nova revisão (PDF)",
+        "browse": "Procurar…",
+        "history": "Meu histórico",
+        "released": "Liberados",
+        "settings": "Configurações",
+        "compare": "Comparar",
+        "cancel": "Cancelar",
+        "ready": "Pronto",
+        "admin": "Administração",
+        "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
+        "offline_info": (
+            "Modo offline: sem conexão com o servidor. As comparações funcionarão localmente, "
+            "mas histórico, logs e arquivos de saída serão salvos apenas no computador."
+        ),
+        "update_available": "Nova versão disponível – clique aqui para download.",
+        "offline_dialog": "Você está offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
+        "offline_close": "Fechar",
+        "offline_wrong_password": "Senha incorreta",
+        "settings_title": "Configurações",
+        "language_label": "Idioma",
+        "theme_label": "Tema",
+        "theme_auto": "Automático (Windows)",
+        "theme_light": "Claro",
+        "theme_dark": "Escuro",
+        "ok": "OK",
+        "cancel_button": "Cancelar",
+        "email_prompt": "Por favor, insira seu e-mail.",
+        "email_placeholder": "email@dominio.com",
+        "admin_title": "Administração",
+        "search_user_placeholder": "Buscar usuário…",
+        "admin_username": "Usuário",
+        "admin_role": "Perfil",
+        "admin_status": "Status",
+        "admin_email": "E-mail",
+        "add_user": "Adicionar usuário",
+        "update_user": "Salvar alterações",
+        "status_active": "Ativo",
+        "status_inactive": "Inativo",
+        "released_title": "Liberados",
+        "released_close": "Fechar",
+        "released_view": "Visualizar",
+        "released_export": "Exportar",
+        "released_delete": "Excluir",
+        "release_dialog_title": "Enviar para liberados",
+        "release_cancel": "Cancelar",
+        "release_send": "Enviar para Liberados",
+        "developer_tools": "Developer Tools",
+        "developer_layout_tab": "Layout",
+        "developer_preview_tab": "Visualizar como",
+        "developer_diagnostics_tab": "Diagnóstico",
+        "developer_config_tab": "Config / JSON",
+        "developer_area": "Área:",
+        "developer_enter_layout": "Entrar no modo layout",
+        "developer_exit_layout": "Sair do modo layout",
+        "developer_save_layout": "Salvar layout",
+        "developer_reset_layout": "Restaurar layout",
+        "developer_components": "Componentes",
+        "developer_label": "Rótulo",
+        "developer_display": "Exibição",
+        "developer_icon": "Caminho do ícone",
+        "developer_action": "Ação",
+        "developer_min_width": "Largura mínima",
+        "developer_min_height": "Altura mínima",
+        "developer_add_button": "Adicionar botão",
+        "developer_apply": "Aplicar alterações",
+        "developer_move_up": "Mover para cima",
+        "developer_move_down": "Mover para baixo",
+        "developer_view_as": "Visualizar como",
+        "developer_open_preview": "Abrir preview",
+        "developer_session": "Status do servidor:",
+        "developer_refresh": "Atualizar diagnósticos",
+        "developer_refresh_config": "Atualizar dados",
+        "preview_title": "PREVIEW",
+        "close": "Fechar",
+        "incorrect_password": "Senha incorreta",
+        "processing_page": "Processando página {current} de {total}…",
+        "cancelling": "Cancelando…",
+    },
+    "en-US": {
+        "app_title": "CompareSet",
+        "main_subtitle": "Select the files and run the comparison",
+        "actions": "Actions",
+        "status": "Status",
+        "old_label": "Old revision (PDF)",
+        "new_label": "New revision (PDF)",
+        "browse": "Browse…",
+        "history": "My History",
+        "released": "Released",
+        "settings": "Settings",
+        "compare": "Compare",
+        "cancel": "Cancel",
+        "ready": "Ready",
+        "admin": "Administration",
+        "offline_status": "Status: Offline – no connection to the server. Check your network/VPN or contact your system administrator.",
+        "offline_info": (
+            "Offline mode: no connection to the server. Comparisons will work locally, but history, "
+            "logs and output files will be saved only on this computer."
+        ),
+        "update_available": "New version available – click here to download.",
+        "offline_dialog": "You are offline – no connection to the server. Check your network/VPN or contact your system administrator.",
+        "offline_close": "Close",
+        "offline_wrong_password": "Incorrect password",
+        "settings_title": "Settings",
+        "language_label": "Language",
+        "theme_label": "Theme",
+        "theme_auto": "Automatic (Windows)",
+        "theme_light": "Light",
+        "theme_dark": "Dark",
+        "ok": "OK",
+        "cancel_button": "Cancel",
+        "email_prompt": "Please enter your email.",
+        "email_placeholder": "email@domain.com",
+        "admin_title": "Administration",
+        "search_user_placeholder": "Search username…",
+        "admin_username": "Username",
+        "admin_role": "Role",
+        "admin_status": "Status",
+        "admin_email": "Email",
+        "add_user": "Add User",
+        "update_user": "Save Changes",
+        "status_active": "Active",
+        "status_inactive": "Inactive",
+        "released_title": "Released",
+        "released_close": "Close",
+        "released_view": "View",
+        "released_export": "Export",
+        "released_delete": "Delete",
+        "release_dialog_title": "Send to Released",
+        "release_cancel": "Cancel",
+        "release_send": "Send to Released",
+        "developer_tools": "Developer Tools",
+        "developer_layout_tab": "Layout",
+        "developer_preview_tab": "View as role",
+        "developer_diagnostics_tab": "Diagnostics",
+        "developer_config_tab": "Config / JSON",
+        "developer_area": "Area:",
+        "developer_enter_layout": "Enter layout mode",
+        "developer_exit_layout": "Exit layout mode",
+        "developer_save_layout": "Save layout",
+        "developer_reset_layout": "Reset layout",
+        "developer_components": "Components",
+        "developer_label": "Label",
+        "developer_display": "Display",
+        "developer_icon": "Icon path",
+        "developer_action": "Action",
+        "developer_min_width": "Min width",
+        "developer_min_height": "Min height",
+        "developer_add_button": "Add button",
+        "developer_apply": "Apply changes",
+        "developer_move_up": "Move up",
+        "developer_move_down": "Move down",
+        "developer_view_as": "View as",
+        "developer_open_preview": "Open preview",
+        "developer_session": "Server status:",
+        "developer_refresh": "Refresh diagnostics",
+        "developer_refresh_config": "Refresh data",
+        "preview_title": "PREVIEW",
+        "close": "Close",
+        "incorrect_password": "Incorrect password",
+        "processing_page": "Processing page {current} of {total}…",
+        "cancelling": "Cancelling…",
+    },
+}
+
+
+def tr(language: str, key: str) -> str:
+    current = TRANSLATIONS.get(language, TRANSLATIONS.get("pt-BR", {}))
+    fallback = TRANSLATIONS.get("en-US", {})
+    return current.get(key) or fallback.get(key) or key
+
+
 def is_server_available(server_root: str) -> bool:
     """Return True when the UNC server root exists and is reachable."""
 
@@ -758,7 +936,7 @@ class HistoryDialog(QDialog):
             return
 
         entry = self.entries[self.table.currentRow()]
-        dialog = ReleaseDialog(self)
+        dialog = ReleaseDialog(self.current_language, self)
         dialog.name_file_old.setText(f"{entry['base_name']}.pdf")
         dialog.name_file_new.setText(f"{entry['base_name']}.pdf")
         if dialog.exec() != QDialog.Accepted:
@@ -842,31 +1020,38 @@ class HistoryDialog(QDialog):
 class SettingsDialog(QDialog):
     """Modal dialog to edit per-user settings."""
 
-    def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, username: str, language: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.username = username
-        self.setWindowTitle("Configurações")
+        self.language = language
+        self.setWindowTitle(tr(language, "settings_title"))
 
         self.language_combo = QComboBox()
         self.language_combo.addItems(["pt-BR", "en-US"])
         self.theme_combo = QComboBox()
-        self.theme_combo.addItem("Automático (Windows)", "auto")
-        self.theme_combo.addItem("Claro", "light")
-        self.theme_combo.addItem("Escuro", "dark")
+        self.theme_combo.addItem(tr(language, "theme_auto"), "auto")
+        self.theme_combo.addItem(tr(language, "theme_light"), "light")
+        self.theme_combo.addItem(tr(language, "theme_dark"), "dark")
 
-        layout = QFormLayout(self)
-        layout.addRow("Idioma", self.language_combo)
-        layout.addRow("Tema", self.theme_combo)
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        layout = QFormLayout(card)
+        layout.addRow(tr(language, "language_label"), self.language_combo)
+        layout.addRow(tr(language, "theme_label"), self.theme_combo)
 
         button_row = QHBoxLayout()
-        ok_button = QPushButton("OK")
-        cancel_button = QPushButton("Cancelar")
+        ok_button = QPushButton(tr(language, "ok"))
+        cancel_button = QPushButton(tr(language, "cancel_button"))
         ok_button.clicked.connect(self.accept)
         cancel_button.clicked.connect(self.reject)
         button_row.addStretch()
         button_row.addWidget(cancel_button)
         button_row.addWidget(ok_button)
         layout.addRow(button_row)
+
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        wrapper.addWidget(card)
 
     def load(self) -> None:
         settings = get_or_create_user_settings(self.username)
@@ -888,24 +1073,31 @@ class SettingsDialog(QDialog):
 class EmailPromptDialog(QDialog):
     """Blocking prompt requesting the user's email address."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, language: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("CompareSet")
+        self.setWindowTitle(tr(language, "app_title"))
         self.setModal(True)
 
-        layout = QVBoxLayout(self)
-        self.label = QLabel("Por favor, insira seu e-mail.")
+        card = QFrame()
+        card.setObjectName("dialog_card")
+
+        layout = QVBoxLayout(card)
+        self.label = QLabel(tr(language, "email_prompt"))
         self.email_edit = QLineEdit()
-        self.email_edit.setPlaceholderText("email@dominio.com")
+        self.email_edit.setPlaceholderText(tr(language, "email_placeholder"))
         layout.addWidget(self.label)
         layout.addWidget(self.email_edit)
 
         button_row = QHBoxLayout()
-        self.ok_button = QPushButton("OK")
+        self.ok_button = QPushButton(tr(language, "ok"))
         self.ok_button.clicked.connect(self.accept)
         button_row.addStretch()
         button_row.addWidget(self.ok_button)
         layout.addLayout(button_row)
+
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        wrapper.addWidget(card)
 
     def get_email(self) -> str:
         return self.email_edit.text().strip()
@@ -914,14 +1106,19 @@ class EmailPromptDialog(QDialog):
 class AdminDialog(QDialog):
     """Dialog for managing users, detached from the main window."""
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget, language: str) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Administração")
+        self.language = language
+        self.setWindowTitle(tr(language, "admin_title"))
         self.resize(480, 520)
 
-        layout = QVBoxLayout(self)
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        layout = QVBoxLayout(card)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search username…")
+        self.search_input.setPlaceholderText(tr(language, "search_user_placeholder"))
         self.search_input.textChanged.connect(self.refresh_user_list)
         layout.addWidget(self.search_input)
 
@@ -932,23 +1129,25 @@ class AdminDialog(QDialog):
         self.admin_username_input = QLineEdit()
         self.admin_role_combo = QComboBox()
         self.admin_role_combo.addItems(["admin", "user", "viewer"])
-        self.admin_active_checkbox = QCheckBox("Active")
+        self.admin_active_checkbox = QCheckBox(tr(language, "status_active"))
         self.admin_active_checkbox.setChecked(True)
         self.email_label = QLabel("")
 
         form_layout = QFormLayout()
-        form_layout.addRow("Username", self.admin_username_input)
-        form_layout.addRow("Role", self.admin_role_combo)
-        form_layout.addRow("Status", self.admin_active_checkbox)
-        form_layout.addRow("Email", self.email_label)
+        form_layout.addRow(tr(language, "admin_username"), self.admin_username_input)
+        form_layout.addRow(tr(language, "admin_role"), self.admin_role_combo)
+        form_layout.addRow(tr(language, "admin_status"), self.admin_active_checkbox)
+        form_layout.addRow(tr(language, "admin_email"), self.email_label)
         layout.addLayout(form_layout)
 
         button_row = QHBoxLayout()
-        self.add_user_button = QPushButton("Add User")
-        self.update_user_button = QPushButton("Save Changes")
+        self.add_user_button = QPushButton(tr(language, "add_user"))
+        self.update_user_button = QPushButton(tr(language, "update_user"))
         button_row.addWidget(self.add_user_button)
         button_row.addWidget(self.update_user_button)
         layout.addLayout(button_row)
+
+        wrapper.addWidget(card)
 
         self.add_user_button.clicked.connect(self.on_add_user)
         self.update_user_button.clicked.connect(self.on_update_user)
@@ -959,15 +1158,15 @@ class AdminDialog(QDialog):
         try:
             users = list_users()
         except Exception as exc:
-            QMessageBox.critical(self, "Admin", f"Could not load users:\n{exc}")
+            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Could not load users:\n{exc}")
             return
         self.user_list.clear()
         search_text = (self.search_input.text() or "").lower().strip()
         for user in users:
             if search_text and search_text not in str(user.get("username", "")).lower():
                 continue
-            status = "Active" if user.get("is_active") else "Inactive"
-            email = user.get("email") or "(sem e-mail)"
+            status = tr(self.language, "status_active") if user.get("is_active") else tr(self.language, "status_inactive")
+            email = user.get("email") or ""
             item = QListWidgetItem(f"{user['username']} - {email} - {user['role']} ({status})")
             item.setData(Qt.UserRole, user)
             self.user_list.addItem(item)
@@ -987,62 +1186,69 @@ class AdminDialog(QDialog):
         username = self.admin_username_input.text().strip()
         role = self.admin_role_combo.currentText()
         if not username:
-            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
+            QMessageBox.warning(self, tr(self.language, "admin_title"), tr(self.language, "search_user_placeholder"))
             return
         try:
             add_user(username, role)
-            QMessageBox.information(self, "Admin", "User added successfully.")
+            QMessageBox.information(self, tr(self.language, "admin_title"), "User added successfully.")
             self.refresh_user_list()
         except sqlite3.IntegrityError:
-            QMessageBox.warning(self, "Admin", "User already exists.")
+            QMessageBox.warning(self, tr(self.language, "admin_title"), "User already exists.")
         except Exception as exc:
-            QMessageBox.critical(self, "Admin", f"Unable to add user:\n{exc}")
+            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to add user:\n{exc}")
 
     def on_update_user(self) -> None:
         if not self.user_list or not self.user_list.currentItem():
-            QMessageBox.warning(self, "Admin", "Select a user to update.")
+            QMessageBox.warning(self, tr(self.language, "admin_title"), "Select a user to update.")
             return
         username = self.admin_username_input.text().strip()
         role = self.admin_role_combo.currentText()
         is_active = 1 if self.admin_active_checkbox.isChecked() else 0
         if not username:
-            QMessageBox.warning(self, "Admin", "Please enter a Windows username.")
+            QMessageBox.warning(self, tr(self.language, "admin_title"), tr(self.language, "search_user_placeholder"))
             return
         try:
             update_user_record(username, role=role, is_active=is_active)
-            QMessageBox.information(self, "Admin", "User updated.")
+            QMessageBox.information(self, tr(self.language, "admin_title"), "User updated.")
             self.refresh_user_list()
         except Exception as exc:
-            QMessageBox.critical(self, "Admin", f"Unable to update user:\n{exc}")
+            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to update user:\n{exc}")
 
 
 class ReleaseDialog(QDialog):
     """Dialog that captures required metadata before releasing an ECR."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, language: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("ECR Released")
+        self.language = language
+        self.setWindowTitle(tr(language, "release_dialog_title"))
 
         self.name_file_old = QLineEdit()
         self.rev_old = QLineEdit()
         self.name_file_new = QLineEdit()
         self.rev_new = QLineEdit()
 
-        layout = QFormLayout(self)
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        layout = QFormLayout(card)
         layout.addRow("Name File OLD", self.name_file_old)
         layout.addRow("Revision File OLD", self.rev_old)
         layout.addRow("Name File NEW", self.name_file_new)
         layout.addRow("Revision File NEW", self.rev_new)
 
         button_row = QHBoxLayout()
-        cancel = QPushButton("Cancel")
-        ok = QPushButton("Send to Released")
+        cancel = QPushButton(tr(language, "release_cancel"))
+        ok = QPushButton(tr(language, "release_send"))
         cancel.clicked.connect(self.reject)
         ok.clicked.connect(self._validate)
         button_row.addStretch()
         button_row.addWidget(cancel)
         button_row.addWidget(ok)
         layout.addRow(button_row)
+
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        wrapper.addWidget(card)
 
     def _validate(self) -> None:
         fields = [
@@ -1072,17 +1278,23 @@ class ReleaseDialog(QDialog):
 class ReleasedDialog(QDialog):
     """Dialog showing all released ECRs with search and actions."""
 
-    def __init__(self, role: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, role: str, language: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.role = role
-        self.setWindowTitle("ECR Released")
+        self.language = language
+        self.setWindowTitle(tr(language, "released_title"))
         self.resize(800, 420)
 
-        layout = QVBoxLayout(self)
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        layout = QVBoxLayout()
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        card_layout = QVBoxLayout(card)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by file or user…")
         self.search_input.textChanged.connect(self.refresh)
-        layout.addWidget(self.search_input)
+        card_layout.addWidget(self.search_input)
 
         self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels(
@@ -1112,14 +1324,16 @@ class ReleasedDialog(QDialog):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        layout.addWidget(self.table)
+        card_layout.addWidget(self.table)
 
-        close_button = QPushButton("Close")
+        close_button = QPushButton(tr(language, "released_close"))
         close_button.clicked.connect(self.accept)
         button_row = QHBoxLayout()
         button_row.addStretch()
         button_row.addWidget(close_button)
-        layout.addLayout(button_row)
+        card_layout.addLayout(button_row)
+        layout.addWidget(card)
+        wrapper.addLayout(layout)
 
         self.refresh()
 
@@ -1153,8 +1367,8 @@ class ReleasedDialog(QDialog):
             actions = QWidget()
             actions_layout = QHBoxLayout(actions)
             actions_layout.setContentsMargins(0, 0, 0, 0)
-            view_btn = QPushButton("View")
-            export_btn = QPushButton("Export")
+            view_btn = QPushButton(tr(self.language, "released_view"))
+            export_btn = QPushButton(tr(self.language, "released_export"))
             view_btn.clicked.connect(
                 lambda _=False, p=entry.get("source_result", ""): open_with_default_application(p)
             )
@@ -1164,12 +1378,12 @@ class ReleasedDialog(QDialog):
             actions_layout.addWidget(view_btn)
             actions_layout.addWidget(export_btn)
             if self.role == "admin":
-                delete_btn = QPushButton("Delete")
+                delete_btn = QPushButton(tr(self.language, "released_delete"))
                 delete_btn.clicked.connect(
                     lambda _=False, e=entry: self.delete_entry(e)
                 )
                 actions_layout.addWidget(delete_btn)
-            actions_layout.addStretch()
+                actions_layout.addStretch()
             self.table.setCellWidget(row_index, 8, actions)
 
     def export_file(self, source_path: str, filename: str) -> None:
@@ -1207,6 +1421,59 @@ class ReleasedDialog(QDialog):
             QMessageBox.critical(self, "Delete Released", f"Unable to delete file:\n{exc}")
 
 
+class OfflineDialog(QDialog):
+    """Startup dialog shown when the application launches offline."""
+
+    def __init__(self, language: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.language = language
+        self.dev_unlocked = False
+        self.setWindowTitle(tr(language, "app_title"))
+        self.setModal(True)
+
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        layout = QVBoxLayout(card)
+        layout.setSpacing(12)
+
+        message = QLabel(tr(language, "offline_dialog"))
+        message.setWordWrap(True)
+        layout.addWidget(message)
+
+        button = QPushButton(tr(language, "offline_close"))
+        button.clicked.connect(self.reject)
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(button)
+        layout.addLayout(button_row)
+
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(16, 16, 16, 16)
+        wrapper.addWidget(card)
+
+        shortcut = QShortcut(QKeySequence("Ctrl+Alt+Shift+D"), self)
+        shortcut.activated.connect(self._prompt_dev_password)
+
+    def _prompt_dev_password(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Developer mode")
+        form = QFormLayout(dialog)
+        password_edit = QLineEdit()
+        password_edit.setEchoMode(QLineEdit.Password)
+        form.addRow("Senha", password_edit)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        if password_edit.text() != "doliveira12@CompareSet2025":
+            QMessageBox.warning(self, tr(self.language, "app_title"), tr(self.language, "offline_wrong_password"))
+            return
+        self.dev_unlocked = True
+        self.accept()
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -1218,6 +1485,7 @@ class MainWindow(QMainWindow):
         *,
         preview_role: Optional[str] = None,
         preview: bool = False,
+        developer_override: bool = False,
     ) -> None:
         super().__init__()
         self.username = username
@@ -1227,9 +1495,14 @@ class MainWindow(QMainWindow):
         self.current_language = user_settings.get("language", "pt-BR")
         self.current_theme = user_settings.get("theme", "auto")
         self.last_browse_dir: Optional[str] = None
-        self.setWindowTitle(f"CompareSet v{APP_VERSION}")
+        self._dev_unlocked = developer_override
+        base_title = f"{tr(self.current_language, 'app_title')} v{APP_VERSION}"
         if self.preview_mode:
-            self.setWindowTitle(f"CompareSet (preview: {self.role})")
+            self.setWindowTitle(f"{tr(self.current_language, 'app_title')} [{tr(self.current_language, 'preview_title')} - {self.role.upper()}]")
+        elif self._dev_unlocked:
+            self.setWindowTitle(f"{base_title} (Dev)")
+        else:
+            self.setWindowTitle(base_title)
 
         self._log_emitter = LogEmitter()
         self._log_handler = QtLogHandler(self._log_emitter)
@@ -1255,7 +1528,7 @@ class MainWindow(QMainWindow):
         self.new_path_edit = QLineEdit()
         for line_edit in (self.old_path_edit, self.new_path_edit):
             line_edit.setPlaceholderText("Select a PDF file")
-            line_edit.setMinimumHeight(40)
+            line_edit.setMinimumHeight(32)
 
         self.old_browse_button = QPushButton("Browse…")
         self.new_browse_button = QPushButton("Browse…")
@@ -1289,7 +1562,7 @@ class MainWindow(QMainWindow):
             self.released_button,
             self.settings_button,
         ):
-            button.setMinimumHeight(44)
+            button.setMinimumHeight(36)
             button.setCursor(Qt.PointingHandCursor)
 
         self.progress_bar = QProgressBar()
@@ -1298,7 +1571,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setObjectName("progress_bar")
 
-        self.status_label = QLabel("Ready")
+        self.status_label = QLabel(tr(self.current_language, "ready"))
         self.status_label.setObjectName("status_label")
         self.status_label.setWordWrap(True)
         self.status_label.setMinimumHeight(22)
@@ -1351,7 +1624,7 @@ class MainWindow(QMainWindow):
         self.layout_canvas = central_widget
         self.layout_mode_enabled = False
         self._dev_features_active = False
-        self._dev_unlocked = False
+        self._dev_unlocked = bool(self._dev_unlocked)
         self._developer_menu_initialized = False
         self._layout_targets: Dict[str, QWidget] = {}
         self._layout_filters: Dict[str, LayoutEditFilter] = {}
@@ -1428,7 +1701,7 @@ class MainWindow(QMainWindow):
         actions_layout.addWidget(self.settings_button)
         if self.role == "admin":
             self.admin_button = QPushButton("Administração")
-            self.admin_button.setMinimumHeight(44)
+            self.admin_button.setMinimumHeight(36)
             self.admin_button.setCursor(Qt.PointingHandCursor)
             self.admin_button.clicked.connect(self.open_admin_dialog)
             actions_layout.addWidget(self.admin_button)
@@ -1602,6 +1875,7 @@ class MainWindow(QMainWindow):
 
         self._apply_default_layout_geometry()
         self._apply_connection_state(SERVER_ONLINE)
+        self._apply_role_permissions()
         if SERVER_ONLINE:
             self._check_for_updates()
         self.connection_monitor = ConnectionMonitor(parent=self)
@@ -1634,10 +1908,10 @@ class MainWindow(QMainWindow):
             self._worker.request_cancel()
             self.cancel_button.setEnabled(False)
             self.progress_bar.setRange(0, 0)
-            self.status_label.setText("Cancelling…")
+            self.status_label.setText(tr(self.current_language, "cancelling"))
 
     def start_comparison(self) -> None:
-        if OFFLINE_MODE:
+        if OFFLINE_MODE and not (self._dev_unlocked or is_dev_mode()):
             translations = self._connection_texts()
             QMessageBox.warning(self, "CompareSet", translations["offline_status"])
             return
@@ -1654,7 +1928,7 @@ class MainWindow(QMainWindow):
         self.toggle_controls(False)
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
-        self.status_label.setText("Comparing…")
+        self.status_label.setText(tr(self.current_language, "processing_page").format(current=1, total=1) if self.progress_bar.maximum() == 1 else tr(self.current_language, "processing_page").format(current=0, total=0))
         self.cancel_button.setEnabled(True)
         logger.info("Starting comparison: %s vs %s", old_path, new_path)
 
@@ -1733,7 +2007,9 @@ class MainWindow(QMainWindow):
     def on_progress_update(self, page_index: int, total_pages: int) -> None:
         self.progress_bar.setRange(0, max(1, total_pages))
         self.progress_bar.setValue(page_index)
-        self.status_label.setText(f"Processing page {page_index} of {total_pages}…")
+        self.status_label.setText(
+            tr(self.current_language, "processing_page").format(current=page_index, total=total_pages)
+        )
 
     def on_language_changed(self, language: str) -> None:
         self.user_settings["language"] = language
@@ -1742,57 +2018,25 @@ class MainWindow(QMainWindow):
         self.apply_language_setting()
 
     def apply_language_setting(self) -> None:
-        translations = {
-            "pt-BR": {
-                "title": "CompareSet",
-                "subtitle": "Selecione os arquivos e execute a comparação",
-                "actions": "Ações",
-                "status": "Status",
-                "old": "Revisão antiga (PDF)",
-                "new": "Nova revisão (PDF)",
-                "browse": "Procurar…",
-                "history": "Meu histórico",
-                "released": "Liberados",
-                "settings": "Configurações",
-                "compare": "Comparar",
-                "cancel": "Cancelar",
-                "ready": "Pronto",
-                "admin": "Administração",
-            },
-            "en-US": {
-                "title": "CompareSet",
-                "subtitle": "Select the files and run the comparison",
-                "actions": "Actions",
-                "status": "Status",
-                "old": "Old revision (PDF)",
-                "new": "New revision (PDF)",
-                "browse": "Browse…",
-                "history": "My History",
-                "released": "Released",
-                "settings": "Settings",
-                "compare": "Compare",
-                "cancel": "Cancel",
-                "ready": "Ready",
-                "admin": "Administration",
-            },
-        }
-        current = translations.get(self.current_language, translations["pt-BR"])
-        self.title_label.setText(current["title"])
-        self.subtitle_label.setText(current["subtitle"])
-        self.actions_header.setText(current["actions"])
-        self.status_header.setText(current["status"])
-        self.old_label.setText(current["old"])
-        self.new_label.setText(current["new"])
-        self.old_browse_button.setText(current["browse"])
-        self.new_browse_button.setText(current["browse"])
-        self.compare_button.setText(current["compare"])
-        self.cancel_button.setText(current["cancel"])
-        self.history_button.setText(current["history"])
-        self.released_button.setText(current["released"])
-        self.settings_button.setText(current["settings"])
+        self.title_label.setText(tr(self.current_language, "app_title"))
+        self.subtitle_label.setText(tr(self.current_language, "main_subtitle"))
+        self.actions_header.setText(tr(self.current_language, "actions"))
+        self.status_header.setText(tr(self.current_language, "status"))
+        self.old_label.setText(tr(self.current_language, "old_label"))
+        self.new_label.setText(tr(self.current_language, "new_label"))
+        placeholder = tr(self.current_language, "browse")
+        self.old_path_edit.setPlaceholderText(placeholder)
+        self.new_path_edit.setPlaceholderText(placeholder)
+        self.old_browse_button.setText(tr(self.current_language, "browse"))
+        self.new_browse_button.setText(tr(self.current_language, "browse"))
+        self.compare_button.setText(tr(self.current_language, "compare"))
+        self.cancel_button.setText(tr(self.current_language, "cancel"))
+        self.history_button.setText(tr(self.current_language, "history"))
+        self.released_button.setText(tr(self.current_language, "released"))
+        self.settings_button.setText(tr(self.current_language, "settings"))
         if self.admin_button is not None:
-            self.admin_button.setText(current["admin"])
-        self.status_label.setText(current["ready"])
+            self.admin_button.setText(tr(self.current_language, "admin"))
+        self.status_label.setText(tr(self.current_language, "ready"))
         self.update_connection_banner()
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
@@ -1870,6 +2114,11 @@ class MainWindow(QMainWindow):
                 border-radius: 18px;
                 border: 1px solid {border};
             }}
+            QFrame#dialog_card {{
+                background-color: {panel_bg};
+                border: 1px solid {border};
+                border-radius: 12px;
+            }}
             QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#actions_group {{
                 background-color: {panel_bg};
                 border: 1px solid {border};
@@ -1893,7 +2142,7 @@ class MainWindow(QMainWindow):
                 color: {muted_text};
             }}
             QLineEdit {{
-                padding: 10px 12px;
+                padding: 8px 10px;
                 border-radius: 10px;
                 border: 1px solid {border};
                 background-color: {input_bg};
@@ -1903,7 +2152,7 @@ class MainWindow(QMainWindow):
                 outline: none;
             }}
             QPushButton {{
-                padding: 10px 16px;
+                padding: 8px 14px;
                 border-radius: 10px;
                 border: 1px solid {button_border};
                 background-color: {button_bg};
@@ -1946,24 +2195,10 @@ class MainWindow(QMainWindow):
         )
 
     def _connection_texts(self) -> Dict[str, str]:
-        if self.current_language == "pt-BR":
-            return {
-                "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
-                "offline_info": (
-                    "Modo offline: sem conexão com o servidor. As comparações funcionarão localmente, "
-                    "mas histórico, logs e arquivos de saída serão salvos apenas no computador."
-                ),
-                "reconnected": "Reconectado ao servidor.",
-                "update_available": "Nova versão disponível – clique aqui para download.",
-            }
         return {
-            "offline_status": "Status: Offline – no connection to the server. Check your network/VPN or contact your system administrator.",
-            "offline_info": (
-                "Offline mode: no connection to the server. Comparisons will work locally, but history, "
-                "logs and output files will be saved only on this computer."
-            ),
-            "reconnected": "Reconnected to server.",
-            "update_available": "New version available – click here to download.",
+            "offline_status": tr(self.current_language, "offline_status"),
+            "offline_info": tr(self.current_language, "offline_info"),
+            "update_available": tr(self.current_language, "update_available"),
         }
 
     def update_connection_banner(self) -> None:
@@ -1994,6 +2229,7 @@ class MainWindow(QMainWindow):
             self.released_button,
             self.old_browse_button,
             self.new_browse_button,
+            self.cancel_button,
         ):
             btn.setEnabled(not blocked and self._worker is None)
         if self.admin_button is not None:
@@ -2001,13 +2237,37 @@ class MainWindow(QMainWindow):
         if blocked and self._worker is not None:
             self.request_cancel()
         if not blocked and not previous_state:
-            translations = self._connection_texts()
-            self.status_label.setText(translations["reconnected"])
+            self.status_label.setText(tr(self.current_language, "ready"))
         if not SERVER_ONLINE:
             self.version_banner.hide()
             self._update_download_url = None
         if self._dev_dialog is not None:
             self._dev_dialog.update_connection_text(SERVER_ONLINE)
+
+        self._apply_role_permissions()
+
+    def _apply_role_permissions(self) -> None:
+        if self.preview_mode and self.role == "viewer":
+            for widget in (
+                self.history_button,
+                self.compare_button,
+                self.cancel_button,
+                self.old_browse_button,
+                self.new_browse_button,
+            ):
+                widget.setEnabled(False)
+            if self.admin_button is not None:
+                self.admin_button.setEnabled(False)
+            self.released_button.setEnabled(True)
+            self.settings_button.setEnabled(True)
+            return
+
+        if self.preview_mode and self.role == "user":
+            if self.admin_button is not None:
+                self.admin_button.setEnabled(False)
+
+        if not self.preview_mode and self.role != "admin" and self.admin_button is not None:
+            self.admin_button.setEnabled(False)
 
     def _on_connection_status_changed(self, online: bool) -> None:
         self._apply_connection_state(online)
@@ -2073,11 +2333,11 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_released(self) -> None:
-        dialog = ReleasedDialog(self.role, self)
+        dialog = ReleasedDialog(self.role, self.current_language, self)
         dialog.exec()
 
     def open_settings_dialog(self) -> None:
-        dialog = SettingsDialog(self.username, self)
+        dialog = SettingsDialog(self.username, self.current_language, self)
         dialog.load()
         if dialog.exec() == QDialog.Accepted:
             dialog.save()
@@ -2089,7 +2349,7 @@ class MainWindow(QMainWindow):
             self.apply_theme_setting()
 
     def open_admin_dialog(self) -> None:
-        dialog = AdminDialog(self)
+        dialog = AdminDialog(self, self.current_language)
         dialog.exec()
 
     def prompt_for_email_if_missing(self) -> None:
@@ -2097,7 +2357,7 @@ class MainWindow(QMainWindow):
             return
         current_email = (self.user_settings.get("email") or "").strip()
         while not current_email:
-            dialog = EmailPromptDialog(self)
+            dialog = EmailPromptDialog(self.current_language, self)
             if dialog.exec() == QDialog.Accepted:
                 current_email = dialog.get_email()
                 if current_email:
@@ -2115,7 +2375,8 @@ class MainWindow(QMainWindow):
             self.new_path_edit,
         ):
             widget.setEnabled(enabled)
-        self.compare_button.setEnabled(enabled and not OFFLINE_MODE)
+        allow_compare = not OFFLINE_MODE or self._dev_unlocked or is_dev_mode()
+        self.compare_button.setEnabled(enabled and allow_compare)
         self.cancel_button.setEnabled(not enabled and self._worker is not None)
 
     def _register_editable_widget(
@@ -2537,7 +2798,14 @@ class MainWindow(QMainWindow):
 
     def open_role_preview(self, role: str) -> None:
         logger.info("Opening role preview for %s", role)
-        preview_window = MainWindow(self.username, self.role, dict(self.user_settings), preview_role=role, preview=True)
+        preview_window = MainWindow(
+            self.username,
+            self.role,
+            dict(self.user_settings),
+            preview_role=role,
+            preview=True,
+            developer_override=True,
+        )
         self._preview_windows.append(preview_window)
         preview_window.show()
 
@@ -2824,7 +3092,8 @@ class MainWindow(QMainWindow):
         dialog.update_connection_text(SERVER_ONLINE)
         self._dev_dialog = dialog
         dialog.finished.connect(lambda _: setattr(self, "_dev_dialog", None))
-        dialog.exec()
+        dialog.setModal(False)
+        dialog.show()
 
     def open_layout_designer(self) -> None:
         if not self._is_developer_enabled():
@@ -2842,11 +3111,21 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     initialize_environment()
-    set_connection_state(is_server_available(SERVER_ROOT))
+    initial_online = is_server_available(SERVER_ROOT)
+    set_connection_state(initial_online)
 
     username = get_current_username()
 
-    window_title_suffix = " [TEST MODE - OFFLINE]" if OFFLINE_MODE and csenv.IS_TESTER else ""
+    ensure_user_settings_db_initialized()
+    user_settings = get_or_create_user_settings(username)
+
+    dev_override = False
+    if not initial_online and not is_dev_mode():
+        offline_dialog = OfflineDialog(user_settings.get("language", "pt-BR"))
+        result = offline_dialog.exec()
+        if not offline_dialog.dev_unlocked or result != QDialog.Accepted:
+            sys.exit(0)
+        dev_override = True
 
     ensure_server_directories()
     ensure_users_db_initialized()
@@ -2857,16 +3136,15 @@ def main() -> None:
     if is_super_admin(username):
         role = "admin"
 
-    if role is None:
+    if role is None and not dev_override:
         QMessageBox.critical(
             None,
             "CompareSet",
             "Your user is not authorized to use CompareSet. Please contact an administrator.",
         )
         sys.exit(1)
-
-    ensure_user_settings_db_initialized()
-    user_settings = get_or_create_user_settings(username)
+    if role is None and dev_override:
+        role = "admin"
 
     init_log("session")
     configure_logging()
@@ -2878,9 +3156,7 @@ def main() -> None:
     if OFFLINE_MODE:
         write_log(f"Offline mode enabled. Local base: {LOCAL_BASE_DIR}")
 
-    window = MainWindow(username, role, user_settings)
-    if window_title_suffix:
-        window.setWindowTitle(f"CompareSet{window_title_suffix}")
+    window = MainWindow(username, role, user_settings, developer_override=dev_override)
     window.show()
     sys.exit(app.exec())
 
