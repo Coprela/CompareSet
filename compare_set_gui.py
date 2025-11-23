@@ -1265,7 +1265,7 @@ class MainWindow(QMainWindow):
         central_widget.setAttribute(Qt.WA_StyledBackground, True)
         self.layout_canvas = central_widget
         self.layout_mode_enabled = False
-        self._dev_features_active = is_dev_mode()
+        self._dev_features_active = False
         self._dev_unlocked = False
         self._developer_menu_initialized = False
         self._layout_targets: Dict[str, QWidget] = {}
@@ -1478,9 +1478,11 @@ class MainWindow(QMainWindow):
             )
 
         self._apply_default_layout_geometry()
+        # Developer UI remains hidden until unlocked via the secret shortcut.
+        # This prevents the Developer menu from appearing by default even when
+        # dev_mode is enabled in the configuration.
         if self._is_developer_enabled():
             self._init_developer_menu()
-        if is_dev_mode():
             self.load_dev_layout()
         self.show_offline_warning_once()
         self.prompt_for_email_if_missing()
@@ -1916,6 +1918,9 @@ class MainWindow(QMainWindow):
         if definition.get("icon"):
             button.setIcon(QIcon(str(definition.get("icon"))))
         self._add_widget_to_layout(layout, button)
+        button.show()
+        if layout.parentWidget() is not None:
+            layout.parentWidget().updateGeometry()
         definition["id"] = button_id
         definition.setdefault("display_name", definition.get("text") or button_id)
         self._dynamic_button_defs[button_id] = definition
@@ -2053,7 +2058,9 @@ class MainWindow(QMainWindow):
             self.apply_widget_overrides(key, {})
 
     def _is_developer_enabled(self) -> bool:
-        return is_dev_mode() or self._dev_unlocked
+        """Return True only when the developer UI has been explicitly unlocked."""
+
+        return bool(self._dev_unlocked)
 
     def save_dev_layout(self) -> None:
         if not self._is_developer_enabled():
@@ -2169,6 +2176,8 @@ class MainWindow(QMainWindow):
             self._init_developer_menu()
         else:
             self._update_developer_menu_state()
+        if is_dev_mode():
+            self.load_dev_layout()
         QMessageBox.information(
             self,
             "Developer mode",
