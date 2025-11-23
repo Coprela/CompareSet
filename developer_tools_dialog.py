@@ -32,15 +32,17 @@ class DeveloperToolsDialog(QDialog):
     save_layout_requested = Signal()
     reset_layout_requested = Signal()
 
-    def __init__(self, window, *, layout_mode_active: bool = False) -> None:  # type: ignore[override]
+    def __init__(self, window, *, layout_mode_active: bool = False, log_messages: Optional[list[str]] = None) -> None:  # type: ignore[override]
         super().__init__(window)
         self.window = window
         self.layout_mode_active = layout_mode_active
         self.setWindowTitle("Developer Tools")
         self.setMinimumSize(760, 520)
+        self._log_messages = log_messages or []
         self._build_ui()
         self._refresh_areas()
         self._refresh_config_dump()
+        self._refresh_logs()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -51,6 +53,7 @@ class DeveloperToolsDialog(QDialog):
         tabs = QTabWidget()
         tabs.addTab(self._build_layout_tab(), "Layout")
         tabs.addTab(self._build_preview_tab(), "View as role")
+        tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
         tabs.addTab(self._build_config_tab(), "Config / JSON")
         layout.addWidget(tabs)
 
@@ -142,6 +145,23 @@ class DeveloperToolsDialog(QDialog):
         preview_btn = QPushButton("Open preview")
         preview_btn.clicked.connect(self._open_preview)
         layout.addRow(preview_btn)
+        return box
+
+    def _build_diagnostics_tab(self) -> QGroupBox:
+        box = QGroupBox("Session diagnostics")
+        layout = QVBoxLayout(box)
+
+        self.connection_label = QLabel()
+        layout.addWidget(self.connection_label)
+
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setLineWrapMode(QTextEdit.NoWrap)
+        layout.addWidget(self.log_view, 1)
+
+        refresh_btn = QPushButton("Refresh diagnostics")
+        refresh_btn.clicked.connect(self._refresh_logs)
+        layout.addWidget(refresh_btn)
         return box
 
     def _build_config_tab(self) -> QGroupBox:
@@ -263,4 +283,18 @@ class DeveloperToolsDialog(QDialog):
     def _refresh_config_dump(self) -> None:
         snapshot = self.window.export_layout_snapshot()
         self.config_view.setPlainText(json.dumps(snapshot, indent=2, ensure_ascii=False))
+
+    def set_log_messages(self, messages: list[str]) -> None:
+        self._log_messages = messages
+        self._refresh_logs()
+
+    def update_connection_text(self, online: bool) -> None:
+        status = "Online" if online else "Offline"
+        self.connection_label.setText(f"Server status: {status}")
+
+    def _refresh_logs(self) -> None:
+        if not hasattr(self, "log_view"):
+            return
+        self.log_view.setPlainText("\n".join(self._log_messages))
+        self.log_view.moveCursor(self.log_view.textCursor().End)
 
