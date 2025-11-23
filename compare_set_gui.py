@@ -2226,7 +2226,12 @@ class MainWindow(QMainWindow):
         self._dev_features_active = dev_enabled
 
     def open_developer_tools(self) -> None:
-        dialog = DeveloperToolsDialog(self, get_dev_settings(), layout_mode_active=self.layout_mode_enabled)
+        dialog = DeveloperToolsDialog(
+            self,
+            get_dev_settings(),
+            layout_mode_active=self.layout_mode_enabled,
+            developer_enabled=self._is_developer_enabled(),
+        )
         dialog.settings_applied.connect(self._update_developer_menu_state)
         dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
         dialog.save_layout_requested.connect(self.save_dev_layout)
