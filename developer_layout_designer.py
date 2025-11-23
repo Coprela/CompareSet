@@ -47,6 +47,8 @@ class LayoutDesignerDialog(QDialog):
         )
         self.add_button_btn = QPushButton("Add button…")
         self.add_button_btn.clicked.connect(self._add_dynamic_button)
+        self.add_button_btn.setEnabled(False)
+        self.add_button_btn.setVisible(False)
         header_row.addWidget(self.add_button_btn)
         layout.addLayout(header_row)
 

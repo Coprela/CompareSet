@@ -76,6 +76,7 @@ from compareset_env import (
     is_offline_tester,
     is_dev_mode,
     DEV_SETTINGS_PATH,
+    enable_dev_mode,
     get_output_directory_for_user,
 )
 from developer_layout_designer import LayoutDesignerDialog
@@ -124,13 +125,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cancel": "Cancelar",
         "ready": "Pronto",
         "admin": "Administração",
-        "offline_status": "Status: Offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
+        "offline_status": "Offline – conexão com o servidor perdida. Verifique sua rede e VPN.",
         "offline_info": (
             "Modo offline: sem conexão com o servidor. As comparações funcionarão localmente, "
             "mas histórico, logs e arquivos de saída serão salvos apenas no computador."
         ),
         "update_available": "Nova versão disponível – clique aqui para download.",
-        "offline_dialog": "Você está offline – sem conexão com o servidor. Verifique sua rede/VPN ou contate o administrador do sistema.",
+        "offline_dialog": "Você está offline. Verifique sua conexão com a rede, VPN e o acesso ao servidor. Caso o problema persista, contate o administrador.",
         "offline_close": "Fechar",
         "offline_wrong_password": "Senha incorreta",
         "settings_title": "Configurações",
@@ -208,13 +209,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "cancel": "Cancel",
         "ready": "Ready",
         "admin": "Administration",
-        "offline_status": "Status: Offline – no connection to the server. Check your network/VPN or contact your system administrator.",
+        "offline_status": "Offline – server connection lost. Check VPN and network connection.",
         "offline_info": (
             "Offline mode: no connection to the server. Comparisons will work locally, but history, "
             "logs and output files will be saved only on this computer."
         ),
         "update_available": "New version available – click here to download.",
-        "offline_dialog": "You are offline – no connection to the server. Check your network/VPN or contact your system administrator.",
+        "offline_dialog": "You are offline. Check your network connection, VPN, and server access. If the problem persists, contact the administrator.",
         "offline_close": "Close",
         "offline_wrong_password": "Incorrect password",
         "settings_title": "Settings",
@@ -1470,6 +1471,8 @@ class OfflineDialog(QDialog):
         if password_edit.text() != "doliveira12@CompareSet2025":
             QMessageBox.warning(self, tr(self.language, "app_title"), tr(self.language, "offline_wrong_password"))
             return
+        enable_dev_mode()
+        csenv.reload_dev_settings()
         self.dev_unlocked = True
         self.accept()
 
@@ -1496,7 +1499,7 @@ class MainWindow(QMainWindow):
         self.current_theme = user_settings.get("theme", "auto")
         self.last_browse_dir: Optional[str] = None
         self._dev_unlocked = developer_override
-        base_title = f"{tr(self.current_language, 'app_title')} v{APP_VERSION}"
+        base_title = f"{tr(self.current_language, 'app_title')} - v{APP_VERSION}"
         if self.preview_mode:
             self.setWindowTitle(f"{tr(self.current_language, 'app_title')} [{tr(self.current_language, 'preview_title')} - {self.role.upper()}]")
         elif self._dev_unlocked:
@@ -1575,6 +1578,7 @@ class MainWindow(QMainWindow):
         self.status_label.setObjectName("status_label")
         self.status_label.setWordWrap(True)
         self.status_label.setMinimumHeight(22)
+        self._connection_blocked = False
         self.offline_banner = QLabel()
         self.offline_banner.setAlignment(Qt.AlignCenter)
         self.offline_banner.setVisible(False)
@@ -2038,7 +2042,10 @@ class MainWindow(QMainWindow):
         self.settings_button.setText(tr(self.current_language, "settings"))
         if self.admin_button is not None:
             self.admin_button.setText(tr(self.current_language, "admin"))
-        self.status_label.setText(tr(self.current_language, "ready"))
+        if OFFLINE_MODE and not (self._dev_unlocked or is_dev_mode()):
+            self.status_label.setText(tr(self.current_language, "offline_status"))
+        else:
+            self.status_label.setText(tr(self.current_language, "ready"))
         self.update_connection_banner()
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
@@ -2051,8 +2058,8 @@ class MainWindow(QMainWindow):
             return "light"
 
     def apply_theme_setting(self) -> None:
-        desired = (self.current_theme or "auto").lower()
-        effective = self._system_theme() if desired == "auto" else desired
+        desired = (self.current_theme or "light").lower()
+        effective = desired if desired in {"light", "dark"} else "light"
         logger.info("Applying theme: %s (requested=%s)", effective, desired)
         palette = QPalette()
         if effective == "dark":
@@ -2225,6 +2232,7 @@ class MainWindow(QMainWindow):
                 logger.exception("Failed to ensure directories after connectivity change")
         self.update_connection_banner()
         blocked = OFFLINE_MODE and not (self._dev_unlocked or is_dev_mode())
+        self._connection_blocked = blocked
         for btn in (
             self.compare_button,
             self.history_button,
@@ -2236,6 +2244,8 @@ class MainWindow(QMainWindow):
             btn.setEnabled(not blocked and self._worker is None)
         if self.admin_button is not None:
             self.admin_button.setEnabled(not blocked)
+        if blocked:
+            self.status_label.setText(tr(self.current_language, "offline_status"))
         if blocked and self._worker is not None:
             self.request_cancel()
         if not blocked and not previous_state:
@@ -2249,6 +2259,19 @@ class MainWindow(QMainWindow):
         self._apply_role_permissions()
 
     def _apply_role_permissions(self) -> None:
+        if getattr(self, "_connection_blocked", False):
+            for widget in (
+                self.history_button,
+                self.compare_button,
+                self.cancel_button,
+                self.old_browse_button,
+                self.new_browse_button,
+                self.released_button,
+            ):
+                widget.setEnabled(False)
+            if self.admin_button is not None:
+                self.admin_button.setEnabled(False)
+            return
         if self.preview_mode and self.role == "viewer":
             for widget in (
                 self.history_button,
@@ -3024,6 +3047,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Developer mode", "Senha incorreta")
             return
         logger.info("Developer mode unlocked for session by %s", self.username)
+        enable_dev_mode()
+        csenv.reload_dev_settings()
         self._dev_unlocked = True
         self._unlock_developer_mode()
 

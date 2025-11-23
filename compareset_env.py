@@ -384,6 +384,14 @@ def is_dev_mode() -> bool:
     return bool(DEV_SETTINGS.get("dev_mode", False))
 
 
+def enable_dev_mode() -> None:
+    """Force developer mode on and persist the change."""
+
+    settings = get_dev_settings()
+    settings["dev_mode"] = True
+    save_dev_settings(settings)
+
+
 def get_forced_server_state() -> str:
     return str(DEV_SETTINGS.get("force_server_state", "auto"))
 
