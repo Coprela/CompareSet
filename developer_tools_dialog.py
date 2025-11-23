@@ -4,6 +4,7 @@ import json
 from typing import Optional
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -296,5 +297,6 @@ class DeveloperToolsDialog(QDialog):
         if not hasattr(self, "log_view"):
             return
         self.log_view.setPlainText("\n".join(self._log_messages))
-        self.log_view.moveCursor(self.log_view.textCursor().End)
+        # Move cursor to the end so the latest log lines stay visible.
+        self.log_view.moveCursor(QTextCursor.End)
 
