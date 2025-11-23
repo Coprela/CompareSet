@@ -1067,9 +1067,16 @@ class ReleaseDialog(QDialog):
 class ReleasedDialog(QDialog):
     """Dialog showing all released ECRs with search and actions."""
 
-    def __init__(self, role: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        role: str,
+        parent: Optional[QWidget] = None,
+        *,
+        allow_admin_actions: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.role = role
+        self.allow_admin_actions = allow_admin_actions
         self.setWindowTitle("ECR Released")
         self.resize(800, 420)
 
@@ -1160,6 +1167,9 @@ class ReleasedDialog(QDialog):
             actions_layout.addWidget(export_btn)
             if self.role == "admin":
                 delete_btn = QPushButton("Delete")
+                delete_btn.setEnabled(self.allow_admin_actions)
+                if not self.allow_admin_actions:
+                    delete_btn.setToolTip("Delete is disabled in preview mode.")
                 delete_btn.clicked.connect(
                     lambda _=False, e=entry: self.delete_entry(e)
                 )
@@ -1183,6 +1193,10 @@ class ReleasedDialog(QDialog):
             QMessageBox.critical(self, "ECR Released", f"Unable to export file:\n{exc}")
 
     def delete_entry(self, entry: Dict[str, str]) -> None:
+        if not self.allow_admin_actions:
+            QMessageBox.information(self, "Delete Released", "Delete is disabled in preview mode.")
+            return
+
         filename = entry.get("filename", "")
         source_path = entry.get("source_result", "")
         if not filename:
@@ -1216,6 +1230,8 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self.username = username
+        self.actual_role = role
+        self.preview_role = preview_role
         self.role = preview_role or role
         self.preview_mode = preview
         self.user_settings = user_settings
@@ -1782,7 +1798,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_released(self) -> None:
-        dialog = ReleasedDialog(self.role, self)
+        dialog = ReleasedDialog(self.role, self, allow_admin_actions=self.has_admin_privileges())
         dialog.exec()
 
     def open_settings_dialog(self) -> None:
@@ -1798,6 +1814,9 @@ class MainWindow(QMainWindow):
             self.apply_theme_setting()
 
     def open_admin_dialog(self) -> None:
+        if not self.has_admin_privileges():
+            QMessageBox.information(self, "Administração", "Admin functions are disabled in preview mode.")
+            return
         dialog = AdminDialog(self)
         dialog.exec()
 
@@ -1815,6 +1834,9 @@ class MainWindow(QMainWindow):
                     break
             else:
                 current_email = ""
+
+    def has_admin_privileges(self) -> bool:
+        return self.actual_role == "admin" and not self.preview_mode
 
     def toggle_controls(self, enabled: bool) -> None:
         for widget in (
@@ -2247,7 +2269,13 @@ class MainWindow(QMainWindow):
 
     def open_role_preview(self, role: str) -> None:
         logger.info("Opening role preview for %s", role)
-        preview_window = MainWindow(self.username, self.role, dict(self.user_settings), preview_role=role, preview=True)
+        preview_window = MainWindow(
+            self.username,
+            self.actual_role,
+            dict(self.user_settings),
+            preview_role=role,
+            preview=True,
+        )
         self._preview_windows.append(preview_window)
         preview_window.show()
 
