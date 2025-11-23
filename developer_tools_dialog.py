@@ -29,10 +29,18 @@ class DeveloperToolsDialog(QDialog):
     save_layout_requested = Signal()
     reset_layout_requested = Signal()
 
-    def __init__(self, parent=None, settings: Dict | None = None, *, layout_mode_active: bool = False):
+    def __init__(
+        self,
+        parent=None,
+        settings: Dict | None = None,
+        *,
+        layout_mode_active: bool = False,
+        developer_enabled: bool = False,
+    ):
         super().__init__(parent)
         self.settings = settings or csenv.get_dev_settings()
         self.layout_mode_active = layout_mode_active
+        self.developer_enabled = developer_enabled
         self.setWindowTitle("Developer Tools")
         self._build_ui()
 
@@ -96,10 +104,11 @@ class DeveloperToolsDialog(QDialog):
         self.save_layout_btn.clicked.connect(self.save_layout_requested)
         self.reset_layout_btn.clicked.connect(self.reset_layout_requested)
 
-        enabled = csenv.is_dev_mode()
+        self.dev_mode_checkbox.toggled.connect(self._sync_layout_controls_enabled)
+
         for control in (self.layout_toggle_btn, self.save_layout_btn, self.reset_layout_btn):
-            control.setEnabled(enabled)
             layout_controls.addWidget(control)
+        self._sync_layout_controls_enabled()
 
         layout.addLayout(layout_controls)
 
@@ -133,6 +142,11 @@ class DeveloperToolsDialog(QDialog):
             self.layout_toggle_btn.setText("Exit Layout Mode")
         else:
             self.layout_toggle_btn.setText("Enter Layout Mode")
+
+    def _sync_layout_controls_enabled(self) -> None:
+        enabled = self.developer_enabled or self.dev_mode_checkbox.isChecked()
+        for control in (self.layout_toggle_btn, self.save_layout_btn, self.reset_layout_btn):
+            control.setEnabled(enabled)
 
     def apply_changes(self) -> None:
         updated = csenv.get_dev_settings()
