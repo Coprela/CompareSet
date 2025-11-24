@@ -15,6 +15,11 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+if sys.platform.startswith("win"):
+    import winreg
+else:  # pragma: no cover - non-Windows
+    winreg = None
 from PySide6.QtCore import (
     QObject,
     QThread,
@@ -3749,8 +3754,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-try:
-    import winreg
-except ImportError:  # pragma: no cover - non-Windows
-    winreg = None
 
