@@ -908,12 +908,13 @@ class HistoryView(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(16)
 
         card = QFrame()
         card.setObjectName("dialog_card")
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(20, 18, 20, 18)
+        card_layout.setSpacing(14)
 
         header_row = QHBoxLayout()
         self.title_label = QLabel(tr(language, "history_title"))
@@ -1335,9 +1336,12 @@ class AdminView(QWidget):
 
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(0, 0, 0, 0)
+        wrapper.setSpacing(16)
         card = QFrame()
         card.setObjectName("dialog_card")
         layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(tr(language, "search_user_placeholder"))
         self.search_input.textChanged.connect(self.refresh_user_list)
@@ -1725,12 +1729,13 @@ class ReleasedView(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(16)
 
         card = QFrame()
         card.setObjectName("dialog_card")
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(20, 18, 20, 18)
+        card_layout.setSpacing(14)
 
         header_row = QHBoxLayout()
         self.title_label = QLabel(tr(language, "released_title"))
@@ -2119,6 +2124,7 @@ class MainWindow(QMainWindow):
         self.main_card.setObjectName("main_card")
         self.main_card.setMaximumWidth(900)
         self.main_card.setMinimumWidth(800)
+        self.main_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         main_card_layout = QVBoxLayout(self.main_card)
         main_card_layout.setContentsMargins(20, 20, 20, 20)
         main_card_layout.setSpacing(18)
@@ -2180,41 +2186,48 @@ class MainWindow(QMainWindow):
         # Navigation bar for embedded views
         self.navigation_bar = QFrame(self.main_card)
         self.navigation_bar.setObjectName("navigation_bar")
+        self.navigation_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         nav_layout = QHBoxLayout(self.navigation_bar)
-        nav_layout.setContentsMargins(8, 0, 8, 0)
-        nav_layout.setSpacing(8)
+        nav_layout.setContentsMargins(20, 8, 20, 8)
+        nav_layout.setSpacing(10)
         self.nav_compare_button = QPushButton(tr(self.current_language, "comparison_view"))
-        self.nav_compare_button.setCheckable(True)
         self.nav_compare_button.clicked.connect(self.show_comparison_environment)
         self.released_button = QPushButton(tr(self.current_language, "released"))
         self.released_button.setObjectName("released_button")
         self.released_button.clicked.connect(self.show_released_environment)
-        for button in (
+        nav_buttons = [
             self.nav_compare_button,
             self.released_button,
             self.history_button,
             self.settings_button,
-        ):
-            button.setMinimumHeight(32)
+        ]
+        if self.role == "admin":
+            self.admin_button = QPushButton(tr(self.current_language, "admin"))
+            self.admin_button.clicked.connect(self.show_admin_environment)
+            nav_buttons.append(self.admin_button)
+        for button in nav_buttons:
+            button.setMinimumHeight(34)
             button.setCursor(Qt.PointingHandCursor)
+            button.setCheckable(True)
+            button.setProperty("class", "nav_button")
         nav_layout.addWidget(self.nav_compare_button)
         nav_layout.addWidget(self.released_button)
         nav_layout.addStretch()
         nav_layout.addWidget(self.history_button)
         nav_layout.addWidget(self.settings_button)
-        if self.role == "admin":
-            self.admin_button = QPushButton(tr(self.current_language, "admin"))
-            self.admin_button.setMinimumHeight(36)
-            self.admin_button.setCursor(Qt.PointingHandCursor)
-            self.admin_button.clicked.connect(self.show_admin_environment)
+        if self.role == "admin" and self.admin_button:
             nav_layout.addWidget(self.admin_button)
+        self._nav_buttons = nav_buttons
 
         # Back bar for secondary environments
         self.back_bar = QFrame(self.main_card)
+        self.back_bar.setObjectName("back_bar")
+        self.back_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         back_layout = QHBoxLayout(self.back_bar)
-        back_layout.setContentsMargins(0, 0, 0, 0)
-        back_layout.setSpacing(8)
+        back_layout.setContentsMargins(20, 8, 20, 8)
+        back_layout.setSpacing(10)
         self.back_button = QPushButton()
+        self.back_button.setMinimumHeight(34)
         self.back_button.setCursor(Qt.PointingHandCursor)
         self.back_button.clicked.connect(self.show_comparison_environment)
         self.environment_label = QLabel()
@@ -2246,16 +2259,6 @@ class MainWindow(QMainWindow):
         file_group_layout.addWidget(self.new_path_edit, 1, 1)
         file_group_layout.addWidget(self.new_browse_button, 1, 2)
 
-        # Group: Actions for comparison view
-        actions_group = QFrame()
-        actions_group.setObjectName("actions_group")
-        actions_layout = QHBoxLayout(actions_group)
-        actions_layout.setContentsMargins(14, 10, 14, 10)
-        actions_layout.setSpacing(10)
-        actions_layout.addStretch()
-        actions_layout.addWidget(self.cancel_button)
-        actions_layout.addWidget(self.compare_button)
-
         # Structured main toolbar container
         self.top_toolbar_frame = QFrame(self.main_card)
         self.top_toolbar_frame.setObjectName("top_toolbar")
@@ -2264,13 +2267,13 @@ class MainWindow(QMainWindow):
         top_layout.setSpacing(16)
         top_layout.addWidget(file_group)
 
-        actions_header_row = QHBoxLayout()
-        self.actions_header = QLabel("Ações")
-        self.actions_header.setProperty("class", "section_label")
-        actions_header_row.addWidget(self.actions_header)
-        actions_header_row.addStretch()
-        top_layout.addLayout(actions_header_row)
-        top_layout.addWidget(actions_group)
+        buttons_row = QHBoxLayout()
+        buttons_row.setContentsMargins(0, 0, 0, 0)
+        buttons_row.setSpacing(10)
+        buttons_row.addStretch()
+        buttons_row.addWidget(self.cancel_button)
+        buttons_row.addWidget(self.compare_button)
+        top_layout.addLayout(buttons_row)
 
         self.toolbar_dynamic_layout = QHBoxLayout()
         self.toolbar_dynamic_layout.setContentsMargins(0, 0, 0, 0)
@@ -2280,6 +2283,7 @@ class MainWindow(QMainWindow):
         # Progress and status area
         self.progress_frame = QFrame(self.main_card)
         self.progress_frame.setObjectName("progress_panel")
+        self.progress_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         progress_layout = QVBoxLayout(self.progress_frame)
         progress_layout.setContentsMargins(20, 18, 20, 18)
         progress_layout.setSpacing(10)
@@ -2294,7 +2298,7 @@ class MainWindow(QMainWindow):
         self.comparison_page = QWidget()
         comparison_layout = QVBoxLayout(self.comparison_page)
         comparison_layout.setContentsMargins(0, 0, 0, 0)
-        comparison_layout.setSpacing(12)
+        comparison_layout.setSpacing(16)
         comparison_layout.addWidget(self.top_toolbar_frame)
         comparison_layout.addWidget(self.progress_frame)
         self.progress_frame.hide()
@@ -2305,6 +2309,7 @@ class MainWindow(QMainWindow):
         self.admin_view = AdminView(self.current_language, self.main_card)
 
         self.content_stack = QStackedWidget(self.main_card)
+        self.content_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.content_stack.addWidget(self.comparison_page)
         self.content_stack.addWidget(self.released_view)
         self.content_stack.addWidget(self.history_view)
@@ -2483,6 +2488,7 @@ class MainWindow(QMainWindow):
     def show_status(self, message: str, *, determinate: bool = False) -> None:
         if self._status_hide_timer.isActive():
             self._status_hide_timer.stop()
+        self.status_header.setText(tr(self.current_language, "status"))
         self.progress_frame.show()
         self.status_label.setText(message)
         if determinate:
@@ -2540,6 +2546,7 @@ class MainWindow(QMainWindow):
             return
 
         self.toggle_controls(False)
+        self.status_header.setText(tr(self.current_language, "status"))
         self.show_status(tr(self.current_language, "status_comparing"), determinate=False)
         self.cancel_button.setEnabled(True)
         logger.info("Starting comparison: %s vs %s", old_path, new_path)
@@ -2566,7 +2573,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.show_status("Comparison complete.", determinate=True)
+        self.show_status(tr(self.current_language, "ready"), determinate=True)
         self.cancel_button.setEnabled(False)
         logger.info("Comparison finished.")
         if result.server_result_path:
@@ -2599,7 +2606,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.show_status("Comparison failed.", determinate=True)
+        failure_message = "Falha na comparação." if self.current_language == "pt-BR" else "Comparison failed."
+        self.show_status(failure_message, determinate=True)
         self.cancel_button.setEnabled(False)
         QMessageBox.critical(self, "CompareSet", f"Comparison failed:\n{message}")
         self._worker = None
@@ -2611,7 +2619,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.show_status("Pronto" if self.current_language == "pt-BR" else "Ready", determinate=True)
+        self.show_status(tr(self.current_language, "ready"), determinate=True)
         self.cancel_button.setEnabled(False)
         QMessageBox.information(self, "CompareSet", "Comparison was cancelled.")
         self._worker = None
@@ -2635,7 +2643,6 @@ class MainWindow(QMainWindow):
     def apply_language_setting(self) -> None:
         self.title_label.setText(tr(self.current_language, "app_title"))
         self.subtitle_label.setText(tr(self.current_language, "main_subtitle"))
-        self.actions_header.setText(tr(self.current_language, "actions"))
         self.status_header.setText(tr(self.current_language, "status"))
         self.old_label.setText(tr(self.current_language, "old_label"))
         self.new_label.setText(tr(self.current_language, "new_label"))
@@ -2776,7 +2783,7 @@ class MainWindow(QMainWindow):
                 border: 1px solid {border};
                 border-radius: 12px;
             }}
-            QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#actions_group, QFrame#navigation_bar {{
+            QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#navigation_bar, QFrame#back_bar {{
                 background-color: {panel_bg};
                 border: 1px solid {border};
                 border-radius: 12px;
@@ -2840,6 +2847,25 @@ class MainWindow(QMainWindow):
             }}
             QPushButton#cancel_button {{
                 border-color: {border};
+            }}
+            QFrame#navigation_bar QPushButton,
+            QFrame#back_bar QPushButton {{
+                border-radius: 16px;
+                padding: 8px 16px;
+            }}
+            QFrame#navigation_bar QPushButton:checked,
+            QFrame#navigation_bar QPushButton:disabled {{
+                background-color: {accent};
+                color: #ffffff;
+                border-color: {accent};
+            }}
+            QFrame#navigation_bar QPushButton:checked:hover,
+            QFrame#navigation_bar QPushButton:disabled:hover {{
+                background-color: {accent_hover};
+            }}
+            QFrame#navigation_bar QPushButton:checked:pressed,
+            QFrame#navigation_bar QPushButton:disabled:pressed {{
+                background-color: {accent_pressed};
             }}
             QProgressBar {{
                 border: 1px solid {border};
@@ -3076,8 +3102,10 @@ class MainWindow(QMainWindow):
                 current_email = ""
 
     def _update_nav_state(self, active: Optional[QPushButton]) -> None:
-        for button in (self.nav_compare_button,):
-            button.setChecked(button is active)
+        for button in getattr(self, "_nav_buttons", []):
+            is_active = button is active
+            button.setChecked(is_active)
+            button.setEnabled(not is_active)
 
     def show_comparison_environment(self) -> None:
         self.content_stack.setCurrentWidget(self.comparison_page)
