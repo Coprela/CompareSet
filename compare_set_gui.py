@@ -93,6 +93,15 @@ from compareset_env import (
 )
 from developer_layout_designer import LayoutDesignerDialog
 
+# Windows registry access for theme detection (optional on non-Windows systems)
+try:
+    if sys.platform.startswith("win"):
+        import winreg  # type: ignore
+    else:
+        winreg = None
+except ImportError:  # pragma: no cover - platform specific
+    winreg = None
+
 SERVER_ROOT = csenv.SERVER_ROOT
 SERVER_DATA_ROOT = csenv.SERVER_DATA_ROOT
 SERVER_RESULTS_ROOT = csenv.SERVER_RESULTS_ROOT
@@ -134,7 +143,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "no_file_selected": "Nenhum arquivo selecionado",
         "history": "Meu histórico",
         "released": "Arquivos Liberados",
-        "relicit": "Arquivos em Relicit",
         "settings": "Configurações",
         "compare": "Comparar",
         "cancel": "Cancelar",
@@ -177,8 +185,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "release_dialog_title": "Enviar para Arquivos Liberados",
         "release_cancel": "Cancelar",
         "release_send": "Enviar para Liberados",
-        "relicit_title": "Arquivos em Relicit",
-        "relicit_description": "Nenhum arquivo em relicit disponível no momento.",
         "released_search_placeholder": "Buscar por arquivo ou usuário…",
         "refresh": "Atualizar",
         "developer_tools": "Developer Tools",
@@ -225,7 +231,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "no_file_selected": "No file selected",
         "history": "My History",
         "released": "Released files",
-        "relicit": "Files in Relicit",
         "settings": "Settings",
         "compare": "Compare",
         "cancel": "Cancel",
@@ -268,8 +273,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "release_dialog_title": "Send to Released",
         "release_cancel": "Cancel",
         "release_send": "Send to Released",
-        "relicit_title": "Files in Relicit",
-        "relicit_description": "No files in relicit are available right now.",
         "released_search_placeholder": "Search by file or user…",
         "refresh": "Refresh",
         "developer_tools": "Developer Tools",
@@ -1635,6 +1638,13 @@ class ReleasedView(QWidget):
     def refresh(self) -> None:
         self._start_loading_entries()
 
+    def stop_loading(self) -> None:
+        if self._loader_thread is not None:
+            self._loader_thread.quit()
+            self._loader_thread.wait(3000)
+            self._loader_thread = None
+            self._loading_task = None
+
     def _configure_table_headers(self) -> None:
         headers = [
             "Date/Time",
@@ -1797,38 +1807,6 @@ class ReleasedView(QWidget):
             self._start_loading_entries()
         except Exception as exc:
             QMessageBox.critical(self, "Delete Released", f"Unable to delete file:\n{exc}")
-
-
-class RelicitView(QWidget):
-    """Placeholder view for files currently in relicit."""
-
-    def __init__(self, language: str, parent: Optional[QWidget] = None) -> None:
-        super().__init__(parent)
-        self.language = language
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
-        card = QFrame()
-        card.setObjectName("dialog_card")
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(10)
-
-        self.title_label = QLabel(tr(language, "relicit_title"))
-        self.title_label.setProperty("class", "section_label")
-        self.description_label = QLabel(tr(language, "relicit_description"))
-        self.description_label.setWordWrap(True)
-        card_layout.addWidget(self.title_label)
-        card_layout.addWidget(self.description_label)
-        card_layout.addStretch()
-
-        layout.addWidget(card)
-
-    def set_language(self, language: str) -> None:
-        self.language = language
-        self.title_label.setText(tr(language, "relicit_title"))
-        self.description_label.setText(tr(language, "relicit_description"))
 
 
 class OfflineDialog(QDialog):
@@ -2090,16 +2068,12 @@ class MainWindow(QMainWindow):
         self.nav_compare_button = QPushButton(tr(self.current_language, "comparison_view"))
         self.nav_compare_button.setCheckable(True)
         self.nav_compare_button.clicked.connect(self.show_comparison_view)
-        self.relicit_button = QPushButton(tr(self.current_language, "relicit"))
-        self.relicit_button.setCheckable(True)
-        self.relicit_button.clicked.connect(self.show_relicit_view)
         self.released_button = QPushButton("Released")
         self.released_button.setObjectName("released_button")
         self.released_button.setCheckable(True)
         self.released_button.clicked.connect(self.show_released_view)
         for button in (
             self.nav_compare_button,
-            self.relicit_button,
             self.released_button,
             self.history_button,
             self.settings_button,
@@ -2107,7 +2081,6 @@ class MainWindow(QMainWindow):
             button.setMinimumHeight(32)
             button.setCursor(Qt.PointingHandCursor)
         nav_layout.addWidget(self.nav_compare_button)
-        nav_layout.addWidget(self.relicit_button)
         nav_layout.addWidget(self.released_button)
         nav_layout.addStretch()
         nav_layout.addWidget(self.history_button)
@@ -2195,12 +2168,10 @@ class MainWindow(QMainWindow):
         comparison_layout.addWidget(self.progress_frame)
 
         # Embedded auxiliary views
-        self.relicit_view = RelicitView(self.current_language, self.main_card)
         self.released_view = ReleasedView(self.role, self.current_language, self.main_card)
 
         self.content_stack = QStackedWidget(self.main_card)
         self.content_stack.addWidget(self.comparison_page)
-        self.content_stack.addWidget(self.relicit_view)
         self.content_stack.addWidget(self.released_view)
 
         footer_divider = QFrame()
@@ -2273,14 +2244,6 @@ class MainWindow(QMainWindow):
             allow_action=True,
         )
         self._register_area_component("navigation_bar", "nav_compare_button")
-        self._register_editable_widget(
-            "relicit_button",
-            self.relicit_button,
-            display_name="Relicit view tab",
-            allow_icon=True,
-            allow_action=True,
-        )
-        self._register_area_component("navigation_bar", "relicit_button")
         self._register_editable_widget(
             "history_button",
             self.history_button,
@@ -2518,7 +2481,6 @@ class MainWindow(QMainWindow):
         self.old_browse_button.setText(tr(self.current_language, "browse"))
         self.new_browse_button.setText(tr(self.current_language, "browse"))
         self.nav_compare_button.setText(tr(self.current_language, "comparison_view"))
-        self.relicit_button.setText(tr(self.current_language, "relicit"))
         self.compare_button.setText(tr(self.current_language, "compare"))
         self.cancel_button.setText(tr(self.current_language, "cancel"))
         self.history_button.setText(tr(self.current_language, "history"))
@@ -2532,7 +2494,6 @@ class MainWindow(QMainWindow):
             self.status_label.setText(tr(self.current_language, "ready"))
         self.update_connection_banner()
         self.released_view.set_language(self.current_language)
-        self.relicit_view.set_language(self.current_language)
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
 
@@ -2938,21 +2899,48 @@ class MainWindow(QMainWindow):
                 current_email = ""
 
     def _update_nav_state(self, active: QPushButton) -> None:
-        for button in (self.nav_compare_button, self.relicit_button, self.released_button):
+        for button in (self.nav_compare_button, self.released_button):
             button.setChecked(button is active)
 
     def show_comparison_view(self) -> None:
         self.content_stack.setCurrentWidget(self.comparison_page)
         self._update_nav_state(self.nav_compare_button)
 
-    def show_relicit_view(self) -> None:
-        self.content_stack.setCurrentWidget(self.relicit_view)
-        self._update_nav_state(self.relicit_button)
-
     def show_released_view(self) -> None:
         self.content_stack.setCurrentWidget(self.released_view)
         self._update_nav_state(self.released_button)
         self.released_view.refresh()
+
+    def _stop_comparison_thread(self) -> None:
+        if self._thread is not None and self._thread.isRunning():
+            try:
+                if self._worker is not None:
+                    self._worker.request_cancel()
+            except Exception:
+                logger.exception("Failed to cancel comparison worker cleanly")
+            self._thread.quit()
+            self._thread.wait(3000)
+        self._thread = None
+        self._worker = None
+
+    def _stop_update_thread(self) -> None:
+        if self._update_thread is not None and self._update_thread.isRunning():
+            self._update_thread.quit()
+            self._update_thread.wait(3000)
+        self._update_thread = None
+        self._update_task = None
+
+    def closeEvent(self, event) -> None:
+        try:
+            if hasattr(self, "connection_monitor"):
+                self.connection_monitor.stop()
+        except Exception:
+            logger.exception("Failed to stop connection monitor")
+        self._stop_comparison_thread()
+        self._stop_update_thread()
+        if hasattr(self, "released_view"):
+            self.released_view.stop_loading()
+        super().closeEvent(event)
 
     def toggle_controls(self, enabled: bool) -> None:
         for widget in (
