@@ -1941,7 +1941,7 @@ class MainWindow(QMainWindow):
         self.new_path_edit = QLineEdit()
         for line_edit in (self.old_path_edit, self.new_path_edit):
             line_edit.setReadOnly(True)
-            line_edit.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+            line_edit.setContextMenuPolicy(Qt.NoContextMenu)
             line_edit.setMinimumHeight(28)
 
         self.old_browse_button = QPushButton("Browse…")
