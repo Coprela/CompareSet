@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CompareSet desktop application with Developer Layout Mode for draggable panels."""
+"""CompareSet desktop application with developer tools for preview and diagnostics."""
 
 from __future__ import annotations
 
@@ -92,8 +92,6 @@ from compareset_env import (
     enable_dev_mode,
     get_output_directory_for_user,
 )
-from developer_layout_designer import LayoutDesignerDialog
-
 # Windows registry access for theme detection (optional on non-Windows systems)
 try:
     if sys.platform.startswith("win"):
@@ -3815,23 +3813,6 @@ class MainWindow(QMainWindow):
         tools_action.triggered.connect(self.open_developer_tools)
         dev_menu.addAction(tools_action)
 
-        self.layout_designer_action = QAction("Layout Designer…", self)
-        self.layout_designer_action.triggered.connect(self.open_layout_designer)
-        dev_menu.addAction(self.layout_designer_action)
-
-        self.layout_mode_action = QAction("Layout Editor…", self)
-        self.layout_mode_action.setCheckable(True)
-        self.layout_mode_action.triggered.connect(self.toggle_layout_mode)
-        dev_menu.addAction(self.layout_mode_action)
-
-        self.save_layout_action = QAction("Save Layout", self)
-        self.save_layout_action.triggered.connect(self.save_dev_layout)
-        dev_menu.addAction(self.save_layout_action)
-
-        self.reset_layout_action = QAction("Reset Layout to Default", self)
-        self.reset_layout_action.triggered.connect(self.reset_dev_layout)
-        dev_menu.addAction(self.reset_layout_action)
-
         self._developer_menu_initialized = True
         self._update_developer_menu_state()
 
@@ -3860,25 +3841,11 @@ class MainWindow(QMainWindow):
             layout_mode_active=self.layout_mode_enabled,
             log_messages=list(self._log_history),
         )
-        dialog.layout_mode_toggled.connect(self.toggle_layout_mode)
-        dialog.save_layout_requested.connect(self.save_dev_layout)
-        dialog.reset_layout_requested.connect(self.reset_dev_layout)
         dialog.update_connection_text(SERVER_ONLINE)
         self._dev_dialog = dialog
         dialog.finished.connect(lambda _: setattr(self, "_dev_dialog", None))
         dialog.setModal(False)
         dialog.show()
-
-    def open_layout_designer(self) -> None:
-        if not self._is_developer_enabled():
-            QMessageBox.information(
-                self,
-                "Layout Designer",
-                "O Designer de Layout só fica disponível quando o modo desenvolvedor está ativo.",
-            )
-            return
-        dialog = LayoutDesignerDialog(self)
-        dialog.exec()
 
 def main() -> None:
     """Entry point for the application."""

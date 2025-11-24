@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 
 class DeveloperToolsDialog(QDialog):
-    """Developer toolbox for layout editing, previews and diagnostics."""
+    """Developer toolbox for role preview and diagnostics."""
 
     layout_mode_toggled = Signal(bool)
     save_layout_requested = Signal()
@@ -40,8 +40,6 @@ class DeveloperToolsDialog(QDialog):
         self.setWindowTitle("Developer Tools")
         self._log_messages = log_messages or []
         self._build_ui()
-        self._refresh_areas()
-        self._refresh_config_dump()
         self._refresh_logs()
         self._lock_to_content()
 
@@ -52,10 +50,8 @@ class DeveloperToolsDialog(QDialog):
         layout = QVBoxLayout(self)
 
         tabs = QTabWidget()
-        tabs.addTab(self._build_layout_tab(), "Layout")
         tabs.addTab(self._build_preview_tab(), "View as role")
         tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
-        tabs.addTab(self._build_config_tab(), "Config / JSON")
         layout.addWidget(tabs)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
