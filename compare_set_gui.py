@@ -1102,12 +1102,12 @@ class HistoryView(QWidget):
             QMessageBox.information(
                 self,
                 "CompareSet",
-                f"File exported to:
-{target_path}",
+                f"File exported to: {target_path}",
             )
         except Exception as exc:
-            QMessageBox.critical(self, "CompareSet", f"Unable to export file:
-{exc}")
+            QMessageBox.critical(
+                self, "CompareSet", f"Unable to export file: {exc}"
+            )
 
     def view_log(self, log_path: str) -> None:
         if not log_path or not os.path.exists(log_path):
@@ -1117,8 +1117,9 @@ class HistoryView(QWidget):
             with open(log_path, "r", encoding="utf-8", errors="ignore") as handle:
                 content = handle.read()
         except Exception as exc:
-            QMessageBox.warning(self, "CompareSet", f"Unable to read log:
-{exc}")
+            QMessageBox.warning(
+                self, "CompareSet", f"Unable to read log: {exc}"
+            )
             return
 
         dialog = QDialog(self)
@@ -1199,16 +1200,14 @@ class HistoryView(QWidget):
             QMessageBox.information(
                 self,
                 "ECR Released",
-                f"Arquivo liberado em:
-{target_path}",
+                f"Arquivo liberado em: {target_path}",
             )
             self._start_loading_history()
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 "ECR Released",
-                f"Não foi possível enviar o arquivo para Released:
-{exc}",
+                f"Não foi possível enviar o arquivo para Released: {exc}",
             )
 
     def clear_history(self) -> None:
@@ -1233,9 +1232,9 @@ class HistoryView(QWidget):
             )
         except Exception as exc:
             message = (
-                f"Erro ao limpar histórico:
-{exc}" if self.language == "pt-BR" else f"Unable to clear history:
-{exc}"
+                f"Erro ao limpar histórico: {exc}"
+                if self.language == "pt-BR"
+                else f"Unable to clear history: {exc}"
             )
             QMessageBox.critical(self, tr(self.language, "history_title"), message)
 
@@ -1427,8 +1426,9 @@ class AdminView(QWidget):
         except sqlite3.IntegrityError:
             QMessageBox.warning(self, tr(self.language, "admin_title"), "User already exists.")
         except Exception as exc:
-            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to add user:
-{exc}")
+            QMessageBox.critical(
+                self, tr(self.language, "admin_title"), f"Unable to add user: {exc}"
+            )
 
     def on_update_user(self) -> None:
         if not self.user_list or not self.user_list.currentItem():
@@ -1445,8 +1445,9 @@ class AdminView(QWidget):
             QMessageBox.information(self, tr(self.language, "admin_title"), "User updated.")
             self.refresh_user_list()
         except Exception as exc:
-            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to update user:
-{exc}")
+            QMessageBox.critical(
+                self, tr(self.language, "admin_title"), f"Unable to update user: {exc}"
+            )
 
 
 class ReleaseDialog(QDialog):
