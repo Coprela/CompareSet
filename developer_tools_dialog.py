@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSize, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -38,12 +38,12 @@ class DeveloperToolsDialog(QDialog):
         self.window = window
         self.layout_mode_active = layout_mode_active
         self.setWindowTitle("Developer Tools")
-        self.setMinimumSize(760, 520)
         self._log_messages = log_messages or []
         self._build_ui()
         self._refresh_areas()
         self._refresh_config_dump()
         self._refresh_logs()
+        self._lock_to_content()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -163,6 +163,15 @@ class DeveloperToolsDialog(QDialog):
         refresh_btn.clicked.connect(self._refresh_logs)
         layout.addWidget(refresh_btn)
         return box
+
+    def _lock_to_content(self) -> None:
+        self.adjustSize()
+        size = self.sizeHint()
+        if self.screen():
+            available = self.screen().availableGeometry().size() - QSize(24, 24)
+            if available.isValid():
+                size = size.boundedTo(available)
+        self.setFixedSize(size)
 
     def _build_config_tab(self) -> QGroupBox:
         box = QGroupBox("Layout snapshot")
