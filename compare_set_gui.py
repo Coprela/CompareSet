@@ -14,8 +14,19 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QPoint, QRect, QSize, QUrl
+from typing import Any, Dict, List, Optional, Tuple, Union
+from PySide6.QtCore import (
+    QObject,
+    QThread,
+    Qt,
+    Signal,
+    Slot,
+    QEvent,
+    QPoint,
+    QRect,
+    QSize,
+    QUrl,
+)
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -762,6 +773,43 @@ class CompareSetWorker(QObject):
         self.progress.emit(page_index, total_pages)
 
 
+class BackgroundTask(QObject):
+    """Lightweight helper that executes a callable away from the UI thread."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, function):
+        super().__init__()
+        self._function = function
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            result = self._function()
+        except Exception as exc:  # pragma: no cover - Qt thread
+            logger.exception("Background task failed: %s", exc)
+            self.failed.emit(str(exc))
+            return
+        self.finished.emit(result)
+
+
+def _lock_widget_size(widget: QWidget) -> None:
+    """Resize a widget to its content and prevent user-driven resizing."""
+
+    widget.adjustSize()
+    target_size = widget.sizeHint()
+    screen = widget.screen()
+    if screen is not None:
+        available = screen.availableGeometry().size()
+        safe_area = available - QSize(24, 24)
+        if safe_area.isValid():
+            target_size = target_size.boundedTo(safe_area)
+    widget.setMinimumSize(target_size)
+    widget.setMaximumSize(target_size)
+    widget.resize(target_size)
+
+
 class HistoryDialog(QDialog):
     """Dialog showing previous comparisons for the current user."""
 
@@ -793,21 +841,70 @@ class HistoryDialog(QDialog):
 
         self.released_button = QPushButton("Released")
         self.released_button.clicked.connect(self.send_selected_to_released)
-        clear_button = QPushButton("Limpar Histórico")
-        clear_button.clicked.connect(self.clear_history)
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(self.accept)
+        self.clear_button = QPushButton("Limpar Histórico")
+        self.clear_button.clicked.connect(self.clear_history)
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.accept)
         button_row = QHBoxLayout()
         button_row.addStretch()
-        button_row.addWidget(clear_button)
+        button_row.addWidget(self.clear_button)
         button_row.addWidget(self.released_button)
-        button_row.addWidget(close_button)
+        button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
 
-        self.refresh_history()
+        self._loading_task: Optional[BackgroundTask] = None
+        self._start_loading_history()
+        _lock_widget_size(self)
 
-    def refresh_history(self) -> None:
-        self.entries = self._collect_entries()
+    def _set_loading_state(self, loading: bool) -> None:
+        self.table.setEnabled(not loading)
+        for button in (self.released_button, self.clear_button, self.close_button):
+            button.setEnabled(not loading)
+        if loading:
+            self.info_label.setText("Loading history…")
+
+    def _start_loading_history(self) -> None:
+        if self._loader_thread is not None and self._loader_thread.isRunning():
+            return
+
+        self.entries = []
+        self.table.setRowCount(0)
+        self._set_loading_state(True)
+
+        task = BackgroundTask(self._collect_entries)
+        thread = QThread(self)
+        task.moveToThread(thread)
+        thread.started.connect(task.run)
+        task.finished.connect(self._on_history_loaded)
+        task.failed.connect(self._on_history_failed)
+        task.finished.connect(thread.quit)
+        task.failed.connect(thread.quit)
+        task.finished.connect(task.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._loading_task = task
+        self._loader_thread = thread
+        thread.start()
+
+    @Slot(object)
+    def _on_history_loaded(self, entries: List[Dict[str, Union[str, datetime]]]) -> None:
+        self.entries = entries
+        self._populate_history_table()
+        self._set_loading_state(False)
+        self._loader_thread = None
+        self._loading_task = None
+        _lock_widget_size(self)
+
+    @Slot(str)
+    def _on_history_failed(self, message: str) -> None:
+        self.entries = []
+        self.table.setRowCount(0)
+        self.info_label.setText(f"Unable to load history: {message}")
+        self._set_loading_state(False)
+        self._loader_thread = None
+        self._loading_task = None
+        _lock_widget_size(self)
+
+    def _populate_history_table(self) -> None:
         self.table.setRowCount(len(self.entries))
 
         if not self.entries:
@@ -848,19 +945,6 @@ class HistoryDialog(QDialog):
 
         self.table.resizeColumnsToContents()
         self.table.resizeRowsToContents()
-        total_width = (
-            self.table.verticalHeader().width()
-            + self.table.horizontalHeader().length()
-            + self.table.frameWidth() * 4
-        )
-        total_height = (
-            self.table.horizontalHeader().height()
-            + sum(self.table.rowHeight(row) for row in range(self.table.rowCount()))
-            + self.table.frameWidth() * 4
-            + self.info_label.sizeHint().height()
-            + 100
-        )
-        self.resize(max(self.width(), total_width + 40), max(320, min(total_height, 720)))
 
     def _collect_entries(self) -> List[Dict[str, Union[str, datetime]]]:
         if not os.path.exists(self.user_results_dir):
@@ -928,7 +1012,7 @@ class HistoryDialog(QDialog):
         button_row.addStretch()
         button_row.addWidget(close_button)
         layout.addLayout(button_row)
-        dialog.resize(600, 400)
+        _lock_widget_size(dialog)
         dialog.exec()
 
     def send_selected_to_released(self) -> None:
@@ -991,7 +1075,7 @@ class HistoryDialog(QDialog):
                 "ECR Released",
                 f"Arquivo liberado em:\n{target_path}",
             )
-            self.refresh_history()
+            self._start_loading_history()
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -1012,7 +1096,7 @@ class HistoryDialog(QDialog):
         try:
             for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
                 pdf_path.unlink(missing_ok=True)
-            self.refresh_history()
+            self._start_loading_history()
             QMessageBox.information(self, "My History", "Histórico limpo.")
         except Exception as exc:
             QMessageBox.critical(self, "My History", f"Erro ao limpar histórico:\n{exc}")
@@ -1053,6 +1137,8 @@ class SettingsDialog(QDialog):
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(16, 16, 16, 16)
         wrapper.addWidget(card)
+        _lock_widget_size(self)
+        _lock_widget_size(self)
 
     def load(self) -> None:
         settings = get_or_create_user_settings(self.username)
@@ -1111,7 +1197,7 @@ class AdminDialog(QDialog):
         super().__init__(parent)
         self.language = language
         self.setWindowTitle(tr(language, "admin_title"))
-        self.resize(480, 520)
+        self._loader_thread: Optional[QThread] = None
 
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(16, 16, 16, 16)
@@ -1154,6 +1240,7 @@ class AdminDialog(QDialog):
         self.update_user_button.clicked.connect(self.on_update_user)
 
         self.refresh_user_list()
+        _lock_widget_size(self)
 
     def refresh_user_list(self) -> None:
         try:
@@ -1250,6 +1337,7 @@ class ReleaseDialog(QDialog):
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(16, 16, 16, 16)
         wrapper.addWidget(card)
+        _lock_widget_size(self)
 
     def _validate(self) -> None:
         fields = [
@@ -1284,7 +1372,7 @@ class ReleasedDialog(QDialog):
         self.role = role
         self.language = language
         self.setWindowTitle(tr(language, "released_title"))
-        self.resize(800, 420)
+        self._all_entries: List[Dict[str, str]] = []
 
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(16, 16, 16, 16)
@@ -1294,7 +1382,7 @@ class ReleasedDialog(QDialog):
         card_layout = QVBoxLayout(card)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by file or user…")
-        self.search_input.textChanged.connect(self.refresh)
+        self.search_input.textChanged.connect(self._apply_filter)
         card_layout.addWidget(self.search_input)
 
         self.table = QTableWidget(0, 9)
@@ -1336,11 +1424,66 @@ class ReleasedDialog(QDialog):
         layout.addWidget(card)
         wrapper.addLayout(layout)
 
-        self.refresh()
+        self._loader_thread: Optional[QThread] = None
+        self._loading_task: Optional[BackgroundTask] = None
+        self._start_loading_entries()
+        _lock_widget_size(self)
 
-    def refresh(self) -> None:
-        entries = list_released_entries()
+    def _set_loading_state(self, loading: bool) -> None:
+        self.table.setEnabled(not loading)
+        self.search_input.setEnabled(not loading)
+        if loading:
+            self.search_input.setPlaceholderText("Loading released files…")
+        else:
+            self.search_input.setPlaceholderText("Search by file or user…")
+
+    def _start_loading_entries(self) -> None:
+        if self._loader_thread is not None and self._loader_thread.isRunning():
+            return
+
+        self._all_entries = []
+        self.table.setRowCount(0)
+        self._set_loading_state(True)
+
+        task = BackgroundTask(list_released_entries)
+        thread = QThread(self)
+        task.moveToThread(thread)
+        thread.started.connect(task.run)
+        task.finished.connect(self._on_entries_loaded)
+        task.failed.connect(self._on_entries_failed)
+        task.finished.connect(thread.quit)
+        task.failed.connect(thread.quit)
+        task.finished.connect(task.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._loading_task = task
+        self._loader_thread = thread
+        thread.start()
+
+    @Slot(object)
+    def _on_entries_loaded(self, entries: List[Dict[str, str]]) -> None:
+        self._all_entries = entries
+        self._set_loading_state(False)
+        self._apply_filter()
+        self._loader_thread = None
+        self._loading_task = None
+        _lock_widget_size(self)
+
+    @Slot(str)
+    def _on_entries_failed(self, message: str) -> None:
+        self._all_entries = []
+        self.table.setRowCount(0)
+        self.search_input.setPlaceholderText(f"Unable to load: {message}")
+        self._set_loading_state(False)
+        self._loader_thread = None
+        self._loading_task = None
+        _lock_widget_size(self)
+
+    @Slot()
+    def _apply_filter(self) -> None:
+        if not self._all_entries and (self._loader_thread is None or not self._loader_thread.isRunning()):
+            self.table.setRowCount(0)
         search_text = (self.search_input.text() or "").lower().strip()
+        entries = self._all_entries
         if search_text:
             entries = [
                 entry
@@ -1348,7 +1491,9 @@ class ReleasedDialog(QDialog):
                 if search_text in entry.get("filename", "").lower()
                 or search_text in entry.get("created_by", "").lower()
             ]
+        self._populate_table(entries)
 
+    def _populate_table(self, entries: List[Dict[str, str]]) -> None:
         self.table.setRowCount(len(entries))
         for row_index, entry in enumerate(entries):
             created_at = entry.get("created_at", "")
@@ -1417,7 +1562,7 @@ class ReleasedDialog(QDialog):
             if source_path and os.path.exists(source_path):
                 os.remove(source_path)
             delete_released_entry(filename)
-            self.refresh()
+            self._start_loading_entries()
         except Exception as exc:
             QMessageBox.critical(self, "Delete Released", f"Unable to delete file:\n{exc}")
 
@@ -1454,6 +1599,7 @@ class OfflineDialog(QDialog):
 
         shortcut = QShortcut(QKeySequence("Ctrl+Alt+Shift+D"), self)
         shortcut.activated.connect(self._prompt_dev_password)
+        _lock_widget_size(self)
 
     def _prompt_dev_password(self) -> None:
         dialog = QDialog(self)
@@ -1593,14 +1739,11 @@ class MainWindow(QMainWindow):
 
         self._log_history: List[str] = []
         self._dev_dialog: Optional[DeveloperToolsDialog] = None
+        self._update_thread: Optional[QThread] = None
+        self._update_task: Optional[BackgroundTask] = None
 
         self._last_old_path: Optional[Path] = None
 
-        self.adjustSize()
-        initial_size = self.sizeHint().expandedTo(QSize(880, 540))
-        self.setMinimumSize(initial_size)
-        self.resize(initial_size)
-        self.setMaximumSize(initial_size + QSize(260, 180))
         central_widget = QWidget()
         central_widget.setObjectName("layout_canvas")
         central_widget.setMinimumSize(720, 520)
@@ -1890,6 +2033,7 @@ class MainWindow(QMainWindow):
         self.connection_monitor.start()
         self.show_offline_warning_once()
         self.prompt_for_email_if_missing()
+        _lock_widget_size(self)
 
     @Slot(str)
     def append_log(self, message: str) -> None:
@@ -2312,21 +2456,48 @@ class MainWindow(QMainWindow):
                 parts.append(0)
         return parts or [0]
 
-    def _check_for_updates(self) -> None:
+    def _load_remote_version_info(self) -> Optional[Tuple[str, str]]:
         if not SERVER_ONLINE:
-            return
-        try:
-            with open(VERSION_INFO_PATH, "r", encoding="utf-8") as handle:
-                lines = handle.read().splitlines()
-        except FileNotFoundError:
-            return
-        except Exception:
-            logger.exception("Unable to read remote version file")
-            return
+            return None
+        with open(VERSION_INFO_PATH, "r", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
         if not lines:
-            return
+            return None
         server_version = lines[0].strip()
         download_url = lines[1].strip() if len(lines) > 1 else ""
+        return server_version, download_url
+
+    def _check_for_updates(self) -> None:
+        if not SERVER_ONLINE:
+            self.version_banner.setVisible(False)
+            self._update_download_url = None
+            return
+        if self._update_thread is not None and self._update_thread.isRunning():
+            return
+
+        task = BackgroundTask(self._load_remote_version_info)
+        thread = QThread(self)
+        task.moveToThread(thread)
+        thread.started.connect(task.run)
+        task.finished.connect(self._on_update_info_loaded)
+        task.failed.connect(self._on_update_info_failed)
+        task.finished.connect(thread.quit)
+        task.failed.connect(thread.quit)
+        task.finished.connect(task.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._update_task = task
+        self._update_thread = thread
+        thread.start()
+
+    @Slot(object)
+    def _on_update_info_loaded(self, payload: Optional[Tuple[str, str]]) -> None:
+        self._update_thread = None
+        self._update_task = None
+        if not payload:
+            self.version_banner.setVisible(False)
+            self._update_download_url = None
+            return
+        server_version, download_url = payload
         local_version = APP_VERSION
         if self._parse_version(server_version) > self._parse_version(local_version):
             translations = self._connection_texts()
@@ -2339,6 +2510,14 @@ class MainWindow(QMainWindow):
         else:
             self.version_banner.setVisible(False)
             self._update_download_url = None
+
+    @Slot(str)
+    def _on_update_info_failed(self, message: str) -> None:
+        logger.warning("Failed to check updates: %s", message)
+        self._update_thread = None
+        self._update_task = None
+        self.version_banner.setVisible(False)
+        self._update_download_url = None
 
     def _open_update_link(self) -> None:
         if self._update_download_url:

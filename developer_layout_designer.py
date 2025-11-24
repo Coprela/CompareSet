@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,12 +29,12 @@ class LayoutDesignerDialog(QDialog):
         self.window = window
         self.catalog = window.get_editable_widget_catalog()
         self.setWindowTitle("Layout Designer")
-        self.setMinimumSize(520, 420)
         self._build_ui()
         self._refresh_catalog()
 
         if self.widget_list.count():
             self.widget_list.setCurrentRow(0)
+        self._lock_to_content()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -154,6 +154,15 @@ class LayoutDesignerDialog(QDialog):
                         break
             self.widget_list.setCurrentRow(target_row)
         self.add_button_btn.setEnabled(bool(self.window.get_dynamic_parents()))
+
+    def _lock_to_content(self) -> None:
+        self.adjustSize()
+        size = self.sizeHint()
+        if self.screen():
+            available = self.screen().availableGeometry().size() - QSize(24, 24)
+            if available.isValid():
+                size = size.boundedTo(available)
+        self.setFixedSize(size)
 
     def _on_selection_changed(self, current: Optional[QListWidgetItem]) -> None:
         key = current.data(Qt.UserRole) if current else None
