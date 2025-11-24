@@ -791,6 +791,7 @@ def words_to_pixel_boxes(doc_page: fitz.Page, zoom: Zoom) -> List[WordBox]:
     return results
 
 
+@dataclass
 class PageProcessingResult:
     """Detailed results for a processed page pair."""
 
