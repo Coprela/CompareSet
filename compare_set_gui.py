@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QPushButton,
     QProgressBar,
+    QStackedWidget,
     QStatusBar,
     QTableWidget,
     QTableWidgetItem,
@@ -125,12 +126,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "app_title": "CompareSet",
         "main_subtitle": "Selecione os arquivos e execute a comparação",
         "actions": "Ações",
+        "comparison_view": "Comparação",
         "status": "Status",
         "old_label": "Revisão antiga (PDF)",
         "new_label": "Nova revisão (PDF)",
         "browse": "Procurar…",
+        "no_file_selected": "Nenhum arquivo selecionado",
         "history": "Meu histórico",
-        "released": "Liberados",
+        "released": "Arquivos Liberados",
+        "relicit": "Arquivos em Relicit",
         "settings": "Configurações",
         "compare": "Comparar",
         "cancel": "Cancelar",
@@ -165,14 +169,18 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "update_user": "Salvar alterações",
         "status_active": "Ativo",
         "status_inactive": "Inativo",
-        "released_title": "Liberados",
+        "released_title": "Arquivos Liberados",
         "released_close": "Fechar",
         "released_view": "Visualizar",
         "released_export": "Exportar",
         "released_delete": "Excluir",
-        "release_dialog_title": "Enviar para liberados",
+        "release_dialog_title": "Enviar para Arquivos Liberados",
         "release_cancel": "Cancelar",
         "release_send": "Enviar para Liberados",
+        "relicit_title": "Arquivos em Relicit",
+        "relicit_description": "Nenhum arquivo em relicit disponível no momento.",
+        "released_search_placeholder": "Buscar por arquivo ou usuário…",
+        "refresh": "Atualizar",
         "developer_tools": "Developer Tools",
         "developer_layout_tab": "Layout",
         "developer_preview_tab": "Visualizar como",
@@ -209,12 +217,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "app_title": "CompareSet",
         "main_subtitle": "Select the files and run the comparison",
         "actions": "Actions",
+        "comparison_view": "Comparison",
         "status": "Status",
         "old_label": "Old revision (PDF)",
         "new_label": "New revision (PDF)",
         "browse": "Browse…",
+        "no_file_selected": "No file selected",
         "history": "My History",
-        "released": "Released",
+        "released": "Released files",
+        "relicit": "Files in Relicit",
         "settings": "Settings",
         "compare": "Compare",
         "cancel": "Cancel",
@@ -249,7 +260,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "update_user": "Save Changes",
         "status_active": "Active",
         "status_inactive": "Inactive",
-        "released_title": "Released",
+        "released_title": "Released files",
         "released_close": "Close",
         "released_view": "View",
         "released_export": "Export",
@@ -257,6 +268,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "release_dialog_title": "Send to Released",
         "release_cancel": "Cancel",
         "release_send": "Send to Released",
+        "relicit_title": "Files in Relicit",
+        "relicit_description": "No files in relicit are available right now.",
+        "released_search_placeholder": "Search by file or user…",
+        "refresh": "Refresh",
         "developer_tools": "Developer Tools",
         "developer_layout_tab": "Layout",
         "developer_preview_tab": "View as role",
@@ -1567,6 +1582,255 @@ class ReleasedDialog(QDialog):
             QMessageBox.critical(self, "Delete Released", f"Unable to delete file:\n{exc}")
 
 
+class ReleasedView(QWidget):
+    """Embedded view showing released entries inside the main window."""
+
+    def __init__(self, role: str, language: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.role = role
+        self.language = language
+        self._all_entries: List[Dict[str, str]] = []
+        self._loader_thread: Optional[QThread] = None
+        self._loading_task: Optional[BackgroundTask] = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(12)
+
+        header_row = QHBoxLayout()
+        self.title_label = QLabel(tr(language, "released_title"))
+        self.title_label.setProperty("class", "section_label")
+        header_row.addWidget(self.title_label)
+        header_row.addStretch()
+        self.refresh_button = QPushButton(tr(language, "refresh"))
+        self.refresh_button.clicked.connect(self.refresh)
+        header_row.addWidget(self.refresh_button)
+        card_layout.addLayout(header_row)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText(tr(language, "released_search_placeholder"))
+        self.search_input.textChanged.connect(self._apply_filter)
+        card_layout.addWidget(self.search_input)
+
+        self.table = QTableWidget(0, 9)
+        self._configure_table_headers()
+        card_layout.addWidget(self.table)
+
+        layout.addWidget(card)
+        self.refresh()
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+        self.title_label.setText(tr(language, "released_title"))
+        self.refresh_button.setText(tr(language, "refresh"))
+        self.search_input.setPlaceholderText(tr(language, "released_search_placeholder"))
+        self._configure_table_headers()
+        self._apply_filter()
+
+    def refresh(self) -> None:
+        self._start_loading_entries()
+
+    def _configure_table_headers(self) -> None:
+        headers = [
+            "Date/Time",
+            "Name File OLD",
+            "Revision File OLD",
+            "Name File NEW",
+            "Revision File NEW",
+            "Created by",
+            tr(self.language, "released"),
+            "File name",
+            "Actions",
+        ]
+        self.table.setHorizontalHeaderLabels(headers)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+
+    def _set_loading_state(self, loading: bool) -> None:
+        self.table.setEnabled(not loading)
+        self.search_input.setEnabled(not loading)
+        if loading:
+            self.search_input.setPlaceholderText(tr(self.language, "refresh"))
+        else:
+            self.search_input.setPlaceholderText(tr(self.language, "released_search_placeholder"))
+
+    def _start_loading_entries(self) -> None:
+        if self._loader_thread is not None and self._loader_thread.isRunning():
+            return
+
+        self._all_entries = []
+        self.table.setRowCount(0)
+        self._set_loading_state(True)
+
+        task = BackgroundTask(list_released_entries)
+        thread = QThread(self)
+        task.moveToThread(thread)
+        thread.started.connect(task.run)
+        task.finished.connect(self._on_entries_loaded)
+        task.failed.connect(self._on_entries_failed)
+        task.finished.connect(thread.quit)
+        task.failed.connect(thread.quit)
+        task.finished.connect(task.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._loading_task = task
+        self._loader_thread = thread
+        thread.start()
+
+    @Slot(object)
+    def _on_entries_loaded(self, entries: List[Dict[str, str]]) -> None:
+        self._all_entries = entries
+        self._set_loading_state(False)
+        self._apply_filter()
+        self._loader_thread = None
+        self._loading_task = None
+
+    @Slot(str)
+    def _on_entries_failed(self, message: str) -> None:
+        self._all_entries = []
+        self.table.setRowCount(0)
+        self.search_input.setPlaceholderText(f"Unable to load: {message}")
+        self._set_loading_state(False)
+        self._loader_thread = None
+        self._loading_task = None
+
+    @Slot()
+    def _apply_filter(self) -> None:
+        if not self._all_entries and (self._loader_thread is None or not self._loader_thread.isRunning()):
+            self.table.setRowCount(0)
+        search_text = (self.search_input.text() or "").lower().strip()
+        entries = self._all_entries
+        if search_text:
+            entries = [
+                entry
+                for entry in entries
+                if search_text in entry.get("filename", "").lower()
+                or search_text in entry.get("created_by", "").lower()
+            ]
+        self._populate_table(entries)
+
+    def _populate_table(self, entries: List[Dict[str, str]]) -> None:
+        self.table.setRowCount(len(entries))
+        for row_index, entry in enumerate(entries):
+            created_at = entry.get("created_at", "")
+            try:
+                display_time = datetime.fromisoformat(created_at).strftime("%d/%m/%Y %H:%M:%S")
+            except Exception:
+                display_time = created_at
+            self.table.setItem(row_index, 0, QTableWidgetItem(display_time))
+            self.table.setItem(row_index, 1, QTableWidgetItem(entry.get("name_file_old", "")))
+            self.table.setItem(row_index, 2, QTableWidgetItem(entry.get("revision_old", "")))
+            self.table.setItem(row_index, 3, QTableWidgetItem(entry.get("name_file_new", "")))
+            self.table.setItem(row_index, 4, QTableWidgetItem(entry.get("revision_new", "")))
+            self.table.setItem(row_index, 5, QTableWidgetItem(entry.get("created_by", "")))
+            self.table.setItem(row_index, 6, QTableWidgetItem(tr(self.language, "released")))
+            self.table.setItem(row_index, 7, QTableWidgetItem(entry.get("filename", "")))
+
+            actions = QWidget()
+            actions_layout = QHBoxLayout(actions)
+            actions_layout.setContentsMargins(0, 0, 0, 0)
+            view_btn = QPushButton(tr(self.language, "released_view"))
+            export_btn = QPushButton(tr(self.language, "released_export"))
+            view_btn.clicked.connect(
+                lambda _=False, p=entry.get("source_result", ""): open_with_default_application(p)
+            )
+            export_btn.clicked.connect(
+                lambda _=False, p=entry.get("source_result", ""), fn=entry.get("filename", ""): self.export_file(p, fn)
+            )
+            actions_layout.addWidget(view_btn)
+            actions_layout.addWidget(export_btn)
+            if self.role == "admin":
+                delete_btn = QPushButton(tr(self.language, "released_delete"))
+                delete_btn.clicked.connect(
+                    lambda _=False, e=entry: self.delete_entry(e)
+                )
+                actions_layout.addWidget(delete_btn)
+                actions_layout.addStretch()
+            self.table.setCellWidget(row_index, 8, actions)
+
+    def export_file(self, source_path: str, filename: str) -> None:
+        if not source_path:
+            QMessageBox.warning(self, "ECR Released", "No file available to export.")
+            return
+        target_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Released", filename or "released.pdf", "PDF Files (*.pdf)"
+        )
+        if not target_path:
+            return
+        try:
+            shutil.copyfile(source_path, target_path)
+            QMessageBox.information(self, "ECR Released", f"File exported to:\n{target_path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "ECR Released", f"Unable to export file:\n{exc}")
+
+    def delete_entry(self, entry: Dict[str, str]) -> None:
+        filename = entry.get("filename", "")
+        source_path = entry.get("source_result", "")
+        if not filename:
+            return
+        if QMessageBox.question(
+            self,
+            "Delete Released",
+            f"Remove {filename}? This will delete the released copy.",
+        ) != QMessageBox.Yes:
+            return
+        try:
+            if source_path and os.path.exists(source_path):
+                os.remove(source_path)
+            delete_released_entry(filename)
+            self._start_loading_entries()
+        except Exception as exc:
+            QMessageBox.critical(self, "Delete Released", f"Unable to delete file:\n{exc}")
+
+
+class RelicitView(QWidget):
+    """Placeholder view for files currently in relicit."""
+
+    def __init__(self, language: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.language = language
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(10)
+
+        self.title_label = QLabel(tr(language, "relicit_title"))
+        self.title_label.setProperty("class", "section_label")
+        self.description_label = QLabel(tr(language, "relicit_description"))
+        self.description_label.setWordWrap(True)
+        card_layout.addWidget(self.title_label)
+        card_layout.addWidget(self.description_label)
+        card_layout.addStretch()
+
+        layout.addWidget(card)
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+        self.title_label.setText(tr(language, "relicit_title"))
+        self.description_label.setText(tr(language, "relicit_description"))
+
+
 class OfflineDialog(QDialog):
     """Startup dialog shown when the application launches offline."""
 
@@ -1676,7 +1940,8 @@ class MainWindow(QMainWindow):
         self.old_path_edit = QLineEdit()
         self.new_path_edit = QLineEdit()
         for line_edit in (self.old_path_edit, self.new_path_edit):
-            line_edit.setPlaceholderText("Select a PDF file")
+            line_edit.setReadOnly(True)
+            line_edit.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
             line_edit.setMinimumHeight(28)
 
         self.old_browse_button = QPushButton("Browse…")
@@ -1816,6 +2081,44 @@ class MainWindow(QMainWindow):
         divider_top.setFrameShape(QFrame.HLine)
         divider_top.setFrameShadow(QFrame.Sunken)
 
+        # Navigation bar for embedded views
+        self.navigation_bar = QFrame(self.main_card)
+        self.navigation_bar.setObjectName("navigation_bar")
+        nav_layout = QHBoxLayout(self.navigation_bar)
+        nav_layout.setContentsMargins(8, 0, 8, 0)
+        nav_layout.setSpacing(8)
+        self.nav_compare_button = QPushButton(tr(self.current_language, "comparison_view"))
+        self.nav_compare_button.setCheckable(True)
+        self.nav_compare_button.clicked.connect(self.show_comparison_view)
+        self.relicit_button = QPushButton(tr(self.current_language, "relicit"))
+        self.relicit_button.setCheckable(True)
+        self.relicit_button.clicked.connect(self.show_relicit_view)
+        self.released_button = QPushButton("Released")
+        self.released_button.setObjectName("released_button")
+        self.released_button.setCheckable(True)
+        self.released_button.clicked.connect(self.show_released_view)
+        for button in (
+            self.nav_compare_button,
+            self.relicit_button,
+            self.released_button,
+            self.history_button,
+            self.settings_button,
+        ):
+            button.setMinimumHeight(32)
+            button.setCursor(Qt.PointingHandCursor)
+        nav_layout.addWidget(self.nav_compare_button)
+        nav_layout.addWidget(self.relicit_button)
+        nav_layout.addWidget(self.released_button)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.history_button)
+        nav_layout.addWidget(self.settings_button)
+        if self.role == "admin":
+            self.admin_button = QPushButton("Administração")
+            self.admin_button.setMinimumHeight(36)
+            self.admin_button.setCursor(Qt.PointingHandCursor)
+            self.admin_button.clicked.connect(self.open_admin_dialog)
+            nav_layout.addWidget(self.admin_button)
+
         # Group: File selection
         file_group = QFrame()
         file_group.setObjectName("file_group")
@@ -1839,21 +2142,12 @@ class MainWindow(QMainWindow):
         file_group_layout.addWidget(self.new_path_edit, 1, 1)
         file_group_layout.addWidget(self.new_browse_button, 1, 2)
 
-        # Group: Actions
+        # Group: Actions for comparison view
         actions_group = QFrame()
         actions_group.setObjectName("actions_group")
         actions_layout = QHBoxLayout(actions_group)
         actions_layout.setContentsMargins(14, 10, 14, 10)
         actions_layout.setSpacing(10)
-        actions_layout.addWidget(self.history_button)
-        actions_layout.addWidget(self.released_button)
-        actions_layout.addWidget(self.settings_button)
-        if self.role == "admin":
-            self.admin_button = QPushButton("Administração")
-            self.admin_button.setMinimumHeight(36)
-            self.admin_button.setCursor(Qt.PointingHandCursor)
-            self.admin_button.clicked.connect(self.open_admin_dialog)
-            actions_layout.addWidget(self.admin_button)
         actions_layout.addStretch()
         actions_layout.addWidget(self.cancel_button)
         actions_layout.addWidget(self.compare_button)
@@ -1864,8 +2158,6 @@ class MainWindow(QMainWindow):
         top_layout = QVBoxLayout(self.top_toolbar_frame)
         top_layout.setContentsMargins(20, 18, 20, 18)
         top_layout.setSpacing(16)
-        top_layout.addWidget(hero_frame)
-        top_layout.addWidget(divider_top)
         top_layout.addWidget(file_group)
 
         actions_header_row = QHBoxLayout()
@@ -1894,6 +2186,23 @@ class MainWindow(QMainWindow):
         progress_layout.addWidget(self.status_label)
         progress_layout.addWidget(self.progress_bar)
 
+        # Comparison page
+        self.comparison_page = QWidget()
+        comparison_layout = QVBoxLayout(self.comparison_page)
+        comparison_layout.setContentsMargins(0, 0, 0, 0)
+        comparison_layout.setSpacing(12)
+        comparison_layout.addWidget(self.top_toolbar_frame)
+        comparison_layout.addWidget(self.progress_frame)
+
+        # Embedded auxiliary views
+        self.relicit_view = RelicitView(self.current_language, self.main_card)
+        self.released_view = ReleasedView(self.role, self.current_language, self.main_card)
+
+        self.content_stack = QStackedWidget(self.main_card)
+        self.content_stack.addWidget(self.comparison_page)
+        self.content_stack.addWidget(self.relicit_view)
+        self.content_stack.addWidget(self.released_view)
+
         footer_divider = QFrame()
         footer_divider.setFrameShape(QFrame.HLine)
         footer_divider.setFrameShadow(QFrame.Sunken)
@@ -1903,8 +2212,10 @@ class MainWindow(QMainWindow):
         footer_row.addStretch(1)
         footer_row.addWidget(self.version_label)
 
-        main_card_layout.addWidget(self.top_toolbar_frame)
-        main_card_layout.addWidget(self.progress_frame)
+        main_card_layout.addWidget(hero_frame)
+        main_card_layout.addWidget(divider_top)
+        main_card_layout.addWidget(self.navigation_bar)
+        main_card_layout.addWidget(self.content_stack)
         main_card_layout.addWidget(footer_divider)
         main_card_layout.addLayout(footer_row)
 
@@ -1913,6 +2224,7 @@ class MainWindow(QMainWindow):
         status_bar.addWidget(self.offline_banner, 1)
 
         self.setStatusBar(status_bar)
+        self.show_comparison_view()
         self.apply_language_setting()
         self.apply_theme_setting()
         self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label", allow_geometry=True)
@@ -1954,13 +2266,29 @@ class MainWindow(QMainWindow):
         )
         self._register_area_component("top_toolbar", "cancel_button")
         self._register_editable_widget(
+            "nav_compare_button",
+            self.nav_compare_button,
+            display_name="Comparison view tab",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_area_component("navigation_bar", "nav_compare_button")
+        self._register_editable_widget(
+            "relicit_button",
+            self.relicit_button,
+            display_name="Relicit view tab",
+            allow_icon=True,
+            allow_action=True,
+        )
+        self._register_area_component("navigation_bar", "relicit_button")
+        self._register_editable_widget(
             "history_button",
             self.history_button,
             display_name="History button",
             allow_icon=True,
             allow_action=True,
         )
-        self._register_area_component("top_toolbar", "history_button")
+        self._register_area_component("navigation_bar", "history_button")
         self._register_editable_widget(
             "released_button",
             self.released_button,
@@ -1968,7 +2296,7 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
-        self._register_area_component("top_toolbar", "released_button")
+        self._register_area_component("navigation_bar", "released_button")
         self._register_editable_widget(
             "settings_button",
             self.settings_button,
@@ -1976,7 +2304,7 @@ class MainWindow(QMainWindow):
             allow_icon=True,
             allow_action=True,
         )
-        self._register_area_component("top_toolbar", "settings_button")
+        self._register_area_component("navigation_bar", "settings_button")
         self._register_editable_widget(
             "status_label", self.status_label, display_name="Status message", allow_style=True, allow_text=True
         )
@@ -2001,9 +2329,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self._register_layout_target("top_toolbar", self.top_toolbar_frame)
         self._register_layout_target("progress_panel", self.progress_frame)
+        self._register_layout_target("navigation_bar", self.navigation_bar)
         self._dynamic_parent_layouts = {
             "top_toolbar": self.toolbar_dynamic_layout,
             "progress_panel": None,
+            "navigation_bar": None,
         }
         self._register_editable_widget(
             "top_toolbar",
@@ -2017,6 +2347,14 @@ class MainWindow(QMainWindow):
             "progress_panel",
             self.progress_frame,
             display_name="Progress panel",
+            allow_text=False,
+            allow_style=True,
+            allow_geometry=True,
+        )
+        self._register_editable_widget(
+            "navigation_bar",
+            self.navigation_bar,
+            display_name="Navigation bar",
             allow_text=False,
             allow_style=True,
             allow_geometry=True,
@@ -2174,11 +2512,13 @@ class MainWindow(QMainWindow):
         self.status_header.setText(tr(self.current_language, "status"))
         self.old_label.setText(tr(self.current_language, "old_label"))
         self.new_label.setText(tr(self.current_language, "new_label"))
-        placeholder = tr(self.current_language, "browse")
+        placeholder = tr(self.current_language, "no_file_selected")
         self.old_path_edit.setPlaceholderText(placeholder)
         self.new_path_edit.setPlaceholderText(placeholder)
         self.old_browse_button.setText(tr(self.current_language, "browse"))
         self.new_browse_button.setText(tr(self.current_language, "browse"))
+        self.nav_compare_button.setText(tr(self.current_language, "comparison_view"))
+        self.relicit_button.setText(tr(self.current_language, "relicit"))
         self.compare_button.setText(tr(self.current_language, "compare"))
         self.cancel_button.setText(tr(self.current_language, "cancel"))
         self.history_button.setText(tr(self.current_language, "history"))
@@ -2191,10 +2531,22 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText(tr(self.current_language, "ready"))
         self.update_connection_banner()
+        self.released_view.set_language(self.current_language)
+        self.relicit_view.set_language(self.current_language)
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
 
     def _system_theme(self) -> str:
+        if sys.platform.startswith("win") and winreg is not None:
+            try:
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                ) as key:
+                    value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                    return "light" if int(value) == 1 else "dark"
+            except Exception:
+                pass
         try:
             scheme = QApplication.instance().styleHints().colorScheme()
             return "dark" if scheme == Qt.ColorScheme.Dark else "light"
@@ -2203,7 +2555,12 @@ class MainWindow(QMainWindow):
 
     def apply_theme_setting(self) -> None:
         desired = (self.current_theme or "light").lower()
-        effective = desired if desired in {"light", "dark"} else "light"
+        if desired == "auto":
+            effective = self._system_theme()
+        elif desired in {"light", "dark"}:
+            effective = desired
+        else:
+            effective = "light"
         logger.info("Applying theme: %s (requested=%s)", effective, desired)
         palette = QPalette()
         if effective == "dark":
@@ -2219,7 +2576,17 @@ class MainWindow(QMainWindow):
             palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
             palette.setColor(QPalette.HighlightedText, Qt.black)
         else:
-            palette = QApplication.instance().style().standardPalette()
+            palette.setColor(QPalette.Window, QColor(240, 243, 249))
+            palette.setColor(QPalette.WindowText, QColor(31, 41, 55))
+            palette.setColor(QPalette.Base, QColor(253, 254, 255))
+            palette.setColor(QPalette.AlternateBase, QColor(245, 248, 253))
+            palette.setColor(QPalette.ToolTipBase, QColor(253, 254, 255))
+            palette.setColor(QPalette.ToolTipText, QColor(31, 41, 55))
+            palette.setColor(QPalette.Text, QColor(31, 41, 55))
+            palette.setColor(QPalette.Button, QColor(232, 237, 247))
+            palette.setColor(QPalette.ButtonText, QColor(31, 41, 55))
+            palette.setColor(QPalette.Highlight, QColor(37, 108, 176))
+            palette.setColor(QPalette.HighlightedText, Qt.white)
         QApplication.instance().setPalette(palette)
         if effective == "dark":
             card_bg = "#242424"
@@ -2239,22 +2606,22 @@ class MainWindow(QMainWindow):
             accent_hover = "#6c9bff"
             muted_text = "#b8b8b8"
         else:
-            card_bg = "#ffffff"
-            canvas_bg = "#f3f6fb"
-            text_color = "#1a1a1a"
-            panel_bg = "#ffffff"
-            border = "#d9e1ef"
-            input_bg = "#f7f9fc"
-            button_bg = "#f2f5fb"
-            button_hover = "#e7eef9"
-            button_pressed = "#dce6f7"
-            button_border = "#cbd5e5"
-            disabled_bg = "#eef1f6"
-            disabled_text = "#9aa3b5"
-            disabled_border = "#dfe5f0"
-            accent = "#2563eb"
-            accent_hover = "#1e4fbf"
-            muted_text = "#6b7280"
+            card_bg = "#fdfefe"
+            canvas_bg = "#eef2f8"
+            text_color = "#1f2937"
+            panel_bg = "#f8fbff"
+            border = "#d6deeb"
+            input_bg = "#f4f6fb"
+            button_bg = "#e8edf7"
+            button_hover = "#dfe7f6"
+            button_pressed = "#d2dcf0"
+            button_border = "#c7d4ea"
+            disabled_bg = "#e6ebf5"
+            disabled_text = "#8c94a6"
+            disabled_border = "#d5deed"
+            accent = "#2b6cb0"
+            accent_hover = "#245a94"
+            muted_text = "#4b5563"
         self.layout_canvas.setStyleSheet(
             f"""
             QWidget#layout_canvas {{
@@ -2272,7 +2639,7 @@ class MainWindow(QMainWindow):
                 border: 1px solid {border};
                 border-radius: 12px;
             }}
-            QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#actions_group {{
+            QFrame#top_toolbar, QFrame#progress_panel, QFrame#file_group, QFrame#actions_group, QFrame#navigation_bar {{
                 background-color: {panel_bg};
                 border: 1px solid {border};
                 border-radius: 12px;
@@ -2537,8 +2904,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_released(self) -> None:
-        dialog = ReleasedDialog(self.role, self.current_language, self)
-        dialog.exec()
+        self.show_released_view()
 
     def open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self.username, self.current_language, self)
@@ -2570,6 +2936,23 @@ class MainWindow(QMainWindow):
                     break
             else:
                 current_email = ""
+
+    def _update_nav_state(self, active: QPushButton) -> None:
+        for button in (self.nav_compare_button, self.relicit_button, self.released_button):
+            button.setChecked(button is active)
+
+    def show_comparison_view(self) -> None:
+        self.content_stack.setCurrentWidget(self.comparison_page)
+        self._update_nav_state(self.nav_compare_button)
+
+    def show_relicit_view(self) -> None:
+        self.content_stack.setCurrentWidget(self.relicit_view)
+        self._update_nav_state(self.relicit_button)
+
+    def show_released_view(self) -> None:
+        self.content_stack.setCurrentWidget(self.released_view)
+        self._update_nav_state(self.released_button)
+        self.released_view.refresh()
 
     def toggle_controls(self, enabled: bool) -> None:
         for widget in (
@@ -3366,3 +3749,8 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+try:
+    import winreg
+except ImportError:  # pragma: no cover - non-Windows
+    winreg = None
+
