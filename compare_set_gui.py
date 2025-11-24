@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QFrame,
     QGraphicsDropShadowEffect,
+    QSizePolicy,
 )
 
 from compareset_engine import (
