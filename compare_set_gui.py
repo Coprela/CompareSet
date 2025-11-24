@@ -26,6 +26,7 @@ from PySide6.QtCore import (
     QRect,
     QSize,
     QUrl,
+    QTimer,
 )
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
@@ -129,6 +130,10 @@ RELEASED_ROOT = csenv.RELEASED_ROOT
 HISTORY_DIR = csenv.HISTORY_DIR
 LOG_DIR = csenv.LOG_DIR
 
+ACCENT_COLOR = "#5a2b81"
+ACCENT_COLOR_HOVER = "#6f3b9f"
+ACCENT_COLOR_PRESSED = "#4a216b"
+
 
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "pt-BR": {
@@ -142,12 +147,29 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "browse": "Procurar…",
         "no_file_selected": "Nenhum arquivo selecionado",
         "history": "Meu histórico",
+        "history_title": "Meu histórico",
+        "history_clear": "Limpar histórico",
+        "history_send": "Enviar para liberados",
+        "history_close": "Fechar",
+        "history_loading": "Carregando histórico…",
+        "history_empty": "Nenhuma comparação encontrada.",
+        "history_showing": "Exibindo {count} resultado(s) para {user}.",
+        "history_table_date": "Data/Hora",
+        "history_table_base": "Nome base",
+        "history_table_file": "Arquivo",
+        "history_actions": "Ações",
+        "history_view": "Visualizar",
+        "history_export": "Exportar",
+        "history_view_log": "Ver log",
         "released": "Arquivos Liberados",
         "settings": "Configurações",
         "compare": "Comparar",
         "cancel": "Cancelar",
         "ready": "Pronto",
+        "status_processing": "Processando…",
+        "status_comparing": "Comparando arquivos…",
         "admin": "Administração",
+        "back": "Voltar",
         "offline_status": "Offline – conexão com o servidor perdida. Verifique sua rede e VPN.",
         "offline_info": (
             "Modo offline: sem conexão com o servidor. As comparações funcionarão localmente, "
@@ -230,12 +252,29 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "browse": "Browse…",
         "no_file_selected": "No file selected",
         "history": "My History",
+        "history_title": "My history",
+        "history_clear": "Clear history",
+        "history_send": "Send to Released",
+        "history_close": "Close",
+        "history_loading": "Loading history…",
+        "history_empty": "No previous comparisons found.",
+        "history_showing": "Showing {count} result(s) for {user}.",
+        "history_table_date": "Date/Time",
+        "history_table_base": "Base name",
+        "history_table_file": "File name",
+        "history_actions": "Actions",
+        "history_view": "View",
+        "history_export": "Export",
+        "history_view_log": "View log",
         "released": "Released files",
         "settings": "Settings",
         "compare": "Compare",
         "cancel": "Cancel",
         "ready": "Ready",
+        "status_processing": "Processing…",
+        "status_comparing": "Comparing files…",
         "admin": "Administration",
+        "back": "Back",
         "offline_status": "Offline – server connection lost. Check VPN and network connection.",
         "offline_info": (
             "Offline mode: no connection to the server. Comparisons will work locally, but history, "
@@ -828,24 +867,101 @@ def _lock_widget_size(widget: QWidget) -> None:
     widget.resize(target_size)
 
 
-class HistoryDialog(QDialog):
-    """Dialog showing previous comparisons for the current user."""
+def released_table_headers(language: str) -> List[str]:
+    if language == "pt-BR":
+        return [
+            "Data/Hora",
+            "Arquivo OLD",
+            "Rev. OLD",
+            "Arquivo NEW",
+            "Rev. NEW",
+            "Criado por",
+            "Situação",
+            "Arquivo",
+            "Ações",
+        ]
+    return [
+        "Date/Time",
+        "Old file",
+        "Old rev.",
+        "New file",
+        "New rev.",
+        "Created by",
+        "Status",
+        "File",
+        "Actions",
+    ]
 
-    def __init__(self, username: str, parent: Optional[QWidget] = None) -> None:
+
+class HistoryView(QWidget):
+    """Embedded view showing previous comparisons for the current user."""
+
+    def __init__(self, username: str, language: str, role: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.username = username
+        self.language = language
+        self.role = role
         base_output_dir = Path(get_output_directory_for_user(username))
         self.user_results_dir = str(base_output_dir / username)
         self.user_logs_dir = os.path.join(LOG_DIR, username)
-        self.setWindowTitle("My History")
         self.entries: List[Dict[str, Union[str, datetime]]] = []
+        self._loader_thread: Optional[QThread] = None
+        self._loading_task: Optional[BackgroundTask] = None
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        card = QFrame()
+        card.setObjectName("dialog_card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(12)
+
+        header_row = QHBoxLayout()
+        self.title_label = QLabel(tr(language, "history_title"))
+        self.title_label.setProperty("class", "section_label")
+        header_row.addWidget(self.title_label)
+        header_row.addStretch()
+        self.clear_button = QPushButton(tr(language, "history_clear"))
+        self.clear_button.clicked.connect(self.clear_history)
+        header_row.addWidget(self.clear_button)
+        card_layout.addLayout(header_row)
+
         self.info_label = QLabel()
-        layout.addWidget(self.info_label)
+        card_layout.addWidget(self.info_label)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Date/Time", "Base name", "File name", "Actions"])
+        self._configure_table_headers()
+        card_layout.addWidget(self.table)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        self.released_button = QPushButton(tr(language, "history_send"))
+        self.released_button.clicked.connect(self.send_selected_to_released)
+        self.released_button.setMinimumWidth(180)
+        button_row.addWidget(self.released_button)
+        card_layout.addLayout(button_row)
+
+        layout.addWidget(card)
+        self._start_loading_history()
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+        self.title_label.setText(tr(language, "history_title"))
+        self.clear_button.setText(tr(language, "history_clear"))
+        self.released_button.setText(tr(language, "history_send"))
+        self._configure_table_headers()
+        self._apply_loading_text(self._loader_thread is not None)
+        self._populate_history_table()
+
+    def _configure_table_headers(self) -> None:
+        headers = [
+            tr(self.language, "history_table_date"),
+            tr(self.language, "history_table_base"),
+            tr(self.language, "history_table_file"),
+            tr(self.language, "history_actions"),
+        ]
+        self.table.setHorizontalHeaderLabels(headers)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -855,31 +971,16 @@ class HistoryDialog(QDialog):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        layout.addWidget(self.table)
 
-        self.released_button = QPushButton("Released")
-        self.released_button.clicked.connect(self.send_selected_to_released)
-        self.clear_button = QPushButton("Limpar Histórico")
-        self.clear_button.clicked.connect(self.clear_history)
-        self.close_button = QPushButton("Close")
-        self.close_button.clicked.connect(self.accept)
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(self.clear_button)
-        button_row.addWidget(self.released_button)
-        button_row.addWidget(self.close_button)
-        layout.addLayout(button_row)
-
-        self._loading_task: Optional[BackgroundTask] = None
-        self._start_loading_history()
-        _lock_widget_size(self)
+    def _apply_loading_text(self, loading: bool) -> None:
+        if loading:
+            self.info_label.setText(tr(self.language, "history_loading"))
 
     def _set_loading_state(self, loading: bool) -> None:
         self.table.setEnabled(not loading)
-        for button in (self.released_button, self.clear_button, self.close_button):
-            button.setEnabled(not loading)
-        if loading:
-            self.info_label.setText("Loading history…")
+        self.released_button.setEnabled(not loading)
+        self.clear_button.setEnabled(not loading)
+        self._apply_loading_text(loading)
 
     def _start_loading_history(self) -> None:
         if self._loader_thread is not None and self._loader_thread.isRunning():
@@ -910,25 +1011,25 @@ class HistoryDialog(QDialog):
         self._set_loading_state(False)
         self._loader_thread = None
         self._loading_task = None
-        _lock_widget_size(self)
 
     @Slot(str)
     def _on_history_failed(self, message: str) -> None:
         self.entries = []
         self.table.setRowCount(0)
-        self.info_label.setText(f"Unable to load history: {message}")
+        self.info_label.setText(f"{tr(self.language, 'history_loading')} {message}")
         self._set_loading_state(False)
         self._loader_thread = None
         self._loading_task = None
-        _lock_widget_size(self)
 
     def _populate_history_table(self) -> None:
         self.table.setRowCount(len(self.entries))
 
         if not self.entries:
-            self.info_label.setText("No previous comparisons found.")
+            self.info_label.setText(tr(self.language, "history_empty"))
         else:
-            self.info_label.setText(f"Showing {len(self.entries)} result(s) for {self.username}.")
+            self.info_label.setText(
+                tr(self.language, "history_showing").format(count=len(self.entries), user=self.username)
+            )
 
         for row_index, entry in enumerate(self.entries):
             timestamp_item = QTableWidgetItem(entry["display_time"])
@@ -940,19 +1041,19 @@ class HistoryDialog(QDialog):
             action_widget = QWidget()
             action_layout = QHBoxLayout(action_widget)
             action_layout.setContentsMargins(0, 0, 0, 0)
-            view_button = QPushButton("View")
+            view_button = QPushButton(tr(self.language, "history_view"))
             view_button.clicked.connect(
                 lambda _=False, p=entry["path"]: open_with_default_application(p)
             )
-            export_button = QPushButton("Export")
+            export_button = QPushButton(tr(self.language, "history_export"))
             export_button.clicked.connect(
                 lambda _=False, p=entry["path"], fn=entry["filename"]: self.export_result(p, fn)
             )
             action_layout.addWidget(view_button)
             action_layout.addWidget(export_button)
 
-            if entry.get("log_path") and getattr(self.parent(), "role", "") == "admin":
-                log_button = QPushButton("View log")
+            if entry.get("log_path") and self.role == "admin":
+                log_button = QPushButton(tr(self.language, "history_view_log"))
                 log_button.clicked.connect(
                     lambda _=False, lp=entry["log_path"]: self.view_log(lp)
                 )
@@ -992,7 +1093,7 @@ class HistoryDialog(QDialog):
 
     def export_result(self, source_path: str, filename: str) -> None:
         target_path, _ = QFileDialog.getSaveFileName(
-            self, "Save As", filename, "PDF Files (*.pdf)"
+            self, tr(self.language, "history_export"), filename, "PDF Files (*.pdf)"
         )
         if not target_path:
             return
@@ -1001,10 +1102,12 @@ class HistoryDialog(QDialog):
             QMessageBox.information(
                 self,
                 "CompareSet",
-                f"File exported to:\n{target_path}",
+                f"File exported to:
+{target_path}",
             )
         except Exception as exc:
-            QMessageBox.critical(self, "CompareSet", f"Unable to export file:\n{exc}")
+            QMessageBox.critical(self, "CompareSet", f"Unable to export file:
+{exc}")
 
     def view_log(self, log_path: str) -> None:
         if not log_path or not os.path.exists(log_path):
@@ -1014,7 +1117,8 @@ class HistoryDialog(QDialog):
             with open(log_path, "r", encoding="utf-8", errors="ignore") as handle:
                 content = handle.read()
         except Exception as exc:
-            QMessageBox.warning(self, "CompareSet", f"Unable to read log:\n{exc}")
+            QMessageBox.warning(self, "CompareSet", f"Unable to read log:
+{exc}")
             return
 
         dialog = QDialog(self)
@@ -1024,7 +1128,7 @@ class HistoryDialog(QDialog):
         text_view.setReadOnly(True)
         text_view.setPlainText(content)
         layout.addWidget(text_view)
-        close_button = QPushButton("Close")
+        close_button = QPushButton(tr(self.language, "history_close"))
         close_button.clicked.connect(dialog.accept)
         button_row = QHBoxLayout()
         button_row.addStretch()
@@ -1035,11 +1139,15 @@ class HistoryDialog(QDialog):
 
     def send_selected_to_released(self) -> None:
         if self.table.currentRow() < 0 or self.table.currentRow() >= len(self.entries):
-            QMessageBox.information(self, "ECR Released", "Selecione um registro para liberar.")
+            QMessageBox.information(
+                self,
+                tr(self.language, "released_title"),
+                tr(self.language, "released_search_placeholder"),
+            )
             return
 
         entry = self.entries[self.table.currentRow()]
-        dialog = ReleaseDialog(self.current_language, self)
+        dialog = ReleaseDialog(self.language, self)
         dialog.name_file_old.setText(f"{entry['base_name']}.pdf")
         dialog.name_file_new.setText(f"{entry['base_name']}.pdf")
         if dialog.exec() != QDialog.Accepted:
@@ -1079,7 +1187,7 @@ class HistoryDialog(QDialog):
                 shutil.move(make_long_path(str(entry["path"])), target_path)
             else:
                 shutil.move(str(entry["path"]), target_path)
-            record_released_entry(
+            add_released_entry(
                 filename=target_filename,
                 name_file_old=data["name_file_old"],
                 revision_old=data["revision_old"],
@@ -1091,33 +1199,45 @@ class HistoryDialog(QDialog):
             QMessageBox.information(
                 self,
                 "ECR Released",
-                f"Arquivo liberado em:\n{target_path}",
+                f"Arquivo liberado em:
+{target_path}",
             )
             self._start_loading_history()
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 "ECR Released",
-                f"Não foi possível enviar o arquivo para Released:\n{exc}",
+                f"Não foi possível enviar o arquivo para Released:
+{exc}",
             )
 
     def clear_history(self) -> None:
         if not os.path.exists(self.user_results_dir):
-            QMessageBox.information(self, "My History", "Nenhum histórico para limpar.")
+            QMessageBox.information(self, tr(self.language, "history_title"), tr(self.language, "history_empty"))
             return
-        if QMessageBox.question(
-            self,
-            "Limpar Histórico",
-            "Remover todos os resultados exibidos? Esta ação não pode ser desfeita.",
-        ) != QMessageBox.Yes:
+        prompt = (
+            "Remover todos os resultados exibidos? Esta ação não pode ser desfeita."
+            if self.language == "pt-BR"
+            else "Remove all results? This action cannot be undone."
+        )
+        if QMessageBox.question(self, tr(self.language, "history_title"), prompt) != QMessageBox.Yes:
             return
         try:
             for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
                 pdf_path.unlink(missing_ok=True)
             self._start_loading_history()
-            QMessageBox.information(self, "My History", "Histórico limpo.")
+            QMessageBox.information(
+                self,
+                tr(self.language, "history_title"),
+                "Histórico limpo." if self.language == "pt-BR" else "History cleared.",
+            )
         except Exception as exc:
-            QMessageBox.critical(self, "My History", f"Erro ao limpar histórico:\n{exc}")
+            message = (
+                f"Erro ao limpar histórico:
+{exc}" if self.language == "pt-BR" else f"Unable to clear history:
+{exc}"
+            )
+            QMessageBox.critical(self, tr(self.language, "history_title"), message)
 
 
 class SettingsDialog(QDialog):
@@ -1208,17 +1328,16 @@ class EmailPromptDialog(QDialog):
         return self.email_edit.text().strip()
 
 
-class AdminDialog(QDialog):
-    """Dialog for managing users, detached from the main window."""
+class AdminView(QWidget):
+    """Embedded administration view inside the main window."""
 
-    def __init__(self, parent: QWidget, language: str) -> None:
+    def __init__(self, language: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.language = language
-        self.setWindowTitle(tr(language, "admin_title"))
         self._loader_thread: Optional[QThread] = None
 
         wrapper = QVBoxLayout(self)
-        wrapper.setContentsMargins(16, 16, 16, 16)
+        wrapper.setContentsMargins(0, 0, 0, 0)
         card = QFrame()
         card.setObjectName("dialog_card")
         layout = QVBoxLayout(card)
@@ -1258,7 +1377,14 @@ class AdminDialog(QDialog):
         self.update_user_button.clicked.connect(self.on_update_user)
 
         self.refresh_user_list()
-        _lock_widget_size(self)
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+        self.search_input.setPlaceholderText(tr(language, "search_user_placeholder"))
+        self.admin_active_checkbox.setText(tr(language, "status_active"))
+        self.add_user_button.setText(tr(language, "add_user"))
+        self.update_user_button.setText(tr(language, "update_user"))
+        self.refresh_user_list()
 
     def refresh_user_list(self) -> None:
         try:
@@ -1301,7 +1427,8 @@ class AdminDialog(QDialog):
         except sqlite3.IntegrityError:
             QMessageBox.warning(self, tr(self.language, "admin_title"), "User already exists.")
         except Exception as exc:
-            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to add user:\n{exc}")
+            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to add user:
+{exc}")
 
     def on_update_user(self) -> None:
         if not self.user_list or not self.user_list.currentItem():
@@ -1318,7 +1445,8 @@ class AdminDialog(QDialog):
             QMessageBox.information(self, tr(self.language, "admin_title"), "User updated.")
             self.refresh_user_list()
         except Exception as exc:
-            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to update user:\n{exc}")
+            QMessageBox.critical(self, tr(self.language, "admin_title"), f"Unable to update user:
+{exc}")
 
 
 class ReleaseDialog(QDialog):
@@ -1646,18 +1774,7 @@ class ReleasedView(QWidget):
             self._loading_task = None
 
     def _configure_table_headers(self) -> None:
-        headers = [
-            "Date/Time",
-            "Name File OLD",
-            "Revision File OLD",
-            "Name File NEW",
-            "Revision File NEW",
-            "Created by",
-            tr(self.language, "released"),
-            "File name",
-            "Actions",
-        ]
-        self.table.setHorizontalHeaderLabels(headers)
+        self.table.setHorizontalHeaderLabels(released_table_headers(self.language))
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -1968,6 +2085,8 @@ class MainWindow(QMainWindow):
         self.status_label.setWordWrap(True)
         self.status_label.setMinimumHeight(22)
         self._connection_blocked = False
+        self._status_hide_timer = QTimer(self)
+        self._status_hide_timer.setSingleShot(True)
         self.offline_banner = QLabel()
         self.offline_banner.setAlignment(Qt.AlignCenter)
         self.offline_banner.setVisible(False)
@@ -2067,11 +2186,10 @@ class MainWindow(QMainWindow):
         nav_layout.setSpacing(8)
         self.nav_compare_button = QPushButton(tr(self.current_language, "comparison_view"))
         self.nav_compare_button.setCheckable(True)
-        self.nav_compare_button.clicked.connect(self.show_comparison_view)
-        self.released_button = QPushButton("Released")
+        self.nav_compare_button.clicked.connect(self.show_comparison_environment)
+        self.released_button = QPushButton(tr(self.current_language, "released"))
         self.released_button.setObjectName("released_button")
-        self.released_button.setCheckable(True)
-        self.released_button.clicked.connect(self.show_released_view)
+        self.released_button.clicked.connect(self.show_released_environment)
         for button in (
             self.nav_compare_button,
             self.released_button,
@@ -2086,11 +2204,25 @@ class MainWindow(QMainWindow):
         nav_layout.addWidget(self.history_button)
         nav_layout.addWidget(self.settings_button)
         if self.role == "admin":
-            self.admin_button = QPushButton("Administração")
+            self.admin_button = QPushButton(tr(self.current_language, "admin"))
             self.admin_button.setMinimumHeight(36)
             self.admin_button.setCursor(Qt.PointingHandCursor)
-            self.admin_button.clicked.connect(self.open_admin_dialog)
+            self.admin_button.clicked.connect(self.show_admin_environment)
             nav_layout.addWidget(self.admin_button)
+
+        # Back bar for secondary environments
+        self.back_bar = QFrame(self.main_card)
+        back_layout = QHBoxLayout(self.back_bar)
+        back_layout.setContentsMargins(0, 0, 0, 0)
+        back_layout.setSpacing(8)
+        self.back_button = QPushButton()
+        self.back_button.setCursor(Qt.PointingHandCursor)
+        self.back_button.clicked.connect(self.show_comparison_environment)
+        self.environment_label = QLabel()
+        self.environment_label.setProperty("class", "section_label")
+        back_layout.addWidget(self.back_button, 0, Qt.AlignLeft)
+        back_layout.addWidget(self.environment_label, 0, Qt.AlignLeft)
+        back_layout.addStretch()
 
         # Group: File selection
         file_group = QFrame()
@@ -2166,13 +2298,18 @@ class MainWindow(QMainWindow):
         comparison_layout.setSpacing(12)
         comparison_layout.addWidget(self.top_toolbar_frame)
         comparison_layout.addWidget(self.progress_frame)
+        self.progress_frame.hide()
 
         # Embedded auxiliary views
         self.released_view = ReleasedView(self.role, self.current_language, self.main_card)
+        self.history_view = HistoryView(self.username, self.current_language, self.role, self.main_card)
+        self.admin_view = AdminView(self.current_language, self.main_card)
 
         self.content_stack = QStackedWidget(self.main_card)
         self.content_stack.addWidget(self.comparison_page)
         self.content_stack.addWidget(self.released_view)
+        self.content_stack.addWidget(self.history_view)
+        self.content_stack.addWidget(self.admin_view)
 
         footer_divider = QFrame()
         footer_divider.setFrameShape(QFrame.HLine)
@@ -2186,6 +2323,7 @@ class MainWindow(QMainWindow):
         main_card_layout.addWidget(hero_frame)
         main_card_layout.addWidget(divider_top)
         main_card_layout.addWidget(self.navigation_bar)
+        main_card_layout.addWidget(self.back_bar)
         main_card_layout.addWidget(self.content_stack)
         main_card_layout.addWidget(footer_divider)
         main_card_layout.addLayout(footer_row)
@@ -2195,7 +2333,7 @@ class MainWindow(QMainWindow):
         status_bar.addWidget(self.offline_banner, 1)
 
         self.setStatusBar(status_bar)
-        self.show_comparison_view()
+        self.show_comparison_environment()
         self.apply_language_setting()
         self.apply_theme_setting()
         self._register_editable_widget("old_label", self.old_label, display_name="Old PDF label", allow_geometry=True)
@@ -2343,6 +2481,32 @@ class MainWindow(QMainWindow):
         if self._dev_dialog is not None:
             self._dev_dialog.set_log_messages(list(self._log_history))
 
+    def show_status(self, message: str, *, determinate: bool = False) -> None:
+        if self._status_hide_timer.isActive():
+            self._status_hide_timer.stop()
+        self.progress_frame.show()
+        self.status_label.setText(message)
+        if determinate:
+            if self.progress_bar.maximum() == 0:
+                self.progress_bar.setRange(0, 1)
+        else:
+            self.progress_bar.setRange(0, 0)
+
+    def hide_status(self, delay_ms: int = 0) -> None:
+        def _do_hide() -> None:
+            self.progress_frame.hide()
+            self.status_label.setText(tr(self.current_language, "ready"))
+
+        if delay_ms > 0:
+            try:
+                self._status_hide_timer.timeout.disconnect()
+            except Exception:
+                pass
+            self._status_hide_timer.timeout.connect(_do_hide)
+            self._status_hide_timer.start(delay_ms)
+        else:
+            _do_hide()
+
     def select_file(self, target: QLineEdit) -> None:
         start_dir = self.last_browse_dir or str(Path.home())
         selected, _ = QFileDialog.getOpenFileName(
@@ -2377,9 +2541,7 @@ class MainWindow(QMainWindow):
             return
 
         self.toggle_controls(False)
-        self.progress_bar.setRange(0, 0)
-        self.progress_bar.setValue(0)
-        self.status_label.setText(tr(self.current_language, "processing_page").format(current=1, total=1) if self.progress_bar.maximum() == 1 else tr(self.current_language, "processing_page").format(current=0, total=0))
+        self.show_status(tr(self.current_language, "status_comparing"), determinate=False)
         self.cancel_button.setEnabled(True)
         logger.info("Starting comparison: %s vs %s", old_path, new_path)
 
@@ -2405,7 +2567,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.status_label.setText("Comparison complete.")
+        self.show_status("Comparison complete.", determinate=True)
         self.cancel_button.setEnabled(False)
         logger.info("Comparison finished.")
         if result.server_result_path:
@@ -2431,28 +2593,31 @@ class MainWindow(QMainWindow):
 
         self._worker = None
         self._thread = None
+        self.hide_status(1200)
 
     @Slot(str)
     def on_comparison_failed(self, message: str) -> None:
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.status_label.setText("Comparison failed.")
+        self.show_status("Comparison failed.", determinate=True)
         self.cancel_button.setEnabled(False)
         QMessageBox.critical(self, "CompareSet", f"Comparison failed:\n{message}")
         self._worker = None
         self._thread = None
+        self.hide_status(1500)
 
     @Slot()
     def on_comparison_cancelled(self) -> None:
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.toggle_controls(True)
-        self.status_label.setText("Pronto" if self.current_language == "pt-BR" else "Ready")
+        self.show_status("Pronto" if self.current_language == "pt-BR" else "Ready", determinate=True)
         self.cancel_button.setEnabled(False)
         QMessageBox.information(self, "CompareSet", "Comparison was cancelled.")
         self._worker = None
         self._thread = None
+        self.hide_status(1200)
 
     @Slot(int, int)
     def on_progress_update(self, page_index: int, total_pages: int) -> None:
@@ -2488,12 +2653,22 @@ class MainWindow(QMainWindow):
         self.settings_button.setText(tr(self.current_language, "settings"))
         if self.admin_button is not None:
             self.admin_button.setText(tr(self.current_language, "admin"))
+        self.back_button.setText("← " + tr(self.current_language, "back"))
+        current_page = self.content_stack.currentWidget()
+        if current_page is self.released_view:
+            self.environment_label.setText(tr(self.current_language, "released_title"))
+        elif current_page is self.history_view:
+            self.environment_label.setText(tr(self.current_language, "history_title"))
+        elif current_page is self.admin_view:
+            self.environment_label.setText(tr(self.current_language, "admin_title"))
         if OFFLINE_MODE and not (self._dev_unlocked or is_dev_mode()):
             self.status_label.setText(tr(self.current_language, "offline_status"))
         else:
             self.status_label.setText(tr(self.current_language, "ready"))
         self.update_connection_banner()
         self.released_view.set_language(self.current_language)
+        self.history_view.set_language(self.current_language)
+        self.admin_view.set_language(self.current_language)
         self._refresh_widget_defaults_for_language()
         self._reapply_widget_overrides()
 
@@ -2534,7 +2709,7 @@ class MainWindow(QMainWindow):
             palette.setColor(QPalette.Text, Qt.white)
             palette.setColor(QPalette.Button, QColor(53, 53, 53))
             palette.setColor(QPalette.ButtonText, Qt.white)
-            palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+            palette.setColor(QPalette.Highlight, QColor(ACCENT_COLOR))
             palette.setColor(QPalette.HighlightedText, Qt.black)
         else:
             palette.setColor(QPalette.Window, QColor(240, 243, 249))
@@ -2546,7 +2721,7 @@ class MainWindow(QMainWindow):
             palette.setColor(QPalette.Text, QColor(31, 41, 55))
             palette.setColor(QPalette.Button, QColor(232, 237, 247))
             palette.setColor(QPalette.ButtonText, QColor(31, 41, 55))
-            palette.setColor(QPalette.Highlight, QColor(37, 108, 176))
+            palette.setColor(QPalette.Highlight, QColor(ACCENT_COLOR))
             palette.setColor(QPalette.HighlightedText, Qt.white)
         QApplication.instance().setPalette(palette)
         if effective == "dark":
@@ -2563,8 +2738,9 @@ class MainWindow(QMainWindow):
             disabled_bg = "#222222"
             disabled_text = "#7f7f7f"
             disabled_border = "#2f2f2f"
-            accent = "#5b8def"
-            accent_hover = "#6c9bff"
+            accent = ACCENT_COLOR
+            accent_hover = ACCENT_COLOR_HOVER
+            accent_pressed = ACCENT_COLOR_PRESSED
             muted_text = "#b8b8b8"
         else:
             card_bg = "#fdfefe"
@@ -2580,8 +2756,9 @@ class MainWindow(QMainWindow):
             disabled_bg = "#e6ebf5"
             disabled_text = "#8c94a6"
             disabled_border = "#d5deed"
-            accent = "#2b6cb0"
-            accent_hover = "#245a94"
+            accent = ACCENT_COLOR
+            accent_hover = ACCENT_COLOR_HOVER
+            accent_pressed = ACCENT_COLOR_PRESSED
             muted_text = "#4b5563"
         self.layout_canvas.setStyleSheet(
             f"""
@@ -2658,6 +2835,9 @@ class MainWindow(QMainWindow):
             }}
             QPushButton#compare_button:hover {{
                 background-color: {accent_hover};
+            }}
+            QPushButton#compare_button:pressed {{
+                background-color: {accent_pressed};
             }}
             QPushButton#cancel_button {{
                 border-color: {border};
@@ -2861,11 +3041,10 @@ class MainWindow(QMainWindow):
             self._offline_warning_shown = True
 
     def open_history(self) -> None:
-        dialog = HistoryDialog(self.username, self)
-        dialog.exec()
+        self.show_history_environment()
 
     def open_released(self) -> None:
-        self.show_released_view()
+        self.show_released_environment()
 
     def open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self.username, self.current_language, self)
@@ -2880,8 +3059,7 @@ class MainWindow(QMainWindow):
             self.apply_theme_setting()
 
     def open_admin_dialog(self) -> None:
-        dialog = AdminDialog(self, self.current_language)
-        dialog.exec()
+        self.show_admin_environment()
 
     def prompt_for_email_if_missing(self) -> None:
         if getattr(self, "preview_mode", False):
@@ -2898,18 +3076,36 @@ class MainWindow(QMainWindow):
             else:
                 current_email = ""
 
-    def _update_nav_state(self, active: QPushButton) -> None:
-        for button in (self.nav_compare_button, self.released_button):
+    def _update_nav_state(self, active: Optional[QPushButton]) -> None:
+        for button in (self.nav_compare_button,):
             button.setChecked(button is active)
 
-    def show_comparison_view(self) -> None:
+    def show_comparison_environment(self) -> None:
         self.content_stack.setCurrentWidget(self.comparison_page)
+        self.navigation_bar.show()
+        self.back_bar.hide()
+        self.subtitle_label.setText(tr(self.current_language, "main_subtitle"))
         self._update_nav_state(self.nav_compare_button)
 
-    def show_released_view(self) -> None:
-        self.content_stack.setCurrentWidget(self.released_view)
-        self._update_nav_state(self.released_button)
+    def _enter_environment(self, widget: QWidget, title_key: str) -> None:
+        self.content_stack.setCurrentWidget(widget)
+        self.navigation_bar.hide()
+        self.back_bar.show()
+        back_text = "← " + tr(self.current_language, "back")
+        self.back_button.setText(back_text)
+        self.environment_label.setText(tr(self.current_language, title_key))
+        self._update_nav_state(None)
+
+    def show_released_environment(self) -> None:
         self.released_view.refresh()
+        self._enter_environment(self.released_view, "released_title")
+
+    def show_history_environment(self) -> None:
+        self.history_view._start_loading_history()
+        self._enter_environment(self.history_view, "history_title")
+
+    def show_admin_environment(self) -> None:
+        self._enter_environment(self.admin_view, "admin_title")
 
     def _stop_comparison_thread(self) -> None:
         if self._thread is not None and self._thread.isRunning():
@@ -3570,7 +3766,7 @@ class MainWindow(QMainWindow):
         for key, widget in self._layout_targets.items():
             base_style = self._original_styles.get(key, "")
             if self.layout_mode_enabled:
-                border = "border: 1px dashed #0078d4;"
+                border = f"border: 1px dashed {ACCENT_COLOR};"
                 widget.setStyleSheet(f"{base_style}\n{border}" if base_style else border)
                 widget.raise_()
             else:
