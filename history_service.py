@@ -23,6 +23,8 @@ class HistoryEntry:
     result_path_local: str
     server_log_status: HistoryStatus = "PENDENTE"
     server_released_status: ReleaseStatus = "NAO_LIBERADO"
+    server_log_message: str = ""
+    server_released_message: str = ""
 
 
 def _history_path() -> Path:
@@ -65,15 +67,26 @@ def append_entry(entry: HistoryEntry) -> None:
     save_history(entries)
 
 
-def update_entry_status(job_id: str, *, log_status: HistoryStatus | None = None, release_status: ReleaseStatus | None = None) -> None:
+def update_entry_status(
+    job_id: str,
+    *,
+    log_status: HistoryStatus | None = None,
+    release_status: ReleaseStatus | None = None,
+    log_message: str | None = None,
+    release_message: str | None = None,
+) -> None:
     entries = load_history()
     updated = False
     for entry in entries:
         if entry.job_id == job_id:
             if log_status is not None:
                 entry.server_log_status = log_status
+            if log_message is not None:
+                entry.server_log_message = log_message
             if release_status is not None:
                 entry.server_released_status = release_status
+            if release_message is not None:
+                entry.server_released_message = release_message
             updated = True
             break
     if updated:

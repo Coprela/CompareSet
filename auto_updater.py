@@ -16,8 +16,19 @@ class UpdateStatus:
     latest_version: Optional[str] = None
     min_supported_version: Optional[str] = None
     download_url: Optional[str] = None
+    changelog: Optional[str] = None
+    update_available: bool = False
     requires_update: bool = False
     forced_block: bool = False
+
+
+def _version_tuple(raw: str | None) -> tuple[int, ...]:
+    if not raw:
+        return (0,)
+    try:
+        return tuple(int(part) for part in raw.split("."))
+    except Exception:
+        return (0,)
 
 
 class AutoUpdater:
@@ -33,13 +44,15 @@ class AutoUpdater:
         status.latest_version = manifest.get("latest_version")
         status.min_supported_version = manifest.get("min_supported_version")
         status.download_url = manifest.get("download_url")
+        status.changelog = manifest.get("changelog")
 
-        local = csenv.APP_VERSION
-        latest = status.latest_version or local
-        min_supported = status.min_supported_version or local
+        local_tuple = _version_tuple(csenv.APP_VERSION)
+        latest_tuple = _version_tuple(status.latest_version)
+        min_supported_tuple = _version_tuple(status.min_supported_version)
 
-        status.requires_update = latest > local
-        status.forced_block = local < min_supported
+        status.update_available = latest_tuple > local_tuple
+        status.requires_update = status.update_available
+        status.forced_block = bool(status.min_supported_version) and local_tuple < min_supported_tuple
         return status
 
     def download_new_version(self, url: str) -> Optional[Path]:
@@ -52,6 +65,7 @@ class AutoUpdater:
 
         current_exe = Path(csenv.LOCAL_BASE_DIR) / "CompareSet.exe"
         try:
+            current_exe.parent.mkdir(parents=True, exist_ok=True)
             if current_exe.exists():
                 backup = current_exe.with_suffix(".bak")
                 shutil.move(str(current_exe), backup)
@@ -59,6 +73,12 @@ class AutoUpdater:
             return True
         except Exception:
             return False
+
+    def download_and_apply_update(self, download_url: str) -> bool:
+        downloaded = self.download_new_version(download_url)
+        if not downloaded:
+            return False
+        return self.apply_update(downloaded)
 
 
 def perform_startup_update_check() -> UpdateStatus:
