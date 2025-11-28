@@ -74,6 +74,18 @@ from compareset_engine import (
 import compareset_env as csenv
 from connection_monitor import ConnectionMonitor
 from developer_tools_dialog import DeveloperToolsDialog
+from history_service import (
+    append_entry,
+    build_history_entry,
+    clear_history_and_temp,
+    load_history,
+    temp_dir_for_job,
+    update_entry_status,
+)
+import server_io
+from auto_updater import AutoUpdater, perform_startup_update_check
+from installer_fake import ensure_installed_binary, ensure_user_config
+from access_control import ensure_user_access
 from compareset_env import (
     APP_VERSION,
     CURRENT_USER,
@@ -1066,25 +1078,23 @@ class HistoryView(QWidget):
         self.table.resizeRowsToContents()
 
     def _collect_entries(self) -> List[Dict[str, Union[str, datetime]]]:
-        if not os.path.exists(self.user_results_dir):
-            return []
-
         entries: List[Dict[str, Union[str, datetime]]] = []
-        for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
-            parsed = parse_result_filename(pdf_path)
-            if not parsed:
-                continue
-            base_name, timestamp = parsed
-            log_name = f"ECR-{base_name}_{timestamp.strftime('%Y%m%d-%H%M%S')}_{self.username}.log"
-            log_path = Path(self.user_logs_dir) / log_name
+        for raw_entry in load_history():
+            try:
+                timestamp = datetime.fromisoformat(raw_entry.timestamp)
+            except Exception:
+                timestamp = datetime.now()
+            result_path = Path(raw_entry.result_path_local)
             entries.append(
                 {
-                    "base_name": base_name,
+                    "base_name": result_path.stem,
                     "timestamp": timestamp,
                     "display_time": timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                    "filename": pdf_path.name,
-                    "path": str(pdf_path),
-                    "log_path": str(log_path) if log_path.exists() else "",
+                    "filename": result_path.name,
+                    "path": str(result_path),
+                    "job_id": raw_entry.job_id,
+                    "log_status": raw_entry.server_log_status,
+                    "release_status": raw_entry.server_released_status,
                 }
             )
 
@@ -1155,65 +1165,16 @@ class HistoryView(QWidget):
             return
 
         data = dialog.data()
-        new_base = Path(data["name_file_new"]).stem
-        target_filename = f"ECR-{new_base}{data['revision_new']}_{self.username}.pdf"
-        existing = find_released_entry(target_filename)
-        if existing and existing.get("created_by") != self.username:
-            QMessageBox.warning(
-                self,
-                "ECR Released",
-                "Já existe um ECR liberado com este nome por outro usuário.",
-            )
-            return
-
-        target_dir = os.path.join(RELEASED_ROOT, self.username)
-        if SERVER_ONLINE:
-            os.makedirs(make_long_path(target_dir), exist_ok=True)
-            target_path = make_long_path(os.path.join(target_dir, target_filename))
+        job_id = entry.get("job_id", Path(entry["path"]).stem)
+        success, message = server_io.send_released_pdf(job_id, Path(entry["path"]))
+        update_entry_status(job_id, release_status="LIBERADO" if success else "ERRO")
+        if success:
+            QMessageBox.information(self, "ECR Released", f"Arquivo liberado: {message}")
         else:
-            os.makedirs(target_dir, exist_ok=True)
-            target_path = os.path.join(target_dir, target_filename)
-
-        try:
-            if existing and existing.get("created_by") == self.username:
-                if os.path.exists(existing.get("source_result", "")):
-                    source_result = existing["source_result"]
-                    if SERVER_ONLINE:
-                        os.remove(make_long_path(source_result))
-                    else:
-                        os.remove(source_result)
-            if os.path.exists(target_path):
-                os.remove(target_path)
-            if SERVER_ONLINE:
-                shutil.move(make_long_path(str(entry["path"])), target_path)
-            else:
-                shutil.move(str(entry["path"]), target_path)
-            add_released_entry(
-                filename=target_filename,
-                name_file_old=data["name_file_old"],
-                revision_old=data["revision_old"],
-                name_file_new=data["name_file_new"],
-                revision_new=data["revision_new"],
-                created_by=self.username,
-                source_result=target_path,
-            )
-            QMessageBox.information(
-                self,
-                "ECR Released",
-                f"Arquivo liberado em: {target_path}",
-            )
-            self._start_loading_history()
-        except Exception as exc:
-            QMessageBox.critical(
-                self,
-                "ECR Released",
-                f"Não foi possível enviar o arquivo para Released: {exc}",
-            )
+            QMessageBox.critical(self, "ECR Released", f"Erro ao liberar: {message}")
+        self._start_loading_history()
 
     def clear_history(self) -> None:
-        if not os.path.exists(self.user_results_dir):
-            QMessageBox.information(self, tr(self.language, "history_title"), tr(self.language, "history_empty"))
-            return
         prompt = (
             "Remover todos os resultados exibidos? Esta ação não pode ser desfeita."
             if self.language == "pt-BR"
@@ -1222,8 +1183,7 @@ class HistoryView(QWidget):
         if QMessageBox.question(self, tr(self.language, "history_title"), prompt) != QMessageBox.Yes:
             return
         try:
-            for pdf_path in Path(self.user_results_dir).glob("ECR-*.pdf"):
-                pdf_path.unlink(missing_ok=True)
+            clear_history_and_temp()
             self._start_loading_history()
             QMessageBox.information(
                 self,
@@ -2110,6 +2070,7 @@ class MainWindow(QMainWindow):
         self._update_task: Optional[BackgroundTask] = None
 
         self._last_old_path: Optional[Path] = None
+        self._last_new_path: Optional[Path] = None
 
         central_widget = QWidget()
         central_widget.setObjectName("layout_canvas")
@@ -2553,6 +2514,7 @@ class MainWindow(QMainWindow):
         logger.info("Starting comparison: %s vs %s", old_path, new_path)
 
         self._last_old_path = old_path
+        self._last_new_path = new_path
 
         self._thread = QThread(self)
         self._worker = CompareSetWorker(old_path, new_path)
@@ -2597,6 +2559,34 @@ class MainWindow(QMainWindow):
                 )
                 + f"{result.server_result_path}",
             )
+
+        # Persist a local job snapshot for history and server logging
+        job_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+        temp_dir = temp_dir_for_job(job_id)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if self._last_old_path:
+                shutil.copy2(self._last_old_path, temp_dir / "OLD.pdf")
+            if self._last_new_path:
+                shutil.copy2(self._last_new_path, temp_dir / "NEW.pdf")
+            result_path = temp_dir / "RESULTADO.pdf"
+            result_path.write_bytes(result.pdf_bytes)
+            entry = build_history_entry(job_id, temp_dir / "OLD.pdf", temp_dir / "NEW.pdf", result_path)
+            append_entry(entry)
+            log_payload = {
+                "job_id": job_id,
+                "usuario": self.username,
+                "data_hora": entry.timestamp,
+                "old_arquivo": Path(self._last_old_path).name if self._last_old_path else "",
+                "new_arquivo": Path(self._last_new_path).name if self._last_new_path else "",
+                "resultado": "COM_DIFERENCAS" if result.server_result_path else "ERRO",
+                "app_version": APP_VERSION,
+            }
+            sent, _ = server_io.persist_server_log(job_id, log_payload)
+            update_entry_status(job_id, log_status="ENVIADO" if sent else "ERRO")
+            self.history_view._start_loading_history()
+        except Exception as exc:
+            logger.error("Failed to record history: %s", exc)
 
         self._worker = None
         self._thread = None
@@ -3880,6 +3870,41 @@ def main() -> None:
     """Entry point for the application."""
 
     app = QApplication(sys.argv)
+
+    allowed, reason = ensure_user_access()
+    if not allowed:
+        QMessageBox.critical(None, "CompareSet", reason)
+        sys.exit(1)
+
+    ensure_user_config()
+    ensure_installed_binary()
+
+    update_status = perform_startup_update_check()
+    if update_status.forced_block:
+        QMessageBox.critical(
+            None,
+            "CompareSet",
+            "A newer version is required. Please run the updater from SharePoint.",
+        )
+        sys.exit(1)
+    if update_status.requires_update and update_status.download_url:
+        if (
+            QMessageBox.question(
+                None,
+                "CompareSet",
+                "Nova versão disponível. Deseja baixar agora?",
+            )
+            == QMessageBox.Yes
+        ):
+            updater = AutoUpdater()
+            downloaded = updater.download_new_version(update_status.download_url)
+            if downloaded and updater.apply_update(downloaded):
+                QMessageBox.information(
+                    None,
+                    "CompareSet",
+                    "Aplicativo atualizado. Reinicie o CompareSet para usar a nova versão.",
+                )
+
     initialize_environment()
     initial_online = is_server_available(SERVER_ROOT)
     set_connection_state(initial_online)

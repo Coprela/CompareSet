@@ -34,12 +34,15 @@ LOCAL_LOG_DIR: str = os.path.join(LOCAL_BASE_DIR, "logs")
 LOCAL_OUTPUT_DIR: str = os.path.join(LOCAL_BASE_DIR, "output")
 LOCAL_CONFIG_DIR: str = os.path.join(LOCAL_BASE_DIR, "config")
 LOCAL_RELEASED_DIR: str = os.path.join(LOCAL_BASE_DIR, "released")
+LOCAL_TEMP_DIR: str = os.path.join(LOCAL_BASE_DIR, "temp")
+LOCAL_UPDATE_DIR: str = os.path.join(LOCAL_BASE_DIR, "update")
 
 CURRENT_USER: str = getpass.getuser()
 DEV_SETTINGS_PATH = Path(__file__).with_name("dev_settings.json")
 
 OFFLINE_ALLOWED_USERS: set[str] = set()
 LOCAL_STORAGE_ALLOWED_USERS: set[str] = set()
+USER_CONFIG_PATH: str = os.path.join(LOCAL_CONFIG_DIR, "user_config.json")
 
 # Developer/test configuration defaults. The JSON file can override any of
 # these values and is treated as the single source of truth for dev mode.
@@ -279,6 +282,10 @@ def ensure_directories() -> None:
         HISTORY_DIR,
         LOG_DIR,
         OUTPUT_DIR,
+        LOCAL_BASE_DIR,
+        LOCAL_TEMP_DIR,
+        LOCAL_UPDATE_DIR,
+        LOCAL_CONFIG_DIR,
     )
     for path in paths:
         if not path or not str(path).strip("\\/"):
@@ -450,5 +457,7 @@ def initialize_environment() -> None:
 # Initialize super admin cache on import
 _refresh_super_admins()
 APP_VERSION: str = "1.0.0"
-# Path where the remote TXT with the latest version is published.
+# Paths to server-hosted metadata files
 VERSION_INFO_PATH: str = os.path.join(SERVER_CONFIG_ROOT, "CompareSetVersion.txt")
+VERSION_MANIFEST_PATH: str = os.path.join(SERVER_CONFIG_ROOT, "version.json")
+ACCESS_CONTROL_PATH: str = os.path.join(SERVER_CONFIG_ROOT, "access.json")
