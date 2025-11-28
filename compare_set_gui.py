@@ -1167,7 +1167,11 @@ class HistoryView(QWidget):
         data = dialog.data()
         job_id = entry.get("job_id", Path(entry["path"]).stem)
         success, message = server_io.send_released_pdf(job_id, Path(entry["path"]))
-        update_entry_status(job_id, release_status="LIBERADO" if success else "ERRO")
+        update_entry_status(
+            job_id,
+            release_status="LIBERADO" if success else "ERRO",
+            release_message=message,
+        )
         if success:
             QMessageBox.information(self, "ECR Released", f"Arquivo liberado: {message}")
         else:
@@ -2582,8 +2586,12 @@ class MainWindow(QMainWindow):
                 "resultado": "COM_DIFERENCAS" if result.server_result_path else "ERRO",
                 "app_version": APP_VERSION,
             }
-            sent, _ = server_io.persist_server_log(job_id, log_payload)
-            update_entry_status(job_id, log_status="ENVIADO" if sent else "ERRO")
+            sent, server_message = server_io.persist_server_log(job_id, log_payload)
+            update_entry_status(
+                job_id,
+                log_status="ENVIADO" if sent else "ERRO",
+                log_message=server_message,
+            )
             self.history_view._start_loading_history()
         except Exception as exc:
             logger.error("Failed to record history: %s", exc)
@@ -3887,7 +3895,7 @@ def main() -> None:
             "A newer version is required. Please run the updater from SharePoint.",
         )
         sys.exit(1)
-    if update_status.requires_update and update_status.download_url:
+    if update_status.update_available and update_status.download_url:
         if (
             QMessageBox.question(
                 None,
@@ -3897,8 +3905,7 @@ def main() -> None:
             == QMessageBox.Yes
         ):
             updater = AutoUpdater()
-            downloaded = updater.download_new_version(update_status.download_url)
-            if downloaded and updater.apply_update(downloaded):
+            if updater.download_and_apply_update(update_status.download_url):
                 QMessageBox.information(
                     None,
                     "CompareSet",

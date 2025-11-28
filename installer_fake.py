@@ -67,6 +67,23 @@ def ensure_shortcuts(installed_binary: Path) -> None:
         _create_shortcut(installed_binary, shortcut)
 
 
+def _should_remove_source(source_binary: Path, installed_path: Path) -> bool:
+    """Return True when the source binary looks like a downloaded installer."""
+
+    try:
+        source_resolved = source_binary.resolve()
+        installed_resolved = installed_path.resolve()
+    except Exception:
+        return False
+
+    if source_resolved == installed_resolved:
+        return False
+
+    # Heuristic: remove if the source lives inside a Downloads folder
+    parts = [part.lower() for part in source_resolved.parts]
+    return any(part == "downloads" for part in parts)
+
+
 def perform_fake_install(source_binary: Optional[Path] = None) -> Optional[Path]:
     """Copy the current executable to the official location and return it."""
 
@@ -86,6 +103,13 @@ def perform_fake_install(source_binary: Optional[Path] = None) -> Optional[Path]
         return None
 
     ensure_shortcuts(installed_path)
+
+    if _should_remove_source(src, installed_path):
+        try:
+            src.unlink()
+        except Exception:
+            pass
+
     return installed_path
 
 

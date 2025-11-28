@@ -40,6 +40,8 @@ def check_access_allowed(username: str, access_path: str | None = None) -> Tuple
     """Validate whether ``username`` is present in the server access list."""
 
     source = access_path or csenv.ACCESS_CONTROL_PATH
+    if not source:
+        return True, "Access list unavailable; allowing session by default."
     data = _load_remote_json(source)
     allowed = {user.lower() for user in data.get("allowed_users", []) if isinstance(user, str)}
     normalized = username.lower()
