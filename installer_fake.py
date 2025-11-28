@@ -7,6 +7,7 @@ are no-ops on non-Windows systems so development on Linux/macOS stays simple.
 from __future__ import annotations
 
 import os
+import logging
 import shutil
 import sys
 from pathlib import Path
@@ -84,27 +85,53 @@ def _should_remove_source(source_binary: Path, installed_path: Path) -> bool:
     return any(part == "downloads" for part in parts)
 
 
-def perform_fake_install(source_binary: Optional[Path] = None) -> Optional[Path]:
+def _current_executable() -> Path:
+    """Return the path to the currently running executable or script."""
+
+    if getattr(sys, "frozen", False):  # Running via PyInstaller bundle
+        return Path(sys.executable)
+    return Path(sys.argv[0]).resolve()
+
+
+def _init_local_layout() -> None:
+    """Ensure CompareSet local directories exist."""
+
+    Path(csenv.LOCAL_BASE_DIR).mkdir(parents=True, exist_ok=True)
+    Path(csenv.LOCAL_CONFIG_DIR).mkdir(parents=True, exist_ok=True)
+    Path(csenv.LOCAL_TEMP_DIR).mkdir(parents=True, exist_ok=True)
+    Path(csenv.LOCAL_HISTORY_DIR).mkdir(parents=True, exist_ok=True)
+    Path(csenv.LOCAL_UPDATE_DIR).mkdir(parents=True, exist_ok=True)
+
+
+def _clone_binary_to_official(src: Path, dest: Path) -> None:
+    try:
+        if dest.resolve() == src.resolve():
+            return
+    except Exception:
+        pass
+    shutil.copy2(src, dest)
+
+
+def perform_fake_install(source_binary: Optional[Path] = None) -> Path:
     """Copy the current executable to the official location and return it."""
 
-    if not _is_windows():
-        ensure_user_config()
-        return None
-
-    installed_path = official_binary_path()
-    installed_path.parent.mkdir(parents=True, exist_ok=True)
+    _init_local_layout()
     ensure_user_config()
 
-    src = source_binary or Path(sys.executable)
-    try:
-        if installed_path.resolve() != src.resolve():
-            shutil.copy2(src, installed_path)
-    except Exception:
-        return None
+    installed_path = official_binary_path()
+    src = source_binary or _current_executable()
+
+    if _is_windows():
+        try:
+            _clone_binary_to_official(src, installed_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            logging.error("Failed to copy binary to official location: %s", exc)
+    else:
+        installed_path = src
 
     ensure_shortcuts(installed_path)
 
-    if _should_remove_source(src, installed_path):
+    if _is_windows() and _should_remove_source(src, installed_path):
         try:
             src.unlink()
         except Exception:
@@ -113,12 +140,14 @@ def perform_fake_install(source_binary: Optional[Path] = None) -> Optional[Path]
     return installed_path
 
 
-def ensure_installed_binary() -> Optional[Path]:
+def ensure_installed_binary() -> Path:
     """Guarantee the official binary exists, copying from current exe if needed."""
 
     installed = official_binary_path()
     if installed.exists():
+        _init_local_layout()
         ensure_user_config()
         ensure_shortcuts(installed)
         return installed
+
     return perform_fake_install()

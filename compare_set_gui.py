@@ -3885,32 +3885,32 @@ def main() -> None:
         sys.exit(1)
 
     ensure_user_config()
-    ensure_installed_binary()
+    official_exe = ensure_installed_binary()
 
     update_status = perform_startup_update_check()
     if update_status.forced_block:
         QMessageBox.critical(
             None,
             "CompareSet",
-            "A newer version is required. Please run the updater from SharePoint.",
+            update_status.message
+            or "A newer version is required. Please run the updater from SharePoint.",
         )
         sys.exit(1)
     if update_status.update_available and update_status.download_url:
-        if (
-            QMessageBox.question(
+        updater = AutoUpdater()
+        if updater.download_and_apply_update(update_status.download_url):
+            QMessageBox.information(
                 None,
                 "CompareSet",
-                "Nova versão disponível. Deseja baixar agora?",
+                update_status.message or "Aplicativo atualizado. Reiniciando…",
             )
-            == QMessageBox.Yes
-        ):
-            updater = AutoUpdater()
-            if updater.download_and_apply_update(update_status.download_url):
-                QMessageBox.information(
-                    None,
-                    "CompareSet",
-                    "Aplicativo atualizado. Reinicie o CompareSet para usar a nova versão.",
-                )
+            try:
+                import subprocess
+
+                subprocess.Popen([str(official_exe)])
+            except Exception:
+                pass
+            sys.exit(0)
 
     initialize_environment()
     initial_online = is_server_available(SERVER_ROOT)
