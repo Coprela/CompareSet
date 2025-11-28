@@ -38,8 +38,30 @@ class AutoUpdater:
         latest = status.latest_version or local
         min_supported = status.min_supported_version or local
 
-        status.requires_update = latest > local
-        status.forced_block = local < min_supported
+        def parse_version_parts(version: str) -> list[int]:
+            parts: list[int] = []
+            for part in version.split("."):
+                try:
+                    parts.append(int(part))
+                except ValueError:
+                    parts.append(0)
+            return parts
+
+        local_parts = parse_version_parts(local)
+        latest_parts = parse_version_parts(latest)
+        min_supported_parts = parse_version_parts(min_supported)
+
+        normalized_length = max(3, len(local_parts), len(latest_parts), len(min_supported_parts))
+
+        def normalize(parts: list[int]) -> tuple[int, ...]:
+            return tuple(parts + [0] * (normalized_length - len(parts)))
+
+        local_parts = normalize(local_parts)
+        latest_parts = normalize(latest_parts)
+        min_supported_parts = normalize(min_supported_parts)
+
+        status.requires_update = latest_parts > local_parts
+        status.forced_block = local_parts < min_supported_parts
         return status
 
     def download_new_version(self, url: str) -> Optional[Path]:
