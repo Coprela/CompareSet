@@ -20,6 +20,7 @@ class UpdateStatus:
     update_available: bool = False
     requires_update: bool = False
     forced_block: bool = False
+    message: str | None = None
 
 
 def _version_tuple(raw: str | None) -> tuple[int, ...]:
@@ -53,6 +54,14 @@ class AutoUpdater:
         status.update_available = latest_tuple > local_tuple
         status.requires_update = status.update_available
         status.forced_block = bool(status.min_supported_version) and local_tuple < min_supported_tuple
+        if status.forced_block:
+            status.message = (
+                "A newer version is required to continue."
+                if not manifest.get("changelog")
+                else str(manifest.get("changelog"))
+            )
+        elif status.update_available:
+            status.message = manifest.get("changelog") or "Nova versão disponível."
         return status
 
     def download_new_version(self, url: str) -> Optional[Path]:
