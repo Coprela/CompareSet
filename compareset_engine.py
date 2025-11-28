@@ -673,6 +673,20 @@ def write_log(message: str) -> None:
         pass
 
 
+def log_mask_stats(page_index: int, label: str, mask: np.ndarray) -> None:
+    """Record pixel counts and coverage ratio for a binary mask."""
+
+    try:
+        total = float(mask.size or 1)
+        nonzero = int(cv2.countNonZero(mask))
+        write_log(
+            f"[Page {page_index + 1}] {label}: {nonzero} px ({nonzero / total:.4%} of page)"
+        )
+    except Exception:
+        # Mask logging must never interrupt the pipeline.
+        pass
+
+
 def remove_signature_widgets(pdf_doc: fitz.Document) -> int:
     """Remove visible signature widgets so they do not affect rendering."""
 
@@ -1065,6 +1079,12 @@ def process_page_pair(
     write_log(
         f"[Page {page_index + 1}] High-DPI render complete in {perf_after_render - perf_start:.3f}s"
     )
+    write_log(
+        f"[Page {page_index + 1}] Rendered size OLD={old_high.shape[1]}x{old_high.shape[0]} NEW={new_high.shape[1]}x{new_high.shape[0]}"
+    )
+    write_log(
+        f"[Page {page_index + 1}] Zoom factors OLD={old_zoom_high:.3f} NEW=({new_zoom_high_x:.3f},{new_zoom_high_y:.3f})"
+    )
 
     with Timer(f"page {page_index + 1} preview"):
         preview_zoom = compute_zoom(old_page.rect, PREVIEW_DPI)
@@ -1076,6 +1096,9 @@ def process_page_pair(
     _, preview_mask = cv2.threshold(preview_diff, 20, 255, cv2.THRESH_BINARY)
     nonzero_ratio = float(cv2.countNonZero(preview_mask)) / float(preview_mask.size or 1)
     preview_mean = float(preview_diff.mean()) if preview_diff.size else 0.0
+    write_log(
+        f"[Page {page_index + 1}] Preview stats mean={preview_mean:.2f} change_ratio={nonzero_ratio:.5f}"
+    )
     if nonzero_ratio < 0.00035 and preview_mean < 3.5:
         logger.info("unchanged-text suppressed: 0 on OLD, 0 on NEW")
         write_log(f"[Page {page_index + 1}] Preview skip after {perf_after_preview - perf_after_render:.3f}s")
@@ -1093,8 +1116,15 @@ def process_page_pair(
     with Timer(f"page {page_index + 1} alignment"):
         aligned_new_high, alignment_method, warp_matrix = align_images(old_high, new_high)
     perf_after_align = time.perf_counter()
+    translation_x = float(warp_matrix[0, 2]) if warp_matrix is not None else 0.0
+    translation_y = float(warp_matrix[1, 2]) if warp_matrix is not None else 0.0
+    scale_x = float(math.hypot(warp_matrix[0, 0], warp_matrix[0, 1])) if warp_matrix is not None else 1.0
+    scale_y = float(math.hypot(warp_matrix[1, 0], warp_matrix[1, 1])) if warp_matrix is not None else 1.0
     write_log(
         f"[Page {page_index + 1}] Alignment ({alignment_method}) completed in {perf_after_align - perf_after_preview:.3f}s"
+    )
+    write_log(
+        f"[Page {page_index + 1}] Alignment warp translation=({translation_x:.2f},{translation_y:.2f}) scale=({scale_x:.4f},{scale_y:.4f})"
     )
 
     _check_cancel()
@@ -1134,6 +1164,10 @@ def process_page_pair(
             cv2.bitwise_or(removed_mask, added_mask),
         )
         change_mask = cv2.bitwise_or(change_mask, cv2.bitwise_and(line_emphasis, ink_union))
+
+    log_mask_stats(page_index, "Change mask", change_mask)
+    log_mask_stats(page_index, "Removed ink mask", removed_mask)
+    log_mask_stats(page_index, "Added ink mask", added_mask)
 
     _check_cancel()
     write_log(f"[Page {page_index + 1}] Bounding box extraction")
